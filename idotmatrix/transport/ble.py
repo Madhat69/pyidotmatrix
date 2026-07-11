@@ -1,0 +1,371 @@
+"""BLE transport: owns the connection to one device and writes bytes to it.
+
+Responsibilities:
+  - connect (by MAC or discovery), disconnect, report connection state
+  - write commands and multi-packet frames, chunked to the negotiated write size
+  - keep the connection alive: reconnect supervision lives here, not in the app
+  - surface device acks (fa03 notifications) and connection/observability events
+
+It knows nothing about frames, deltas, scheduling, or scenes — it moves bytes.
+
+Two distinct acknowledgements exist and must not be confused:
+  - the GATT write response (`response=True` on a write) — a BLE-level confirmation
+    that this device happens to withhold until it has processed the write;
+  - the device ack (`DeviceAck` from fa03) — an application-level accept/reject the
+    device pushes for each recognized command. Use await_device_ack() for the latter.
+"""
+
+import asyncio
+import logging
+import time
+from collections.abc import Awaitable, Callable
+from typing import Optional
+
+from bleak import AdvertisementData, BleakClient, BleakScanner
+from bleak.exc import BleakError
+
+from idotmatrix.protocol.response import DeviceAck, parse_response
+from idotmatrix.transport.const import DEVICE_NAME_PREFIX, UUID_NOTIFY, UUID_WRITE
+from idotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
+
+logger = logging.getLogger(__name__)
+
+# bleak caps write-with-response at 512 bytes.
+_MAX_WRITE_WITH_RESPONSE = 512
+
+# Some iDotMatrix panels on BlueZ report this tiny size but actually accept ~514.
+# We no longer override automatically (that breaks genuinely low-MTU devices); we
+# trust the reported size and hint the caller toward write_size_override.
+_LIKELY_UNDERREPORT_SIZE = 20
+
+_RECONNECT_INTERVAL_SECONDS = 5
+_DEFAULT_ACK_TIMEOUT = 2.0
+
+# In every ported command, byte 2 is the type; only graffiti uses value 5 there,
+# and graffiti produces no device ack — so we refuse to await one for it.
+_GRAFFITI_TYPE_BYTE = 5
+
+ConnectionCallback = Callable[[], Awaitable[None]]
+ResponseCallback = Callable[[DeviceAck], None]
+EventCallback = Callable[[TransportEvent], None]
+Unsubscribe = Callable[[], None]
+
+
+async def discover_devices(name_prefix: str = DEVICE_NAME_PREFIX) -> list[str]:
+    """Returns the MAC addresses of nearby iDotMatrix devices."""
+    found = await BleakScanner.discover(return_adv=True)
+    addresses = []
+    for device, adv in found.values():
+        if isinstance(adv, AdvertisementData) and adv.local_name and adv.local_name.startswith(name_prefix):
+            logger.info("found device %s (%s)", device.address, adv.local_name)
+            addresses.append(device.address)
+    return addresses
+
+
+class BleTransport:
+    def __init__(
+        self,
+        mac_address: Optional[str] = None,
+        auto_reconnect: bool = True,
+        write_size_override: Optional[int] = None,
+    ):
+        """
+        Args:
+            mac_address: device MAC, or None to connect to the first discovered device.
+            auto_reconnect: if True, transparently reconnect after an unexpected drop.
+            write_size_override: force the no-response write size instead of trusting
+                the characteristic. Escape hatch for BlueZ panels that under-report
+                (set to 514); leave None to use the reported size.
+        """
+        self._mac_address = mac_address
+        self._auto_reconnect = auto_reconnect      # configured intent
+        self._reconnect_armed = False              # armed on connect, disarmed on explicit disconnect
+        self._write_size_override = write_size_override
+        self._client: Optional[BleakClient] = None
+        self._connect_lock = asyncio.Lock()        # per-instance: multiple devices don't serialize
+        self._write_size: Optional[int] = None     # negotiated no-response size, cached per connection
+        self._reconnect_task: Optional[asyncio.Task] = None
+
+        self._on_connected: list[ConnectionCallback] = []
+        self._on_disconnected: list[ConnectionCallback] = []
+        self._on_response: list[ResponseCallback] = []
+        self._on_event: list[EventCallback] = []
+        self._pending_acks: dict[tuple[int, int], asyncio.Future] = {}
+
+        self._reconnect_count = 0
+        self._last_failure: Optional[str] = None
+        self._last_failure_at: Optional[float] = None
+
+    # --- connection lifecycle ---------------------------------------------
+
+    @property
+    def is_connected(self) -> bool:
+        return self._client is not None and self._client.is_connected
+
+    @property
+    def auto_reconnect(self) -> bool:
+        return self._auto_reconnect
+
+    async def connect(self) -> None:
+        """Connects to the device, discovering one first if no MAC was given."""
+        async with self._connect_lock:
+            if self.is_connected:
+                return
+            if self._mac_address is None:
+                self._mac_address = await self._discover_one()
+
+            logger.info("connecting to %s", self._mac_address)
+            self._client = BleakClient(self._mac_address, disconnected_callback=self._handle_disconnect)
+            await self._client.connect()
+            self._write_size = None  # re-read from the new connection
+            await self._subscribe_to_responses()
+            self._reconnect_armed = self._auto_reconnect
+            logger.info("connected to %s", self._mac_address)
+
+        await self._notify_connection(self._on_connected)
+
+    async def disconnect(self) -> None:
+        """Disconnects and stops reconnect supervision until the next connect()."""
+        self._reconnect_armed = False  # an explicit disconnect is not a candidate for reconnect
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
+        async with self._connect_lock:
+            if self.is_connected:
+                await self._client.disconnect()
+
+    def set_auto_reconnect(self, enabled: bool) -> None:
+        """Enables or disables reconnect supervision at runtime.
+
+        Enabling while connected arms supervision immediately; disabling disarms it
+        and cancels any in-flight reconnect loop.
+        """
+        self._auto_reconnect = enabled
+        if enabled:
+            self._reconnect_armed = self.is_connected
+        else:
+            self._reconnect_armed = False
+            if self._reconnect_task:
+                self._reconnect_task.cancel()
+                self._reconnect_task = None
+
+    async def _discover_one(self) -> str:
+        addresses = await discover_devices()
+        if not addresses:
+            raise BleakError(
+                "no iDotMatrix devices found; ensure the device is powered on, in range, "
+                "and not connected elsewhere"
+            )
+        return addresses[0]
+
+    # --- writing -----------------------------------------------------------
+
+    async def write(self, data: bytes | bytearray, response: bool = False) -> None:
+        """Writes a single command, chunked to the write size. GATT-acks the last
+        chunk if response=True."""
+        await self._ensure_connected()
+        chunk_size = await self._resolve_write_size(response)
+        for start in range(0, len(data), chunk_size):
+            is_last = start + chunk_size >= len(data)
+            await self._write_raw(data[start:start + chunk_size], response=response and is_last)
+
+    async def write_packets(self, packets: list[list[bytearray]], response: bool = False) -> None:
+        """Writes a multi-chunk frame. Only the very last write is GATT-acked.
+
+        Each element of packets is one protocol chunk already split into BLE-sized
+        packets (see protocol.image.build_frame_packets). Builders split at the
+        protocol's default size; if this connection negotiated a smaller write size,
+        packets are re-split here — the device reassembles by the length header in
+        each chunk, so BLE write boundaries don't matter to it.
+        """
+        if not packets:
+            return
+        await self._ensure_connected()
+        write_size = await self._resolve_write_size(response=False)
+        for chunk_index, chunk in enumerate(packets):
+            is_last_chunk = chunk_index == len(packets) - 1
+            for packet_index, packet in enumerate(chunk):
+                is_last_packet = packet_index == len(chunk) - 1
+                for start in range(0, len(packet), write_size):
+                    piece = packet[start:start + write_size]
+                    is_final = response and is_last_chunk and is_last_packet and start + write_size >= len(packet)
+                    await self._write_raw(piece, response=is_final)
+
+    async def await_device_ack(
+        self, command: bytes | bytearray, timeout: float = _DEFAULT_ACK_TIMEOUT
+    ) -> Optional[DeviceAck]:
+        """Sends a command and waits for the device's fa03 ack for it.
+
+        Returns the DeviceAck, or None if none arrived within timeout (the device
+        stays silent for unrecognized commands). Correlated by the command's
+        type/subtype bytes. Raises ValueError for graffiti (never acked) or if a
+        wait is already pending for the same command type/subtype — the facade does
+        not serialize, so two same-typed waits could not be told apart.
+        """
+        if len(command) < 4:
+            raise ValueError("command too short to correlate an ack")
+        if command[2] == _GRAFFITI_TYPE_BYTE:
+            raise ValueError("graffiti commands produce no device ack")
+        key = (command[2], command[3])
+        if key in self._pending_acks:
+            raise ValueError(f"an ack wait is already pending for command type {key}")
+
+        future = asyncio.get_running_loop().create_future()
+        self._pending_acks[key] = future
+        try:
+            await self.write(command, response=True)
+            return await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            self._pending_acks.pop(key, None)
+
+    async def _ensure_connected(self) -> None:
+        if not self.is_connected:
+            await self.connect()
+
+    async def _write_raw(self, data: bytes | bytearray, response: bool) -> None:
+        try:
+            await self._client.write_gatt_char(UUID_WRITE, data, response=response)
+        except Exception as ex:
+            self._record_failure(f"write failed: {ex}")
+            self._emit_event(TransportEventKind.WRITE_FAILED, str(ex))
+            raise
+
+    async def _resolve_write_size(self, response: bool) -> int:
+        """The largest write we may send. Response writes are capped by bleak;
+        no-response writes use the override, else the characteristic's reported size."""
+        if response:
+            return _MAX_WRITE_WITH_RESPONSE
+        if self._write_size_override is not None:
+            return self._write_size_override
+        if self._write_size is None:
+            char = self._client.services.get_characteristic(UUID_WRITE)
+            self._write_size = char.max_write_without_response_size
+            if self._write_size <= _LIKELY_UNDERREPORT_SIZE:
+                logger.info(
+                    "device reports a %d-byte write size; if this is an iDotMatrix panel on "
+                    "BlueZ, pass write_size_override=514 for full-speed frames",
+                    self._write_size,
+                )
+        return self._write_size
+
+    # --- observability -----------------------------------------------------
+
+    def snapshot(self) -> TransportSnapshot:
+        """A read-only view of the transport's current state."""
+        return TransportSnapshot(
+            address=self._mac_address,
+            is_connected=self.is_connected,
+            write_size=self._write_size_override or self._write_size,
+            reconnect_count=self._reconnect_count,
+            last_failure=self._last_failure,
+            last_failure_at=self._last_failure_at,
+        )
+
+    def _record_failure(self, message: str) -> None:
+        self._last_failure = message
+        self._last_failure_at = time.time()
+
+    def _emit_event(self, kind: TransportEventKind, detail: Optional[str] = None) -> None:
+        event = TransportEvent(kind=kind, detail=detail)
+        for callback in list(self._on_event):
+            _safe_call(callback, event)
+
+    # --- listeners ---------------------------------------------------------
+
+    def add_listener(
+        self,
+        on_connected: Optional[ConnectionCallback] = None,
+        on_disconnected: Optional[ConnectionCallback] = None,
+    ) -> Unsubscribe:
+        """Registers async connection-state callbacks. Returns an unsubscribe callable."""
+        if on_connected:
+            self._on_connected.append(on_connected)
+        if on_disconnected:
+            self._on_disconnected.append(on_disconnected)
+
+        def unsubscribe() -> None:
+            _discard(self._on_connected, on_connected)
+            _discard(self._on_disconnected, on_disconnected)
+
+        return unsubscribe
+
+    def add_response_listener(self, callback: ResponseCallback) -> Unsubscribe:
+        """Registers a callback for device acks (accept/reject per command). Returns
+        an unsubscribe callable. Only the BLE backend has these."""
+        self._on_response.append(callback)
+        return lambda: _discard(self._on_response, callback)
+
+    def add_event_listener(self, callback: EventCallback) -> Unsubscribe:
+        """Registers a callback for transport events (write failures, reconnects).
+        Returns an unsubscribe callable."""
+        self._on_event.append(callback)
+        return lambda: _discard(self._on_event, callback)
+
+    async def _subscribe_to_responses(self) -> None:
+        """Subscribes to the notify characteristic so device acks are delivered.
+
+        Best-effort: a stack that doesn't support notifications must not break the
+        connection, since acks are observability, not a hard requirement.
+        """
+        try:
+            await self._client.start_notify(UUID_NOTIFY, self._handle_notification)
+        except Exception as ex:
+            logger.warning("could not subscribe to device notifications: %s", ex)
+
+    def _handle_notification(self, _sender, data: bytearray) -> None:
+        ack = parse_response(bytes(data))
+        if ack is None:
+            logger.debug("unrecognized notification: %s", bytes(data).hex())
+            return
+        if not ack.accepted:
+            logger.warning("device rejected command type=%d subtype=%d", ack.command_type, ack.command_subtype)
+
+        pending = self._pending_acks.get((ack.command_type, ack.command_subtype))
+        if pending and not pending.done():
+            pending.set_result(ack)
+
+        for callback in list(self._on_response):
+            _safe_call(callback, ack)
+
+    def _handle_disconnect(self, _client: BleakClient) -> None:
+        """bleak disconnect callback (sync). Fans out and starts reconnecting."""
+        logger.info("disconnected from %s", self._mac_address)
+        asyncio.ensure_future(self._notify_connection(self._on_disconnected))
+        if self._reconnect_armed and (self._reconnect_task is None or self._reconnect_task.done()):
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self) -> None:
+        self._emit_event(TransportEventKind.RECONNECT_STARTED)
+        while self._reconnect_armed and not self.is_connected:
+            await asyncio.sleep(_RECONNECT_INTERVAL_SECONDS)
+            try:
+                await self.connect()
+                self._reconnect_count += 1
+                self._emit_event(TransportEventKind.RECONNECT_SUCCEEDED)
+            except asyncio.CancelledError:
+                break
+            except Exception as ex:
+                self._record_failure(f"reconnect failed: {ex}")
+                logger.warning("reconnect attempt failed: %s", ex)
+
+    async def _notify_connection(self, callbacks: list[ConnectionCallback]) -> None:
+        for callback in list(callbacks):
+            try:
+                await callback()
+            except Exception as ex:
+                logger.warning("connection listener raised: %s", ex)
+
+
+def _safe_call(callback: Callable, argument) -> None:
+    """Invokes a sync listener, isolating its failure from connection handling."""
+    try:
+        callback(argument)
+    except Exception as ex:
+        logger.warning("listener raised: %s", ex)
+
+
+def _discard(callbacks: list, callback) -> None:
+    if callback in callbacks:
+        callbacks.remove(callback)
