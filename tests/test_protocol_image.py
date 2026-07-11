@@ -7,6 +7,7 @@ The golden values were proven byte-identical to the original lab implementation
 import hashlib
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from idotmatrix.protocol import image
@@ -57,3 +58,31 @@ def test_continuation_flag_set_on_later_chunks():
 def test_set_diy_mode():
     assert image.build_set_diy_mode(True) == bytearray([5, 0, 4, 1, 1])
     assert image.build_set_diy_mode(False) == bytearray([5, 0, 4, 1, 0])
+
+
+def test_diy_mode_named_constants_match_diyimagefun_values():
+    assert image.QUIT_NOSAVE_KEEP_PREV == 0
+    assert image.ENTER_CLEAR_CUR_SHOW == 1
+    assert image.QUIT_STILL_CUR_SHOW == 2
+    assert image.ENTER_NO_CLEAR_CUR_SHOW == 3
+    # backward-compatible aliases
+    assert image.DIY_MODE_DISABLE == image.QUIT_NOSAVE_KEEP_PREV
+    assert image.DIY_MODE_ENABLE == image.ENTER_CLEAR_CUR_SHOW
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        image.QUIT_NOSAVE_KEEP_PREV,
+        image.ENTER_CLEAR_CUR_SHOW,
+        image.QUIT_STILL_CUR_SHOW,
+        image.ENTER_NO_CLEAR_CUR_SHOW,
+    ],
+)
+def test_set_diy_mode_accepts_all_four_modes(mode):
+    assert image.build_set_diy_mode(mode=mode) == bytearray([5, 0, 4, 1, mode])
+
+
+def test_set_diy_mode_rejects_unknown_mode():
+    with pytest.raises(ValueError):
+        image.build_set_diy_mode(mode=4)

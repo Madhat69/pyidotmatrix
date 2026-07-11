@@ -222,8 +222,51 @@ class CommonFeature(_Feature):
     async def set_password(self, password: int) -> None:
         await self._send(common.build_set_password(password))
 
+    async def verify_password(self, password: int) -> None:
+        """Authenticates against a password already set with set_password."""
+        await self._send(common.build_verify_password(password))
+
+    async def set_screen_timeout(self, value: int) -> None:
+        """Sets the screen-on / auto-dim timer. Units unknown pending hardware test."""
+        await self._send(common.build_set_screen_timeout(value))
+
+    async def read_screen_timeout(self) -> None:
+        """Requests a read-back of the screen timeout; reply arrives via the
+        device-ack listener (add_response_listener / await_device_ack)."""
+        await self._send(common.build_read_screen_timeout())
+
     async def reset(self) -> None:
         await self._send_packets(common.build_reset())
+
+
+class ExperimentalFeature(_Feature):
+    """Unverified-on-hardware and/or destructive commands.
+
+    Bytes are confirmed from APK decompilation but have not been exercised
+    against real GlanceOS hardware. Prefer the stable namespaces (client.common,
+    etc.) unless you specifically need one of these.
+    """
+
+    async def set_time_indicator(self, enabled: bool) -> None:
+        """EXPERIMENTAL: toggles a time indicator on the clock face.
+
+        Unverified on GlanceOS hardware — the original research lab reported this
+        "doesn't seem to work" on some firmware/models, though the bytes are still
+        shipped by the current official app.
+        """
+        await self._send(common.build_set_time_indicator(enabled))
+
+    async def delete_device_data(self, confirm: bool = False) -> None:
+        """EXPERIMENTAL and DESTRUCTIVE: erases device data.
+
+        Never hardware-verified by this driver, and irreversible on the device
+        side. Requires confirm=True — raises ValueError otherwise — to reduce the
+        chance of an accidental call; there is no further confirmation from the
+        device once this is sent.
+        """
+        if not confirm:
+            raise ValueError("delete_device_data is destructive; pass confirm=True to proceed")
+        await self._send(common.build_delete_device_data())
 
 
 class IDotMatrixClient:
@@ -255,6 +298,7 @@ class IDotMatrixClient:
         self.text = TextFeature(self._transport)
         self.gif = GifFeature(self._transport, screen_size)
         self.common = CommonFeature(self._transport)
+        self.experimental = ExperimentalFeature(self._transport)
 
     @property
     def is_connected(self) -> bool:

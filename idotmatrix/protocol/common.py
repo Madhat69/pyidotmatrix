@@ -6,7 +6,15 @@ ported verbatim from the research lab.
 
 from datetime import datetime
 
-from idotmatrix.validation import validate_brightness, validate_byte
+from idotmatrix.validation import (
+    validate_brightness,
+    validate_byte,
+    validate_password,
+    validate_screen_timeout,
+)
+
+# 0xFF in the screen-timeout value byte requests a read-back instead of a write.
+_SCREEN_TIMEOUT_READ_SENTINEL = 255
 
 
 def build_set_brightness(percent: int) -> bytearray:
@@ -68,6 +76,57 @@ def build_set_password(password: int) -> bytearray:
     mid = (password // 100) % 100 % 256
     low = password % 100 % 256
     return bytearray([8, 0, 4, 2, 1, high, mid, low])
+
+
+def build_verify_password(password: int) -> bytearray:
+    """Authenticates against a password already set with build_set_password.
+
+    Uses the same 6-digit-as-3-bytes encoding as build_set_password. Ack shape
+    unconfirmed (likely the standard 5-byte fa03 accept/reject) — verify on
+    hardware with a device that actually has a password set.
+    """
+    validate_password(password)
+    high = (password // 10000) % 256
+    mid = (password // 100) % 100 % 256
+    low = password % 100 % 256
+    return bytearray([7, 0, 5, 2, high, mid, low])
+
+
+def build_set_screen_timeout(value: int) -> bytearray:
+    """Sets the screen-on / auto-dim timer.
+
+    Units are unknown pending a hardware test — seconds, minutes, and a
+    preset-enum index are all plausible readings of the raw byte. Value must be
+    0..254; 255 is reserved for build_read_screen_timeout.
+    """
+    validate_screen_timeout(value)
+    return bytearray([5, 0, 15, 128, value])
+
+
+def build_read_screen_timeout() -> bytearray:
+    """Requests a read-back of the current screen timeout; reply expected on fa03."""
+    return bytearray([5, 0, 15, 128, _SCREEN_TIMEOUT_READ_SENTINEL])
+
+
+def build_set_time_indicator(enabled: bool) -> bytearray:
+    """EXPERIMENTAL: toggles a time indicator on the clock face.
+
+    Bytes are confirmed still shipped by the current (2026) official app, but the
+    original research lab noted this command "doesn't seem to work" on some
+    firmware/models. Unverified on GlanceOS hardware.
+    """
+    return bytearray([5, 0, 7, 128, 1 if enabled else 0])
+
+
+def build_delete_device_data() -> bytearray:
+    """EXPERIMENTAL and DESTRUCTIVE: erases device data ("Agreement" reset).
+
+    Byte-identical across multiple app versions (a good stability signal), but
+    never hardware-verified by this driver and irreversible on the device side.
+    Callers must gate this behind an explicit confirmation — see
+    IDotMatrixClient.experimental.delete_device_data.
+    """
+    return bytearray([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
 
 
 def build_reset() -> list[list[bytearray]]:

@@ -5,18 +5,40 @@ bytes, each chunk gets a 9-byte header (length, continuation flag, total size),
 and each header+chunk is split into BLE packets. Pure functions, no I/O.
 """
 
+from typing import Optional
+
 from idotmatrix.protocol import bytes_
 
-# DIY mode values for the set-mode command (byte 4 of the payload).
-DIY_MODE_ENABLE = 1
-DIY_MODE_DISABLE = 0
+# DIY mode values for the set-mode command (byte 4 of the payload), named after
+# the APK's `DiyImageFun` enum. Modes 2/3 are accepted by the device but their
+# display behavior is untested on GlanceOS hardware — see ROADMAP.
+QUIT_NOSAVE_KEEP_PREV = 0
+ENTER_CLEAR_CUR_SHOW = 1
+QUIT_STILL_CUR_SHOW = 2
+ENTER_NO_CLEAR_CUR_SHOW = 3
+
+_DIY_MODES = (QUIT_NOSAVE_KEEP_PREV, ENTER_CLEAR_CUR_SHOW, QUIT_STILL_CUR_SHOW, ENTER_NO_CLEAR_CUR_SHOW)
+
+# Backward-compatible aliases for the two modes this driver originally named.
+DIY_MODE_ENABLE = ENTER_CLEAR_CUR_SHOW
+DIY_MODE_DISABLE = QUIT_NOSAVE_KEEP_PREV
 
 _DIY_HEADER_SIZE = 9
 
 
-def build_set_diy_mode(enable: bool = True) -> bytearray:
-    """Command that enters or leaves DIY draw mode. Send before the first frame."""
-    mode = DIY_MODE_ENABLE if enable else DIY_MODE_DISABLE
+def build_set_diy_mode(enable: bool = True, mode: Optional[int] = None) -> bytearray:
+    """Command that enters or leaves DIY draw mode. Send before the first frame.
+
+    `enable` selects between the two originally-supported modes (ENTER_CLEAR_CUR_SHOW
+    / QUIT_NOSAVE_KEEP_PREV). Pass `mode` explicitly to use one of the full four
+    DiyImageFun values instead — QUIT_STILL_CUR_SHOW and ENTER_NO_CLEAR_CUR_SHOW are
+    accepted by the device but their on-screen effect is unverified; `mode` overrides
+    `enable` when given.
+    """
+    if mode is None:
+        mode = ENTER_CLEAR_CUR_SHOW if enable else QUIT_NOSAVE_KEEP_PREV
+    elif mode not in _DIY_MODES:
+        raise ValueError(f"diy mode must be one of {_DIY_MODES} (DiyImageFun), got {mode}")
     return bytearray([5, 0, 4, 1, mode])
 
 

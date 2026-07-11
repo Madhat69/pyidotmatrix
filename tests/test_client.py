@@ -1,5 +1,7 @@
 """Tests that IDotMatrixClient wires feature namespaces to one shared transport."""
 
+import pytest
+
 from idotmatrix.client import IDotMatrixClient
 from idotmatrix.screen import ScreenSize
 
@@ -43,6 +45,7 @@ async def test_all_feature_namespaces_present():
     for name in (
         "chronograph", "countdown", "clock", "scoreboard", "eco",
         "color", "graffiti", "effect", "music_sync", "text", "gif", "common", "display",
+        "experimental",
     ):
         assert hasattr(client, name), f"missing namespace: {name}"
 
@@ -74,3 +77,41 @@ async def test_reset_uses_packet_path():
     client, transport = _client()
     await client.common.reset()
     assert len(transport.packet_writes) == 1
+
+
+async def test_verify_password_routes_to_transport():
+    client, transport = _client()
+    await client.common.verify_password(123456)
+    assert transport.writes == [(bytes([7, 0, 5, 2, 12, 34, 56]), True)]
+
+
+async def test_set_screen_timeout_routes_to_transport():
+    client, transport = _client()
+    await client.common.set_screen_timeout(30)
+    assert transport.writes == [(bytes([5, 0, 15, 128, 30]), True)]
+
+
+async def test_read_screen_timeout_routes_to_transport():
+    client, transport = _client()
+    await client.common.read_screen_timeout()
+    assert transport.writes == [(bytes([5, 0, 15, 128, 255]), True)]
+
+
+async def test_experimental_set_time_indicator_routes_to_transport():
+    client, transport = _client()
+    await client.experimental.set_time_indicator(True)
+    assert transport.writes == [(bytes([5, 0, 7, 128, 1]), True)]
+
+
+async def test_experimental_delete_device_data_requires_confirm():
+    client, _ = _client()
+    with pytest.raises(ValueError):
+        await client.experimental.delete_device_data()
+
+
+async def test_experimental_delete_device_data_routes_to_transport_when_confirmed():
+    client, transport = _client()
+    await client.experimental.delete_device_data(confirm=True)
+    assert transport.writes == [
+        (bytes([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), True)
+    ]
