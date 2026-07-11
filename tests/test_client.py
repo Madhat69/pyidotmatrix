@@ -3,6 +3,7 @@
 import pytest
 
 from idotmatrix.client import IDotMatrixClient
+from idotmatrix.protocol import timer
 from idotmatrix.screen import ScreenSize
 
 
@@ -115,3 +116,19 @@ async def test_experimental_delete_device_data_routes_to_transport_when_confirme
     assert transport.writes == [
         (bytes([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), True)
     ]
+
+
+async def test_experimental_schedule_master_switch_routes_to_transport():
+    client, transport = _client()
+    await client.experimental.schedule_master_switch(enable=True, buzzer=True)
+    assert transport.writes == [(bytes([5, 0, 7, 0x80, 0b11]), True)]
+
+
+async def test_experimental_timer_close_routes_to_transport():
+    client, transport = _client()
+    t = timer.Timer(
+        num=1, week=0, hour=6, minute=0,
+        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_IMAGE, buzzer_enable=False,
+    )
+    await client.experimental.timer_close(t)
+    assert transport.writes == [(bytes([12, 0, 0x00, 0x80, 1, 0, 6, 0, 10, 0, 2, 0]), True)]

@@ -26,8 +26,10 @@ from idotmatrix.protocol import (
     gif,
     graffiti,
     music_sync,
+    schedule,
     scoreboard,
     text,
+    timer,
 )
 from idotmatrix.protocol.response import DeviceAck
 from idotmatrix.screen import ScreenSize
@@ -267,6 +269,30 @@ class ExperimentalFeature(_Feature):
         if not confirm:
             raise ValueError("delete_device_data is destructive; pass confirm=True to proceed")
         await self._send(common.build_delete_device_data())
+
+    async def schedule_master_switch(self, enable: bool, buzzer: bool) -> None:
+        """EXPERIMENTAL: turns the Weekly Schedule feature on/off, with buzzer.
+
+        Flat 5-byte command, ack shape already matches DeviceAck ([5,0,7,0x80,·]).
+        Bytes are confirmed from APK decompilation but the enable/buzzer bit order
+        (packed = (buzzer << 1) | enable) is derived from a decompiled bit packer,
+        not observed on a real device -- unverified on GlanceOS hardware.
+        """
+        await self._send(schedule.build_master_switch(enable, buzzer))
+
+    async def timer_close(self, timer_obj: timer.Timer) -> None:
+        """EXPERIMENTAL: disables a Timer alarm slot without deleting it.
+
+        Flat 12-byte command (sendCloseData), no chunking, no payload. Unverified
+        on GlanceOS hardware, and its ack (if any) is a different, richer 3-way
+        status vocabulary than the usual DeviceAck accept/reject -- see
+        protocol.response.TimerAck. The chunked sendData upload (setting an
+        alarm's custom image/gif/text content) is not exposed here yet: its
+        multi-chunk ack handshake is unverified, so only builders + a probe
+        script exist for it (protocol.timer.build_timer_data_packets,
+        probes/probe_timer_image.py).
+        """
+        await self._send(timer.build_timer_close(timer_obj))
 
 
 class IDotMatrixClient:

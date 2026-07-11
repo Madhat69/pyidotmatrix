@@ -24,7 +24,7 @@ from typing import Optional
 from bleak import AdvertisementData, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
-from idotmatrix.protocol.response import DeviceAck, parse_response
+from idotmatrix.protocol.response import DeviceAck, TimerAck, parse_response
 from idotmatrix.transport.const import DEVICE_NAME_PREFIX, UUID_NOTIFY, UUID_WRITE
 from idotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
 
@@ -46,7 +46,7 @@ _DEFAULT_ACK_TIMEOUT = 2.0
 _GRAFFITI_TYPE_BYTE = 5
 
 ConnectionCallback = Callable[[], Awaitable[None]]
-ResponseCallback = Callable[[DeviceAck], None]
+ResponseCallback = Callable[[DeviceAck | TimerAck], None]
 EventCallback = Callable[[TransportEvent], None]
 Unsubscribe = Callable[[], None]
 
@@ -319,7 +319,9 @@ class BleTransport:
         if ack is None:
             logger.debug("unrecognized notification: %s", bytes(data).hex())
             return
-        if not ack.accepted:
+        # TimerAck (EXPERIMENTAL) has no accepted/rejected concept -- it's a 3-way
+        # status (next-chunk / saved / failed) instead of DeviceAck's boolean.
+        if isinstance(ack, DeviceAck) and not ack.accepted:
             logger.warning("device rejected command type=%d subtype=%d", ack.command_type, ack.command_subtype)
 
         pending = self._pending_acks.get((ack.command_type, ack.command_subtype))
