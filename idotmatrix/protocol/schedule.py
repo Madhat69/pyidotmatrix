@@ -108,7 +108,11 @@ def build_schedule_theme_packets(theme: ScheduleTheme, payload: bytes, content: 
 def _build_theme_header(chunk: bytearray, payload: bytes, theme: ScheduleTheme, content: int, is_first: bool) -> bytes:
     """The 23-byte header prefixed to each 4K chunk of a Schedule theme upload."""
     header = bytearray(_THEME_HEADER_SIZE)
-    header[0:2] = (len(chunk) + _THEME_HEADER_SIZE).to_bytes(2, "big")  # packet length, BE
+    # packet length, LE: INFERRED from the Timer hardware result (2026-07-12),
+    # which falsified the same big-endian-length assumption from the same doc
+    # source for Timer's 24-byte header. Schedule's own upload is not yet
+    # hardware-tested -- verify before relying on this.
+    header[0:2] = (len(chunk) + _THEME_HEADER_SIZE).to_bytes(2, "little")
     header[2] = 5  # Schedule-family type constant (vs. Timer's 0x00)
     header[3] = 0x80
     header[4] = theme.index

@@ -1,8 +1,11 @@
-"""Tests for the EXPERIMENTAL Timer and Schedule protocol modules.
+"""Tests for the Timer and Schedule protocol modules.
 
-Byte layouts come from decompiled-APK research (see docs/ALARM_BUZZER_APK_FINDINGS.md
-in the research lab) and are unverified on hardware -- these tests pin the
-*transcription* of that research, not device-confirmed behavior.
+Byte layouts originally came from decompiled-APK research (see
+docs/ALARM_BUZZER_APK_FINDINGS.md in the research lab). Timer's sendData
+header endianness and ack behavior are now HARDWARE-CONFIRMED (2026-07-12, see
+idotmatrix/protocol/timer.py and protocol/response.py); Schedule's own upload
+is still untested on hardware -- its packet-length endianness below is only
+INFERRED from the Timer result.
 """
 
 import binascii
@@ -71,14 +74,14 @@ def test_timer_data_header_small_payload():
     raw = _flatten(packets[0])
     header, body = raw[:24], raw[24:]
     assert body == payload
-    assert header[0:2] == (100 + 24).to_bytes(2, "big")  # packet length, BE
+    assert header[0:2] == (100 + 24).to_bytes(2, "little")  # packet length, LE (hardware-confirmed)
     assert header[2] == 0x00
     assert header[3] == 0x80
     assert header[4] == 5  # num
     assert header[5] == 1  # week, raw/unpatched
     assert header[6] == 13  # hour
     assert header[7] == 45  # minute
-    assert header[8:10] == (300).to_bytes(2, "big")  # duration seconds, BE
+    assert header[8:10] == (300).to_bytes(2, "little")  # duration seconds, LE (hardware-confirmed)
     assert header[10] == timer.CONTENT_GIF
     assert header[11] == 0  # buzzer off
     assert header[12] == 0  # first chunk
@@ -108,12 +111,12 @@ def test_timer_data_header_multi_chunk_continuation():
         raw = _flatten(chunk_packets)
         header, body = raw[:24], raw[24:]
         assert len(body) == chunk_size
-        assert header[0:2] == (chunk_size + 24).to_bytes(2, "big")
+        assert header[0:2] == (chunk_size + 24).to_bytes(2, "little")
         assert header[4] == 9
         assert header[5] == 255
         assert header[6] == 23
         assert header[7] == 59
-        assert header[8:10] == (10).to_bytes(2, "big")
+        assert header[8:10] == (10).to_bytes(2, "little")
         assert header[10] == timer.CONTENT_TEXT
         assert header[11] == 1  # buzzer on
         assert header[12] == (0 if chunk_index == 0 else 2)  # continuation flag
@@ -248,7 +251,7 @@ def test_schedule_theme_header_gif_small_payload():
     raw = _flatten(packets[0])
     header, body = raw[:23], raw[23:]
     assert body == payload
-    assert header[0:2] == (50 + 23).to_bytes(2, "big")
+    assert header[0:2] == (50 + 23).to_bytes(2, "little")  # packet length, LE (inferred from Timer hardware)
     assert header[2] == 5  # Schedule-family type constant
     assert header[3] == 0x80
     assert header[4] == 2  # index
@@ -277,7 +280,7 @@ def test_schedule_theme_header_image_multi_chunk_continuation():
         raw = _flatten(chunk_packets)
         header, body = raw[:23], raw[23:]
         assert len(body) == chunk_size
-        assert header[0:2] == (chunk_size + 23).to_bytes(2, "big")
+        assert header[0:2] == (chunk_size + 23).to_bytes(2, "little")  # packet length, LE (inferred)
         assert header[2] == 5
         assert header[3] == 0x80
         assert header[4] == 7
