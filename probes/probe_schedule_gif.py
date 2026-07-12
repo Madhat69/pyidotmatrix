@@ -1,20 +1,15 @@
 """Hardware probe: Schedule per-theme gif upload (gifSolve).
 
-EXPERIMENTAL: protocol/schedule.py's build_schedule_theme_packets bytes come
-from decompiled-APK research (docs/ALARM_BUZZER_APK_FINDINGS.md in the research
-lab), never exercised against real hardware. Same chunked-upload risk profile as
-Timer's sendData (see probe_timer_image.py) -- no client method exists for this
-yet, only builders + this probe.
-
-The per-theme ack ([5,0,5,0x80,status]) numerically fits the driver's existing
-DeviceAck shape (which is why response.py doesn't need a distinct type for it),
-but the doc says its *status byte* carries the same 3-way vocabulary as Timer's
-TimerAck (1 = next chunk, 3 = saved, else = error) -- DeviceAck's boolean
-`accepted` field cannot represent that (only status=1 parses as accepted=True;
-both 3 and 0 parse as accepted=False, indistinguishable from each other through
-`.accepted` alone). This probe reads the raw status byte directly instead of
-trusting `.accepted`, and that ambiguity is worth carrying back to the
-architect regardless of what this probe observes.
+HARDWARE-CONFIRMED 2026-07-12 on a real 32x32 panel: the per-theme upload
+handshake works, and its ack ([5,0,5,0x80,status]) carries the same 3-way
+status vocabulary as Timer's sendData (1 = next chunk, 3 = saved, 0 = failed)
+-- see protocol/response.py's StatusAck. A real upload completed with
+status=SAVED; that success is what motivated dispatching this ack family as
+StatusAck instead of a plain DeviceAck, since the old DeviceAck path parsed a
+SUCCESSFUL save (status=3) as accepted=False and logged a spurious "device
+rejected" warning. This probe now drives the upload through
+client.experimental.schedule_set_theme (see client.py / _send_chunked_upload)
+instead of a hand-rolled handshake.
 
 Runs the master switch on first (buzzer off, to isolate the schedule item
 itself), then uploads one small generated two-frame gif as a theme active for
@@ -35,93 +30,58 @@ from datetime import datetime, timedelta
 
 from PIL import Image
 
-from idotmatrix.client import IDotMatrixClient
+from idotmatrix.client import ChunkedUploadError, IDotMatrixClient
 from idotmatrix.protocol import schedule
-from idotmatrix.protocol.response import DeviceAck
+from idotmatrix.protocol.response import DeviceAck, StatusAck
 from idotmatrix.screen import ScreenSize
 
-_CHUNK_ACK_TIMEOUT_SECONDS = 5.0
 _ACTIVE_FOR_MINUTES = 2
-
-# Per the doc: status 1 = proceed to next chunk, 3 = fully saved, else = error.
-_STATUS_NEXT_CHUNK = 1
-_STATUS_SAVED = 3
 
 
 def _build_test_gif(size: int) -> bytes:
-    """A tiny two-frame flashing gif (blue / green) -- generated in-memory so
-    this probe needs no bundled fixture file."""
-    frame_a = Image.new("P", (size, size))
-    frame_a.putpalette([0, 0, 0] * 128 + [0, 0, 255] * 128)
-    frame_a.paste(1, (0, 0, size, size))
+    """A tiny two-frame flashing gif (solid blue, then solid green) --
+    generated in-memory so this probe needs no bundled fixture file.
 
-    frame_b = Image.new("P", (size, size))
-    frame_b.putpalette([0, 0, 0] * 128 + [0, 255, 0] * 128)
-    frame_b.paste(1, (0, 0, size, size))
+    Built as RGB frames and left to Pillow's own palettization on save, the
+    same GIF path protocol/gif.py's adapt_gif and probe_timer_image.py's
+    checkerboard both use. A PREVIOUS version of this probe built P-mode
+    frames by hand with putpalette([black]*128 + [color]*128) and
+    paste(1, ...) to fill the frame -- but palette index 1 falls in the
+    BLACK half of both palettes (the blue/green entries only start at index
+    128), so hardware displayed an all-black GIF instead of the intended
+    flashing color (HARDWARE-CONFIRMED bug, 2026-07-12). RGB frames sidestep
+    that class of bug entirely.
+    """
+    frame_a = Image.new("RGB", (size, size), (0, 0, 255))  # solid blue
+    frame_b = Image.new("RGB", (size, size), (0, 255, 0))  # solid green
 
     buffer = io.BytesIO()
     frame_a.save(
-        buffer, format="GIF", save_all=True, append_images=[frame_b], loop=0, duration=300, disposal=2
+        buffer,
+        format="GIF",
+        save_all=True,
+        optimize=True,  # required: disabling it breaks the transfer (see protocol/gif.py)
+        append_images=[frame_b],
+        loop=0,
+        duration=300,
+        disposal=2,
     )
     return buffer.getvalue()
 
 
 def _print_ack(ack) -> None:
-    if isinstance(ack, DeviceAck):
+    if isinstance(ack, StatusAck):
+        print(
+            f"[listener] StatusAck: type={ack.command_type} subtype={ack.command_subtype} "
+            f"status={ack.status} raw={ack.raw.hex()}"
+        )
+    elif isinstance(ack, DeviceAck):
         print(
             f"[listener] DeviceAck: type={ack.command_type} subtype={ack.command_subtype} "
-            f"accepted={ack.accepted} raw_status_byte={ack.raw[4]} raw={ack.raw.hex()}"
+            f"accepted={ack.accepted} raw={ack.raw.hex()}"
         )
     else:
         print(f"[listener] ack: {ack!r}")
-
-
-async def _upload_theme(client: IDotMatrixClient, theme: schedule.ScheduleTheme, payload: bytes) -> bool:
-    """Drives the per-theme upload handshake manually, reading the raw status
-    byte (not `.accepted`) since DeviceAck's boolean can't carry the 3-way
-    next-chunk/saved/failed vocabulary the doc claims this ack family uses."""
-    chunks = schedule.build_schedule_theme_packets(theme, payload, schedule.CONTENT_GIF)
-    acks: asyncio.Queue = asyncio.Queue()
-
-    def _is_theme_ack(ack) -> bool:
-        return isinstance(ack, DeviceAck) and ack.command_type == 5 and ack.command_subtype == 0x80
-
-    unsubscribe = client.add_response_listener(lambda ack: acks.put_nowait(ack) if _is_theme_ack(ack) else None)
-    try:
-        for index, chunk in enumerate(chunks):
-            is_last = index == len(chunks) - 1
-            print(f"sending outer chunk {index + 1}/{len(chunks)} ({len(chunk)} BLE packets)...")
-            await client._transport.write_packets([chunk], response=True)
-
-            try:
-                ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError:
-                print(
-                    f"ABORT: no per-theme ack arrived within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
-                    f"chunk {index + 1}/{len(chunks)}."
-                )
-                return False
-
-            status = ack.raw[4]
-            print(f"raw status byte = {status} (accepted={ack.accepted})")
-            if status == _STATUS_SAVED:
-                if not is_last:
-                    print(
-                        f"UNEXPECTED: status=SAVED after chunk {index + 1}/{len(chunks)}, "
-                        "before the final chunk. Record this."
-                    )
-                return True
-            if status == _STATUS_NEXT_CHUNK:
-                if is_last:
-                    print("UNEXPECTED: status=NEXT_CHUNK after what should be the final chunk.")
-                continue
-            print(f"ABORT: status={status} does not match next-chunk(1)/saved(3); treating as error.")
-            return False
-
-        print("ABORT: ran out of chunks without ever seeing status=SAVED.")
-        return False
-    finally:
-        unsubscribe()
 
 
 async def main(mac: str | None, index: int) -> None:
@@ -151,8 +111,10 @@ async def main(mac: str | None, index: int) -> None:
             f"\n--- uploading theme {index}, active window "
             f"{now.strftime('%H:%M')}-{end.strftime('%H:%M')} ---"
         )
-        saved = await _upload_theme(client, theme, payload)
-        if not saved:
+        try:
+            await client.experimental.schedule_set_theme(theme, payload, schedule.CONTENT_GIF)
+        except ChunkedUploadError as ex:
+            print(f"ABORT: {ex}")
             print("Upload did not complete; nothing more to observe.")
             return
 

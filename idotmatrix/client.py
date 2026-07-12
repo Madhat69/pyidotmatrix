@@ -9,6 +9,7 @@ Config commands are written with response=True: the GATT write acknowledgement i
 the device's flow-control signal, so no inter-command sleeps are needed.
 """
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from typing import Optional
@@ -31,12 +32,93 @@ from idotmatrix.protocol import (
     text,
     timer,
 )
-from idotmatrix.protocol.response import DeviceAck
+from idotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
 from idotmatrix.screen import ScreenSize
 from idotmatrix.transport.ble import BleTransport
 from idotmatrix.transport.status import TransportEvent, TransportSnapshot
 
 Color = tuple[int, int, int]
+
+# How long to wait for a StatusAck after sending one outer chunk of a Timer/
+# Schedule chunked upload. HARDWARE-CONFIRMED 2026-07-12: a real device replies
+# within well under this on a 32x32 panel; 5s leaves headroom for BLE jitter.
+_CHUNK_ACK_TIMEOUT_SECONDS = 5.0
+
+
+class ChunkedUploadError(RuntimeError):
+    """Raised when a Timer/Schedule chunked upload is rejected (StatusAck
+    STATUS_FAILED) or no ack arrives for an outer chunk within the timeout."""
+
+
+async def _send_chunked_upload(
+    transport: BleTransport,
+    chunks: list[list[bytearray]],
+    ack_type: int,
+    ack_subtype: int,
+    label: str,
+) -> None:
+    """Drives the hardware-proven chunked-upload handshake (Timer sendData,
+    Schedule per-theme upload): send one outer chunk, wait for its StatusAck,
+    repeat.
+
+    Uses a temporary response listener feeding an asyncio.Queue rather than
+    transport.await_device_ack. await_device_ack correlates by (type, subtype)
+    through a single pending Future per key, and raises if a second wait for
+    the same key starts before the first resolves -- that fits one-shot config
+    commands, but not this handshake: one call here needs to consume a whole
+    *sequence* of same-keyed acks (one per chunk), plus tolerate a duplicate
+    that's still in flight when the next chunk is sent. A Queue naturally
+    buffers that sequence, including duplicates (which the loop below drains),
+    and await_device_ack also only knows how to send a single flat command via
+    transport.write -- it doesn't fit the multi-packet write_packets call each
+    chunk needs. The listener is unsubscribed in `finally` so it never leaks
+    past this call.
+
+    NEXT_CHUNK -> send the next outer chunk. SAVED -> return (tolerates a
+    single-chunk upload skipping NEXT_CHUNK and going straight to SAVED,
+    hardware-confirmed 2026-07-12). FAILED -> raise ChunkedUploadError.
+    Timeout waiting for an ack -> raise ChunkedUploadError.
+
+    Duplicate StatusAck frames (hardware sends them -- the same status
+    observed twice for one chunk) are tolerated by draining any ack still
+    sitting in the queue from the previous chunk before sending the next one.
+    """
+    acks: asyncio.Queue = asyncio.Queue()
+
+    def _on_ack(ack) -> None:
+        if isinstance(ack, StatusAck) and ack.command_type == ack_type and ack.command_subtype == ack_subtype:
+            acks.put_nowait(ack)
+
+    unsubscribe = transport.add_response_listener(_on_ack)
+    try:
+        for index, chunk in enumerate(chunks):
+            _drain_stale_acks(acks)  # discard a duplicate left over from the previous chunk
+            await transport.write_packets([chunk], response=True)
+            try:
+                ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError as ex:
+                raise ChunkedUploadError(
+                    f"{label} upload: no ack within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
+                    f"chunk {index + 1}/{len(chunks)}"
+                ) from ex
+
+            if ack.status == STATUS_SAVED:
+                return  # early SAVED is expected for single-chunk uploads; tolerate it any time
+            if ack.status == STATUS_FAILED:
+                raise ChunkedUploadError(
+                    f"{label} upload rejected (status=FAILED) at chunk {index + 1}/{len(chunks)}"
+                )
+            # STATUS_NEXT_CHUNK (or any other value): proceed to the next chunk.
+    finally:
+        unsubscribe()
+
+
+def _drain_stale_acks(acks: "asyncio.Queue") -> None:
+    """Discards any ack already queued, without blocking. Used to shed a
+    duplicate StatusAck (hardware sends them) before it's mistaken for the
+    ack of the chunk about to be sent."""
+    while not acks.empty():
+        acks.get_nowait()
 
 
 class _Feature:
@@ -286,13 +368,56 @@ class ExperimentalFeature(_Feature):
         Flat 12-byte command (sendCloseData), no chunking, no payload. Unverified
         on GlanceOS hardware, and its ack (if any) is a different, richer 3-way
         status vocabulary than the usual DeviceAck accept/reject -- see
-        protocol.response.TimerAck. The chunked sendData upload (setting an
-        alarm's custom image/gif/text content) is not exposed here yet: its
-        multi-chunk ack handshake is unverified, so only builders + a probe
-        script exist for it (protocol.timer.build_timer_data_packets,
-        probes/probe_timer_image.py).
+        protocol.response.StatusAck. For uploading an alarm's custom content, see
+        timer_set below.
         """
         await self._send(timer.build_timer_close(timer_obj))
+
+    async def timer_set(self, timer_obj: timer.Timer, payload: bytes) -> None:
+        """EXPERIMENTAL: uploads an alarm slot's custom image/GIF/text content
+        (Timer sendData).
+
+        HARDWARE-VERIFIED handshake (2026-07-12, real 32x32 panel): sends each
+        outer chunk from protocol.timer.build_timer_data_packets as a
+        write-with-response, then waits for the matching StatusAck before
+        sending the next one -- see _send_chunked_upload. Raises
+        ChunkedUploadError if the device reports STATUS_FAILED for a chunk, or
+        if no ack arrives within the timeout.
+
+        `payload` must be an encoded file bytestream, not raw pixels. Confirmed
+        on hardware: with content_type=CONTENT_GIF, a real GIF bytestream (the
+        same encoding protocol/gif.py produces) renders animated at fire time,
+        buzzer included. With content_type=CONTENT_IMAGE, raw RGB frame bytes
+        are accepted and saved (StatusAck status=SAVED) but do NOT render -- the
+        panel just shows the clock instead; what CONTENT_IMAGE actually expects
+        is still unknown. At fire time the panel shows the clock for a few
+        seconds before the alarm's content takes over -- expected, not a bug.
+        Set the device's clock (client.common.set_time) before relying on a
+        Timer firing at the intended wall-clock time.
+        """
+        chunks = timer.build_timer_data_packets(timer_obj, payload)
+        await _send_chunked_upload(self._transport, chunks, ack_type=0x00, ack_subtype=0x80, label="timer")
+
+    async def schedule_set_theme(self, theme: schedule.ScheduleTheme, payload: bytes, content: int) -> None:
+        """EXPERIMENTAL: uploads a Weekly Schedule theme's recurring content
+        (Schedule gifSolve/per-theme upload).
+
+        HARDWARE-VERIFIED handshake (2026-07-12, real 32x32 panel): same
+        send-chunk / await-StatusAck loop as timer_set (see
+        _send_chunked_upload) -- a real upload completed with StatusAck
+        status=SAVED, which is what motivated dispatching this ack family as
+        StatusAck instead of a plain DeviceAck (see protocol.response). Raises
+        ChunkedUploadError on STATUS_FAILED or ack timeout.
+
+        `payload` must be an encoded file bytestream (e.g. schedule.CONTENT_GIF
+        with a real GIF, mirroring Timer's confirmed content_type behavior --
+        see timer_set). schedule.CONTENT_IMAGE is accepted by the builder but
+        its on-device rendering is unverified. The theme's active window and
+        day-of-week mapping (ScheduleTheme.week / patch_week) remain unverified
+        -- see protocol/schedule.py and probes/probe_schedule_gif.py.
+        """
+        chunks = schedule.build_schedule_theme_packets(theme, payload, content)
+        await _send_chunked_upload(self._transport, chunks, ack_type=0x05, ack_subtype=0x80, label="schedule theme")
 
 
 class IDotMatrixClient:

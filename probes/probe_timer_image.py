@@ -4,21 +4,23 @@ HARDWARE-CONFIRMED 2026-07-12 on a real 32x32 panel: Timer's sendData/
 sendCloseData handshake works, and content must be an encoded file -- a real
 GIF bytestream with CONTENT_GIF renders at fire time (animated, plays for the
 full duration, buzzer works). Raw RGB frame bytes with CONTENT_IMAGE are
-accepted and saved (TimerAck status=3 SAVED) but do NOT render -- the panel
+accepted and saved (StatusAck status=3 SAVED) but do NOT render -- the panel
 just shows the clock. This probe therefore uploads a small 2-frame animated
 GIF with CONTENT_GIF, the combination proven to render, mirroring how
 protocol/gif.py prepares its own GIF payloads. What CONTENT_IMAGE actually
 expects instead is still unknown.
 
-Also confirmed: a single-chunk upload goes straight to TimerAck status=3
-SAVED (no status=1 NEXT_CHUNK first), TimerAck frames can arrive DUPLICATED,
+Also confirmed: a single-chunk upload goes straight to StatusAck status=3
+SAVED (no status=1 NEXT_CHUNK first), StatusAck frames can arrive DUPLICATED,
 and at fire time the panel shows the clock for a few seconds before the
 alarm's content appears -- don't be alarmed if the checkerboard doesn't pop
 up instantly at the scheduled minute.
 
 Sets a real alarm 2 minutes in the future on the given slot, with a small
 generated 2-frame animated GIF as its content and the buzzer on, then tells
-the human what to watch for at fire time.
+the human what to watch for at fire time. Uploads via
+client.experimental.timer_set (see client.py / _send_chunked_upload), which
+promotes the manual handshake this probe used to drive by hand.
 
 Usage:
     python probes/probe_timer_image.py [--mac AA:BB:CC:DD:EE:FF] [--slot 0]
@@ -35,12 +37,11 @@ from datetime import datetime, timedelta
 
 from PIL import Image
 
-from idotmatrix.client import IDotMatrixClient
+from idotmatrix.client import ChunkedUploadError, IDotMatrixClient
 from idotmatrix.protocol import timer
-from idotmatrix.protocol.response import TIMER_STATUS_FAILED, TIMER_STATUS_NEXT_CHUNK, TIMER_STATUS_SAVED, TimerAck
+from idotmatrix.protocol.response import StatusAck
 from idotmatrix.screen import ScreenSize
 
-_CHUNK_ACK_TIMEOUT_SECONDS = 5.0
 _FIRE_IN_MINUTES = 2
 _FRAME_DURATION_MS = 500
 
@@ -79,64 +80,10 @@ def _build_test_gif(size: int) -> bytes:
 
 
 def _print_ack(ack) -> None:
-    if isinstance(ack, TimerAck):
-        print(f"[listener] TimerAck: status={ack.status} raw={ack.raw.hex()}")
+    if isinstance(ack, StatusAck):
+        print(f"[listener] StatusAck: status={ack.status} raw={ack.raw.hex()}")
     else:
         print(f"[listener] ack: {ack!r}")
-
-
-async def _upload_timer_content(client: IDotMatrixClient, t: timer.Timer, payload: bytes) -> bool:
-    """Drives the sendData handshake manually: send one outer chunk, then wait
-    for its TimerAck before sending the next one. Returns True once status=SAVED
-    arrives for the final chunk, False on FAILED/timeout/unexpected status.
-    """
-    chunks = timer.build_timer_data_packets(t, payload)
-    acks: asyncio.Queue = asyncio.Queue()
-    unsubscribe = client.add_response_listener(
-        lambda ack: acks.put_nowait(ack) if isinstance(ack, TimerAck) else None
-    )
-    try:
-        for index, chunk in enumerate(chunks):
-            is_last = index == len(chunks) - 1
-            print(f"sending outer chunk {index + 1}/{len(chunks)} ({len(chunk)} BLE packets)...")
-            await client._transport.write_packets([chunk], response=True)
-
-            try:
-                ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError:
-                print(
-                    f"ABORT: no TimerAck arrived within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
-                    f"chunk {index + 1}/{len(chunks)}. The chunked handshake may not use this "
-                    "characteristic/format at all on this firmware -- record this."
-                )
-                return False
-
-            if ack.status == TIMER_STATUS_FAILED:
-                print(f"ABORT: device reported FAILED (status=0) after chunk {index + 1}.")
-                return False
-            if ack.status == TIMER_STATUS_SAVED:
-                if not is_last:
-                    print(
-                        f"UNEXPECTED: device reported SAVED (status=3) after chunk {index + 1}/"
-                        f"{len(chunks)}, before the final chunk. Record this -- either the doc's "
-                        "chunking assumption is wrong, or SAVED can arrive early."
-                    )
-                print("Device reported SAVED (status=3).")
-                return True
-            if ack.status == TIMER_STATUS_NEXT_CHUNK:
-                if is_last:
-                    print(
-                        "UNEXPECTED: device asked for NEXT_CHUNK (status=1) after what should "
-                        "have been the final chunk. Record this."
-                    )
-                continue
-            print(f"ABORT: unrecognized TimerAck status={ack.status}. Record the raw bytes above.")
-            return False
-
-        print("ABORT: ran out of chunks without ever seeing status=SAVED.")
-        return False
-    finally:
-        unsubscribe()
 
 
 async def main(mac: str | None, slot: int) -> None:
@@ -161,8 +108,10 @@ async def main(mac: str | None, slot: int) -> None:
             f"\n--- uploading alarm content to slot {slot}, firing at "
             f"{fire_at.strftime('%H:%M')} (in ~{_FIRE_IN_MINUTES} min) ---"
         )
-        saved = await _upload_timer_content(client, t, payload)
-        if not saved:
+        try:
+            await client.experimental.timer_set(t, payload)
+        except ChunkedUploadError as ex:
+            print(f"ABORT: {ex}")
             print("Upload did not complete; not waiting for fire time.")
             return
 

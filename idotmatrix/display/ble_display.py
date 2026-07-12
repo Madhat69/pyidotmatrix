@@ -68,7 +68,12 @@ class BleDisplay:
 
     async def _ensure_diy_mode(self) -> None:
         if not self._diy_mode_enabled:
-            await self._transport.write(image.build_set_diy_mode(True), response=True)
+            # HARDWARE-CONFIRMED 2026-07-12: ENTER_NO_CLEAR_CUR_SHOW enters DIY mode
+            # with no black flash (unlike ENTER_CLEAR_CUR_SHOW), and frame uploads
+            # under this state render correctly -- see protocol/image.py.
+            await self._transport.write(
+                image.build_set_diy_mode(mode=image.ENTER_NO_CLEAR_CUR_SHOW), response=True
+            )
             self._diy_mode_enabled = True
 
     async def _on_disconnected(self) -> None:

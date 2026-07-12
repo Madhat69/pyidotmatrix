@@ -32,7 +32,10 @@ async def test_show_frame_enables_diy_mode_first_then_sends_packets():
     display, transport = _display()
     await display.show_frame(bytes(32 * 32 * 3))
     # first write is the DIY set-mode command (with response), then the frame packets
-    assert transport.writes == [(bytes(image.build_set_diy_mode(True)), True)]
+    # HARDWARE-CONFIRMED 2026-07-12: entry uses ENTER_NO_CLEAR_CUR_SHOW (flash-free).
+    assert transport.writes == [
+        (bytes(image.build_set_diy_mode(mode=image.ENTER_NO_CLEAR_CUR_SHOW)), True)
+    ]
     assert len(transport.packet_writes) == 1
     assert transport.packet_writes[0][1] is True  # frame acked by default
 

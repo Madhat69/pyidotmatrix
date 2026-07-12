@@ -10,8 +10,12 @@ from typing import Optional
 from idotmatrix.protocol import bytes_
 
 # DIY mode values for the set-mode command (byte 4 of the payload), named after
-# the APK's `DiyImageFun` enum. Modes 2/3 are accepted by the device but their
-# display behavior is untested on GlanceOS hardware — see ROADMAP.
+# the APK's `DiyImageFun` enum. HARDWARE-CONFIRMED 2026-07-12 on a real 32x32
+# panel: ENTER_NO_CLEAR_CUR_SHOW (3) enters DIY mode with NO black flash (unlike
+# ENTER_CLEAR_CUR_SHOW, which flashes black), and frame uploads sent while in
+# mode-3 state render correctly; QUIT_STILL_CUR_SHOW (2) quits DIY mode while
+# keeping the last frame visible on screen. See BleDisplay._ensure_diy_mode,
+# which now enters via mode 3 by default for the flash-free behavior.
 QUIT_NOSAVE_KEEP_PREV = 0
 ENTER_CLEAR_CUR_SHOW = 1
 QUIT_STILL_CUR_SHOW = 2
@@ -31,9 +35,9 @@ def build_set_diy_mode(enable: bool = True, mode: Optional[int] = None) -> bytea
 
     `enable` selects between the two originally-supported modes (ENTER_CLEAR_CUR_SHOW
     / QUIT_NOSAVE_KEEP_PREV). Pass `mode` explicitly to use one of the full four
-    DiyImageFun values instead — QUIT_STILL_CUR_SHOW and ENTER_NO_CLEAR_CUR_SHOW are
-    accepted by the device but their on-screen effect is unverified; `mode` overrides
-    `enable` when given.
+    DiyImageFun values instead — HARDWARE-CONFIRMED 2026-07-12: QUIT_STILL_CUR_SHOW
+    (2) quits keeping the last frame visible, ENTER_NO_CLEAR_CUR_SHOW (3) enters
+    with no black flash; `mode` overrides `enable` when given.
     """
     if mode is None:
         mode = ENTER_CLEAR_CUR_SHOW if enable else QUIT_NOSAVE_KEEP_PREV

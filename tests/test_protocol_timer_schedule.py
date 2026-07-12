@@ -13,7 +13,7 @@ import binascii
 import pytest
 
 from idotmatrix.protocol import schedule, timer
-from idotmatrix.protocol.response import DeviceAck, TimerAck, parse_response
+from idotmatrix.protocol.response import DeviceAck, StatusAck, TimerAck, parse_response
 
 
 def _flatten(chunk_packets: list) -> bytes:
@@ -341,7 +341,7 @@ def test_schedule_theme_rejects_out_of_range(overrides):
         schedule.ScheduleTheme(**_valid_theme_kwargs(**overrides))
 
 
-# --- Response parsing: TimerAck vs. DeviceAck --------------------------------
+# --- Response parsing: StatusAck vs. DeviceAck --------------------------------
 
 
 @pytest.mark.parametrize(
@@ -352,39 +352,67 @@ def test_schedule_theme_rejects_out_of_range(overrides):
         (3, 3),  # saved
     ],
 )
-def test_timer_ack_parses_as_distinct_type(status, expected_status):
+def test_timer_status_ack_parses_as_distinct_type(status, expected_status):
+    # [5, 0, 0x00, 0x80, status] -- Timer's sendData/sendCloseData ack family.
     ack = parse_response(bytes([0x05, 0x00, 0x00, 0x80, status]))
-    assert isinstance(ack, TimerAck)
+    assert isinstance(ack, StatusAck)
     assert not isinstance(ack, DeviceAck)
     assert ack.command_type == 0x00
     assert ack.command_subtype == 0x80
     assert ack.status == expected_status
 
 
-def test_timer_ack_status_constants_match_doc():
-    from idotmatrix.protocol.response import TIMER_STATUS_FAILED, TIMER_STATUS_NEXT_CHUNK, TIMER_STATUS_SAVED
+@pytest.mark.parametrize(
+    "status,expected_status",
+    [
+        (0, 0),  # failed
+        (1, 1),  # next chunk
+        (3, 3),  # saved
+    ],
+)
+def test_schedule_theme_status_ack_parses_as_distinct_type(status, expected_status):
+    # [5, 0, 0x05, 0x80, status] -- Schedule's per-theme upload ack family, the
+    # same 3-way vocabulary as Timer (HARDWARE-CONFIRMED 2026-07-12). Previously
+    # this fell through to a plain DeviceAck, which mis-parsed a successful
+    # save (status=3) as accepted=False.
+    ack = parse_response(bytes([0x05, 0x00, 0x05, 0x80, status]))
+    assert isinstance(ack, StatusAck)
+    assert not isinstance(ack, DeviceAck)
+    assert ack.command_type == 0x05
+    assert ack.command_subtype == 0x80
+    assert ack.status == expected_status
 
-    assert TIMER_STATUS_FAILED == 0
-    assert TIMER_STATUS_NEXT_CHUNK == 1
-    assert TIMER_STATUS_SAVED == 3
+
+def test_timer_ack_is_a_compatibility_alias_for_status_ack():
+    assert TimerAck is StatusAck
+
+
+def test_status_ack_constants_match_doc():
+    from idotmatrix.protocol.response import (
+        STATUS_FAILED,
+        STATUS_NEXT_CHUNK,
+        STATUS_SAVED,
+        TIMER_STATUS_FAILED,
+        TIMER_STATUS_NEXT_CHUNK,
+        TIMER_STATUS_SAVED,
+    )
+
+    assert STATUS_FAILED == 0
+    assert STATUS_NEXT_CHUNK == 1
+    assert STATUS_SAVED == 3
+    # backward-compatible aliases
+    assert TIMER_STATUS_FAILED == STATUS_FAILED
+    assert TIMER_STATUS_NEXT_CHUNK == STATUS_NEXT_CHUNK
+    assert TIMER_STATUS_SAVED == STATUS_SAVED
 
 
 def test_schedule_master_switch_ack_still_parses_as_device_ack():
-    # [5, 0, 7, 0x80, status] -- type=7, distinct from Timer's type=0x00.
+    # [5, 0, 7, 0x80, status] -- type=7, NOT in the status-ack family (its
+    # observed replies are plain accept-style, unlike the per-theme upload).
     ack = parse_response(bytes.fromhex("0500078001"))
     assert isinstance(ack, DeviceAck)
-    assert not isinstance(ack, TimerAck)
+    assert not isinstance(ack, StatusAck)
     assert ack.command_type == 7
-    assert ack.command_subtype == 0x80
-    assert ack.accepted is True
-
-
-def test_schedule_theme_ack_still_parses_as_device_ack():
-    # [5, 0, 5, 0x80, status] -- type=5, distinct from Timer's type=0x00.
-    ack = parse_response(bytes.fromhex("0500058001"))
-    assert isinstance(ack, DeviceAck)
-    assert not isinstance(ack, TimerAck)
-    assert ack.command_type == 5
     assert ack.command_subtype == 0x80
     assert ack.accepted is True
 

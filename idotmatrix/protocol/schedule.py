@@ -1,10 +1,18 @@
 """Weekly Schedule ("themes") packet builders. Pure functions, no I/O.
 
 EXPERIMENTAL: byte layouts come from decompiled-APK research
-(docs/ALARM_BUZZER_APK_FINDINGS.md in the research lab), never exercised
-against real hardware. A schedule theme is a recurring window (day-of-week
-bitmask + start/end time) that shows custom content, with one master on/off
-switch shared across all themes.
+(docs/ALARM_BUZZER_APK_FINDINGS.md in the research lab). A schedule theme is a
+recurring window (day-of-week bitmask + start/end time) that shows custom
+content, with one master on/off switch shared across all themes.
+
+HARDWARE-CONFIRMED 2026-07-12: the per-theme chunked upload's ack
+([5,0,5,0x80,status]) carries the same 1/3/0 status vocabulary as Timer's
+sendData -- see protocol/response.py's StatusAck -- and a real upload on a
+32x32 panel completed with status=3 SAVED, which is strong evidence the chunk
+header format below (_build_theme_header) is correct. What remains unverified:
+whether the day-of-week bitmask (patch_week) maps to the expected day, and
+whether the saved content actually renders during its active window (see
+probes/probe_schedule_gif.py).
 
 The chunked upload reuses the same 4096-byte outer chunk + BLE-split pipeline
 as protocol/gif.py / protocol/timer.py -- see bytes_.chunk_by_size /
@@ -108,10 +116,11 @@ def build_schedule_theme_packets(theme: ScheduleTheme, payload: bytes, content: 
 def _build_theme_header(chunk: bytearray, payload: bytes, theme: ScheduleTheme, content: int, is_first: bool) -> bytes:
     """The 23-byte header prefixed to each 4K chunk of a Schedule theme upload."""
     header = bytearray(_THEME_HEADER_SIZE)
-    # packet length, LE: INFERRED from the Timer hardware result (2026-07-12),
-    # which falsified the same big-endian-length assumption from the same doc
-    # source for Timer's 24-byte header. Schedule's own upload is not yet
-    # hardware-tested -- verify before relying on this.
+    # packet length, LE: originally only INFERRED from the Timer hardware result
+    # (2026-07-12), which falsified the same big-endian-length assumption from
+    # the same doc source for Timer's 24-byte header. Now corroborated: a real
+    # Schedule theme upload using this header completed with StatusAck status=3
+    # SAVED on hardware the same day (see module docstring).
     header[0:2] = (len(chunk) + _THEME_HEADER_SIZE).to_bytes(2, "little")
     header[2] = 5  # Schedule-family type constant (vs. Timer's 0x00)
     header[3] = 0x80
