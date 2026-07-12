@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+from bleak.exc import BleakError
 
 from idotmatrix.protocol import common, graffiti
 from idotmatrix.transport import ble
@@ -24,9 +25,16 @@ class StubServices:
 
 
 class StubBleakClient:
-    """Stand-in for bleak.BleakClient. Reported write size comes from the module global."""
+    """Stand-in for bleak.BleakClient. Reported write size comes from the module global.
+
+    connect_failures_remaining is a class attribute (not per-instance) because
+    BleTransport.connect() builds a brand new StubBleakClient on every call --
+    simulating an adapter that stays unreachable for N reconnect attempts
+    requires the failure count to survive across those fresh instances.
+    """
 
     reported_write_size = 514
+    connect_failures_remaining = 0
 
     def __init__(self, address=None, disconnected_callback=None):
         self.is_connected = False
@@ -37,6 +45,9 @@ class StubBleakClient:
         self.fail_writes = False
 
     async def connect(self):
+        if type(self).connect_failures_remaining > 0:
+            type(self).connect_failures_remaining -= 1
+            raise BleakError("simulated adapter unreachable")
         self.is_connected = True
 
     async def disconnect(self):
@@ -53,6 +64,7 @@ class StubBleakClient:
 
 def _install(monkeypatch, reported_write_size=514):
     StubBleakClient.reported_write_size = reported_write_size
+    StubBleakClient.connect_failures_remaining = 0  # reset: class attr persists across tests
     monkeypatch.setattr(ble, "BleakClient", StubBleakClient)
 
 
@@ -136,6 +148,86 @@ async def test_unexpected_drop_triggers_reconnect(monkeypatch):
     assert transport.is_connected
     assert transport._reconnect_count == 1
     assert any(e.kind == TransportEventKind.RECONNECT_SUCCEEDED for e in events)
+
+
+async def test_adapter_death_survives_bleak_errors_and_rebuilds_a_fresh_client(monkeypatch):
+    """M2 audit: a vanished adapter (USB unplug / post-resume WinRT death)
+    means every connect() attempt during reconnect raises BleakError for a
+    while. The loop must not die, and must never retry against the same
+    (now presumably broken) BleakClient object -- each attempt gets a fresh
+    one via connect()'s existing `self._client = BleakClient(...)` rebuild.
+    """
+    monkeypatch.setattr(ble, "_RECONNECT_INTERVAL_SECONDS", 0.01)
+    _install(monkeypatch)
+    transport = BleTransport(mac_address="00:11:22:33:44:55")
+    await transport.connect()
+    first_client = transport._client
+
+    StubBleakClient.connect_failures_remaining = 2  # "adapter gone" for the first 2 attempts
+    first_client.is_connected = False
+    first_client.disconnected_callback(first_client)
+
+    await asyncio.sleep(0.2)
+    assert transport.is_connected
+    assert transport._reconnect_count == 1
+    assert transport._client is not first_client  # never reused the dead object
+
+
+async def test_reconnect_attempt_event_fires_per_attempt_with_capped_backoff(monkeypatch):
+    monkeypatch.setattr(ble, "_RECONNECT_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(ble, "_RECONNECT_MAX_INTERVAL_SECONDS", 0.03)
+    _install(monkeypatch)
+    transport = BleTransport(mac_address="00:11:22:33:44:55")
+    events = []
+    transport.add_event_listener(events.append)
+    await transport.connect()
+
+    StubBleakClient.connect_failures_remaining = 3
+    client = transport._client
+    client.is_connected = False
+    client.disconnected_callback(client)
+
+    await asyncio.sleep(0.3)
+    assert transport.is_connected
+
+    attempts = [e for e in events if e.kind == TransportEventKind.RECONNECT_ATTEMPT]
+    assert len(attempts) == 4  # 3 failed rebuild-and-retry attempts + 1 that succeeded
+    # backoff doubled after each failure, then capped at _RECONNECT_MAX_INTERVAL_SECONDS
+    assert "0.01" in attempts[0].detail
+    assert "0.02" in attempts[1].detail
+    assert "0.03" in attempts[2].detail
+    assert "0.03" in attempts[3].detail  # stayed capped, did not keep growing
+
+
+async def test_reconnect_backoff_resets_on_a_fresh_drop_after_recovering(monkeypatch):
+    monkeypatch.setattr(ble, "_RECONNECT_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(ble, "_RECONNECT_MAX_INTERVAL_SECONDS", 0.05)
+    _install(monkeypatch)
+    transport = BleTransport(mac_address="00:11:22:33:44:55")
+    events = []
+    transport.add_event_listener(events.append)
+    await transport.connect()
+
+    # First drop: two failures before recovering, so backoff grows past base.
+    StubBleakClient.connect_failures_remaining = 2
+    client = transport._client
+    client.is_connected = False
+    client.disconnected_callback(client)
+    await asyncio.sleep(0.2)
+    assert transport.is_connected
+
+    events.clear()
+    # Second, independent drop: backoff must start over at the base interval,
+    # not continue from wherever the previous campaign capped out.
+    client = transport._client
+    client.is_connected = False
+    client.disconnected_callback(client)
+    await asyncio.sleep(0.05)
+    assert transport.is_connected
+
+    attempts = [e for e in events if e.kind == TransportEventKind.RECONNECT_ATTEMPT]
+    assert len(attempts) == 1
+    assert "0.01" in attempts[0].detail
 
 
 # --- device ack correlation ----------------------------------------------

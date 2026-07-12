@@ -24,6 +24,7 @@ class TransportSnapshot:
 class TransportEventKind(Enum):
     WRITE_FAILED = "write_failed"
     RECONNECT_STARTED = "reconnect_started"
+    RECONNECT_ATTEMPT = "reconnect_attempt"  # about to rebuild the BleakClient and retry
     RECONNECT_SUCCEEDED = "reconnect_succeeded"
 
 

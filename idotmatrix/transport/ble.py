@@ -39,6 +39,12 @@ _MAX_WRITE_WITH_RESPONSE = 512
 _LIKELY_UNDERREPORT_SIZE = 20
 
 _RECONNECT_INTERVAL_SECONDS = 5
+# M2 hardware hardening (DAEMON_PLAN.md's risk flag): adapter death (USB
+# unplug, post-resume WinRT breakage) means every reconnect attempt is a
+# discovery/connect round-trip against hardware that may simply be gone for a
+# while. Retrying at a flat 5s forever would hammer a vanished adapter
+# indefinitely; back off exponentially, capped, per failed attempt.
+_RECONNECT_MAX_INTERVAL_SECONDS = 60
 _DEFAULT_ACK_TIMEOUT = 2.0
 
 # In every ported command, byte 2 is the type; only graffiti uses value 5 there,
@@ -363,9 +369,25 @@ class BleTransport:
             self._reconnect_task = asyncio.create_task(self._reconnect_loop())
 
     async def _reconnect_loop(self) -> None:
+        """Retries connect() until it succeeds or supervision is disarmed.
+
+        M2 adapter-death audit finding: connect() already builds a brand new
+        BleakClient on every call (see connect() above) -- it never reuses a
+        stale one, so a dead adapter (USB unplug, post-resume WinRT
+        breakage) can't wedge this loop onto an unusable client object, and
+        the broad except below already survives any BleakError connect()
+        raises. What was missing, and is added here: (a) capped exponential
+        backoff, so a genuinely vanished adapter isn't hammered every 5s
+        forever, and (b) a per-attempt event so callers can observe each
+        rebuild-and-retry, not just the start/end of the whole campaign.
+        """
         self._emit_event(TransportEventKind.RECONNECT_STARTED)
+        delay = _RECONNECT_INTERVAL_SECONDS
         while self._reconnect_armed and not self.is_connected:
-            await asyncio.sleep(_RECONNECT_INTERVAL_SECONDS)
+            await asyncio.sleep(delay)
+            if not self._reconnect_armed:
+                break
+            self._emit_event(TransportEventKind.RECONNECT_ATTEMPT, f"rebuilding client (next backoff {delay}s)")
             try:
                 await self.connect()
                 self._reconnect_count += 1
@@ -375,6 +397,7 @@ class BleTransport:
             except Exception as ex:
                 self._record_failure(f"reconnect failed: {ex}")
                 logger.warning("reconnect attempt failed: %s", ex)
+                delay = min(delay * 2, _RECONNECT_MAX_INTERVAL_SECONDS)
 
     async def _notify_connection(self, callbacks: list[ConnectionCallback]) -> None:
         for callback in list(callbacks):
