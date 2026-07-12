@@ -90,6 +90,17 @@ class BleTransport:
         self._on_disconnected: list[ConnectionCallback] = []
         self._on_response: list[ResponseCallback] = []
         self._on_event: list[EventCallback] = []
+        # Keyed by (command_type, command_subtype), matched against incoming
+        # acks in _handle_notification. KNOWN COLLISION (docs/APK_SECOND_PASS.md,
+        # Q4): verify_password's expected ack key is (5, 2) -- build_verify_password
+        # sends [7,0,5,2,...] -- and graffiti's hardware-observed rejection nack is
+        # the byte-identical [5,0,5,2,0], i.e. the same (5, 2) key. A pending
+        # verify_password wait could be resolved by an unrelated graffiti nack if
+        # graffiti writes are interleaved with it. See await_device_ack's docstring
+        # for the caller-facing guidance; this is documentation only, no dispatch
+        # logic changed -- the vendor app itself has no stronger correlation (a
+        # single-slot "last writer wins" callback, see Q4), so our (type,subtype)
+        # keying is already an improvement, just not a complete one.
         self._pending_acks: dict[tuple[int, int], asyncio.Future] = {}
 
         self._reconnect_count = 0
@@ -201,6 +212,15 @@ class BleTransport:
         type/subtype bytes. Raises ValueError for graffiti (never acked) or if a
         wait is already pending for the same command type/subtype — the facade does
         not serialize, so two same-typed waits could not be told apart.
+
+        CAVEAT (docs/APK_SECOND_PASS.md, Q4): this (type, subtype) correlation is
+        stronger than the vendor app's own (a single mutable "last writer wins"
+        callback slot with no content check), but has one known collision --
+        verify_password's ack key is (5, 2), and a graffiti rejection nack is the
+        byte-identical [5,0,5,2,0]. A pending await_device_ack(verify_password
+        command) could be incorrectly resolved by a graffiti nack if graffiti
+        writes are interleaved with it. Do not interleave graffiti writes with a
+        pending verify_password wait.
         """
         if len(command) < 4:
             raise ValueError("command too short to correlate an ack")
@@ -326,6 +346,8 @@ class BleTransport:
         if isinstance(ack, DeviceAck) and not ack.accepted:
             logger.warning("device rejected command type=%d subtype=%d", ack.command_type, ack.command_subtype)
 
+        # Keyed only by (type, subtype) -- see _pending_acks' definition for the
+        # known (5, 2) verify_password/graffiti-nack collision caveat.
         pending = self._pending_acks.get((ack.command_type, ack.command_subtype))
         if pending and not pending.done():
             pending.set_result(ack)

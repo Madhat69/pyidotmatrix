@@ -11,6 +11,17 @@ MAX_PIXELS_PER_COMMAND = 255
 
 # Mirror modes 1-4. Mode 1 is plain (no mirroring); 2-4 mirror the drawn pixels
 # into other quadrants. The exact visual per mode is unverified — see ROADMAP.
+#
+# Legacy/unknown field (docs/APK_SECOND_PASS.md, Q5c): the app's own real-time
+# paint sender (SendCore.sendDiyImageData) never varies this byte at all -- it
+# hardcodes a constant 1 there (getDataType(5) = {5, 1}, SendCore.java:139-140,
+# 96). The app's actual variable "option"/move-type byte for this command
+# lives one byte later, at offset 4, in a structurally different (5-byte
+# header) envelope than ours -- there is no named constant for our byte 3
+# anywhere in the decompile. Hardware testing (2026-07-12) showed 0/1/2/4 all
+# behave identically and 3 is rejected (nack [5,0,5,2,0]); treat this field as
+# an undocumented device-firmware quirk, not something the current app's
+# source can validate further.
 MIRROR_NONE = 1
 MIN_MIRROR = 1
 MAX_MIRROR = 4

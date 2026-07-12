@@ -194,6 +194,40 @@ def test_timer_accepts_boundary_values():
     timer.Timer(**_valid_timer_kwargs(num=0, hour=0, minute=0, duration_bucket=0, week=0))
 
 
+# --- Timer: build_timer_week --------------------------------------------------
+
+
+def test_build_timer_week_mon_wed_enabled():
+    # bit0=enabled(1), bit1=Mon(2), bit3=Wed(8) -> 1|2|8 = 11
+    assert timer.build_timer_week([0, 2]) == 11
+
+
+def test_build_timer_week_all_days_enabled():
+    # bit0=enabled + bits1..7 all set = 0xFF
+    assert timer.build_timer_week(range(7)) == 0xFF
+
+
+def test_build_timer_week_disabled_flag():
+    # enabled=False clears bit0; Mon+Wed still bits 1 and 3.
+    assert timer.build_timer_week([0, 2], enabled=False) == 0b00001010
+
+
+def test_build_timer_week_no_days_no_enable():
+    assert timer.build_timer_week([], enabled=False) == 0
+    assert timer.build_timer_week([], enabled=True) == 1
+
+
+def test_build_timer_week_sunday_is_msb():
+    # Sunday=6 -> bit7 (MSB), plus the default enabled bit0.
+    assert timer.build_timer_week([6]) == 0b10000001
+
+
+@pytest.mark.parametrize("bad_day", [-1, 7, 100])
+def test_build_timer_week_rejects_out_of_range_weekday(bad_day):
+    with pytest.raises(ValueError):
+        timer.build_timer_week([bad_day])
+
+
 # --- Schedule: patch_week ----------------------------------------------------
 
 
@@ -221,6 +255,56 @@ def test_patch_week_rejects_out_of_range():
         schedule.patch_week(256)
     with pytest.raises(ValueError):
         schedule.patch_week(-1)
+
+
+def test_patch_week_does_not_share_apps_off_by_one():
+    # docs/APK_SECOND_PASS.md Q3: the app's Java patch() unsigns via `+255`
+    # instead of `+256`, which for week=0x80 ("not repeating", no day bits
+    # set) produces 0xFF (every day flagged) instead of the mathematically
+    # intended 0x01 (enabled-bit only). Our implementation takes an
+    # already-unsigned Python int (no sign-extension step to get wrong), so it
+    # must NOT reproduce that bug.
+    assert schedule.patch_week(0x80) == 0x01
+    assert schedule.patch_week(0x80) != 0xFF
+
+
+# --- Schedule: build_schedule_week --------------------------------------------
+
+
+def test_build_schedule_week_mon_wed_repeating():
+    # bit0=Mon(1), bit2=Wed(4) -> 5; bit7 (not-repeating) clear.
+    assert schedule.build_schedule_week([0, 2]) == 0b00000101
+
+
+def test_build_schedule_week_all_days_repeating():
+    assert schedule.build_schedule_week(range(7)) == 0b01111111
+
+
+def test_build_schedule_week_not_repeating_sets_bit7_only():
+    assert schedule.build_schedule_week([], repeating=False) == 0b10000000
+
+
+def test_build_schedule_week_no_days_repeating_is_zero():
+    assert schedule.build_schedule_week([], repeating=True) == 0
+
+
+def test_build_schedule_week_sunday_is_bit6():
+    assert schedule.build_schedule_week([6]) == 0b01000000
+
+
+@pytest.mark.parametrize("bad_day", [-1, 7, 100])
+def test_build_schedule_week_rejects_out_of_range_weekday(bad_day):
+    with pytest.raises(ValueError):
+        schedule.build_schedule_week([bad_day])
+
+
+def test_build_schedule_week_feeds_patch_week_matches_timer_layout():
+    # build_schedule_week + patch_week should land on the same bit-for-bit
+    # layout as build_timer_week for the same days/enabled-vs-repeating state
+    # (docs/APK_SECOND_PASS.md Q3: patch() converts Schedule's RAW storage
+    # format into Timer's wire format).
+    raw = schedule.build_schedule_week([0, 2])
+    assert schedule.patch_week(raw) == timer.build_timer_week([0, 2])
 
 
 # --- Schedule: build_master_switch -------------------------------------------

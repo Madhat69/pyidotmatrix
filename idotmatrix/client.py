@@ -384,16 +384,21 @@ class ExperimentalFeature(_Feature):
         ChunkedUploadError if the device reports STATUS_FAILED for a chunk, or
         if no ack arrives within the timeout.
 
-        `payload` must be an encoded file bytestream, not raw pixels. Confirmed
-        on hardware: with content_type=CONTENT_GIF, a real GIF bytestream (the
-        same encoding protocol/gif.py produces) renders animated at fire time,
-        buzzer included. With content_type=CONTENT_IMAGE, raw RGB frame bytes
-        are accepted and saved (StatusAck status=SAVED) but do NOT render -- the
-        panel just shows the clock instead; what CONTENT_IMAGE actually expects
-        is still unknown. At fire time the panel shows the clock for a few
-        seconds before the alarm's content takes over -- expected, not a bug.
-        Set the device's clock (client.common.set_time) before relying on a
-        Timer firing at the intended wall-clock time.
+        `payload` format depends on content_type. With CONTENT_GIF, it must be
+        an encoded GIF bytestream (the same encoding protocol/gif.py produces)
+        -- CONFIRMED on hardware: renders animated at fire time, buzzer
+        included. With CONTENT_IMAGE, it must be raw, uncompressed RGB, no
+        header: exactly width*height*3 bytes, row-major, [R,G,B] per pixel
+        (CONFIRMED-FROM-SOURCE, docs/APK_SECOND_PASS.md Q2 -- byte-identical to
+        the app's own image-alarm path). Our one hardware test of
+        CONTENT_IMAGE used a payload with an accidentally big-endian duration
+        header (a test bug, not a format bug); the device accepted and saved
+        it (StatusAck status=SAVED) but rendering is UNVERIFIED-PENDING-RETEST
+        -- do not treat that result as CONTENT_IMAGE being broken. At fire
+        time the panel shows the clock for a few seconds before the alarm's
+        content takes over -- expected, not a bug. Set the device's clock
+        (client.common.set_time) before relying on a Timer firing at the
+        intended wall-clock time.
         """
         chunks = timer.build_timer_data_packets(timer_obj, payload)
         await _send_chunked_upload(self._transport, chunks, ack_type=0x00, ack_subtype=0x80, label="timer")
@@ -409,12 +414,18 @@ class ExperimentalFeature(_Feature):
         StatusAck instead of a plain DeviceAck (see protocol.response). Raises
         ChunkedUploadError on STATUS_FAILED or ack timeout.
 
-        `payload` must be an encoded file bytestream (e.g. schedule.CONTENT_GIF
-        with a real GIF, mirroring Timer's confirmed content_type behavior --
-        see timer_set). schedule.CONTENT_IMAGE is accepted by the builder but
-        its on-device rendering is unverified. The theme's active window and
-        day-of-week mapping (ScheduleTheme.week / patch_week) remain unverified
-        -- see protocol/schedule.py and probes/probe_schedule_gif.py.
+        `payload` format depends on content. With schedule.CONTENT_GIF, it must
+        be an encoded GIF bytestream, mirroring Timer's confirmed content_type
+        behavior (see timer_set). With schedule.CONTENT_IMAGE, it must be a
+        single-frame PNG (CONFIRMED-FROM-SOURCE, docs/APK_SECOND_PASS.md Q2) --
+        NOT raw RGB like Timer's CONTENT_IMAGE, a genuine asymmetry between the
+        two features. Both content types are accepted by the builder, but
+        on-device rendering for either is hardware-untested for Schedule. The
+        week byte's encoding is understood (see protocol/schedule.py's
+        ScheduleTheme/patch_week docstrings and build_schedule_week), but which
+        physical day the device fires on for a given bit, and the theme's
+        active-window behavior, remain unverified -- see
+        probes/probe_schedule_gif.py.
         """
         chunks = schedule.build_schedule_theme_packets(theme, payload, content)
         await _send_chunked_upload(self._transport, chunks, ack_type=0x05, ack_subtype=0x80, label="schedule theme")

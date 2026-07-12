@@ -35,8 +35,21 @@ tests/test_protocol_timer_schedule.py.
 Verified no other ported command collides with (0x05, 0x80): every other
 builder's bytes 2-3 are a different (type, subtype) pair, and graffiti (the
 only other command using type byte 5) uses the mirror mode 1-4 in the subtype
-position, never 0x80, and produces no ack at all (see transport/ble.py's
-_GRAFFITI_TYPE_BYTE).
+position, never 0x80 (see transport/ble.py's _GRAFFITI_TYPE_BYTE, which
+refuses to await_device_ack a graffiti command for this reason -- accepted
+graffiti writes are genuinely silent).
+
+CAVEAT -- a different, real collision exists at (0x05, 0x02), not (0x05, 0x80)
+(docs/APK_SECOND_PASS.md, Q4/Q5c): graffiti *rejections* are not silent --
+hardware testing (2026-07-12) observed an out-of-range mirror byte (3) come
+back nacked as [5,0,5,2,0], i.e. command_type=5, command_subtype=2, status=0.
+That is byte-identical to the expected ack shape of build_verify_password
+([7,0,5,2,...], expected reply [5,0,5,2,status]). If a graffiti write lands
+while a verify_password ack wait is pending, transport/ble.py's
+(type, subtype)-keyed correlation cannot distinguish the two -- see
+BleTransport._pending_acks and await_device_ack's docstring for the
+caller-facing guidance (don't interleave graffiti writes with a pending
+verify_password wait). Documentation only; no dispatch behavior here changed.
 """
 
 from dataclasses import dataclass

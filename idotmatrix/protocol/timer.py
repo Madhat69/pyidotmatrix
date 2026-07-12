@@ -9,11 +9,19 @@ alarm slots (num 0-9); each fires a custom image/GIF/text at hour:minute for
 a fixed duration, optionally with the buzzer.
 
 CONFIRMED: content must be an encoded file (e.g. a real GIF bytestream) with
-CONTENT_GIF for the device to actually render it at fire time. Raw RGB frame
-bytes with CONTENT_IMAGE are accepted and saved (TimerAck status=3 SAVED) but
-do NOT render -- the panel shows the clock instead. What CONTENT_IMAGE
-actually expects (a static encoded image file of some kind?) is still
-unknown.
+CONTENT_GIF for the device to actually render it at fire time.
+
+CONTENT_IMAGE content format is CONFIRMED-FROM-SOURCE (docs/APK_SECOND_PASS.md,
+Q2, AddTimerDialog.java:718 + BGRUtils.bitmap2RGB): raw, uncompressed RGB, no
+header -- exactly width*height*3 bytes, row-major, [R,G,B] per pixel. This is
+byte-identical to what the app's own image-alarm path sends. Our one hardware
+test of this path (2026-07-12) used a payload whose duration header was
+accidentally big-endian (a bug in that test, fixed since -- see
+_build_timer_data_header's little-endian header), so the content was accepted
+and saved (TimerAck status=3 SAVED) but is UNVERIFIED-PENDING-RETEST for
+rendering -- do not treat that result as CONTENT_IMAGE being broken; retest
+with a correct little-endian header and a payload sized exactly
+panel_w * panel_h * 3 before drawing any conclusion about whether it renders.
 
 CONFIRMED: at fire time the panel shows the clock for a few seconds before
 the alarm's content appears -- expected, not a bug.
@@ -23,6 +31,7 @@ pipeline as protocol/gif.py -- see bytes_.chunk_by_size / split_into_ble_packets
 """
 
 import binascii
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from idotmatrix.protocol import bytes_
@@ -59,10 +68,20 @@ _TIMER_DATA_HEADER_SIZE = 24
 class Timer:
     """One of the device's 10 alarm slots.
 
-    week is the raw day-of-week bitmask as understood by the device -- unlike
-    Schedule, Timer does NOT apply patch_week() to it (confirmed in the doc:
-    "bitmask, unpatched (see Schedule's patch() below -- Timer does NOT call
-    patch)").
+    week is the raw day-of-week bitmask this command puts on the wire --
+    unlike Schedule, Timer does NOT apply patch_week() to it (confirmed: zero
+    matches for "patch" in the decompiled TimerAgreement.java). The bit
+    meanings are now KNOWN, not just inferred (docs/APK_SECOND_PASS.md, Q3,
+    traced from AddTimerDialog.java:424-433 + ByteUtils.getByteByArray):
+
+        bit0 (LSB) = timer-enabled flag, NOT a day
+        bit1 = Monday   bit2 = Tuesday  bit3 = Wednesday  bit4 = Thursday
+        bit5 = Friday   bit6 = Saturday bit7 = Sunday (MSB)
+
+    Use build_timer_week() to construct this value from weekday ints rather
+    than hand-rolling the bit math. NOTE: this is the app's *encoding* of the
+    byte, traced from source -- which physical day the device actually fires
+    on for a given bit is still not hardware-verified per-day.
     """
 
     num: int
@@ -85,6 +104,22 @@ class Timer:
             raise ValueError(f"duration_bucket must be 0..4, got {self.duration_bucket}")
         if self.content_type not in _CONTENT_TYPES:
             raise ValueError(f"content_type must be one of {_CONTENT_TYPES}, got {self.content_type}")
+
+
+def build_timer_week(weekdays: Iterable[int], enabled: bool = True) -> int:
+    """Builds a Timer wire week byte from weekday ints (Monday=0 .. Sunday=6,
+    the same convention as datetime.weekday(), already used elsewhere in this
+    package -- see protocol/common.py's build_set_time).
+
+    Wire layout (docs/APK_SECOND_PASS.md, Q3): bit0 = enabled flag, bit1..7 =
+    Mon..Sun. weekday d maps to bit (d + 1).
+    """
+    week = 1 if enabled else 0
+    for day in weekdays:
+        if not (0 <= day <= 6):
+            raise ValueError(f"weekday must be 0..6 (Monday=0), got {day}")
+        week |= 1 << (day + 1)
+    return week
 
 
 def build_timer_close(timer: Timer) -> bytearray:
