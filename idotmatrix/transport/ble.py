@@ -120,6 +120,29 @@ class BleTransport:
         return self._client is not None and self._client.is_connected
 
     @property
+    def is_write_ready(self) -> bool:
+        """True if connected AND this connection's GATT services have actually
+        been resolved.
+
+        M2 reconnect drill finding: bleak's `is_connected` can be True while
+        service discovery hasn't completed or populated for this session (a
+        connect interrupted between session-establish and discovery, or
+        certain post-resume/post-power-cycle WinRT states). Writing in that
+        window doesn't fail here -- it fails one call later, deep inside
+        bleak, when `write_gatt_char` touches the `services` property. Probe
+        that property defensively instead: it raises BleakError when
+        discovery hasn't happened, and we don't assume any bleak-internal
+        alternative. An empty/missing collection also counts as not ready.
+        """
+        if not self.is_connected:
+            return False
+        try:
+            services = self._client.services
+        except BleakError:
+            return False
+        return services is not None and any(True for _ in services)
+
+    @property
     def auto_reconnect(self) -> bool:
         return self._auto_reconnect
 
@@ -247,8 +270,44 @@ class BleTransport:
             self._pending_acks.pop(key, None)
 
     async def _ensure_connected(self) -> None:
+        """The write-readiness gate for write() and write_packets().
+
+        Not the same question as is_connected: a connected-but-not-ready
+        client (see is_write_ready) would pass a plain is_connected check and
+        then blow up on the very next write_gatt_char call. Force a clean
+        reconnect in that case instead of writing into a client we already
+        know will raise.
+        """
         if not self.is_connected:
             await self.connect()
+        elif not self.is_write_ready:
+            logger.warning(
+                "connected to %s but GATT services not resolved; forcing a clean reconnect",
+                self._mac_address,
+            )
+            await self._reconnect_for_readiness()
+
+    async def _reconnect_for_readiness(self) -> None:
+        """Recovers from connected-but-not-write-ready by disconnecting the
+        stale client, then reconnecting via the normal connect() flow (which
+        builds a fresh BleakClient and re-subscribes to notifications).
+
+        Deliberately calls the stale client's disconnect() directly rather
+        than self.disconnect(): self.disconnect() disarms reconnect
+        supervision and takes _connect_lock, and connect() below takes that
+        same lock itself -- asyncio.Lock is not reentrant, so holding it
+        across this call would deadlock. Going through the client directly
+        keeps this a plain disconnect-then-reconnect with no lock held
+        across the boundary, and leaves reconnect supervision's arm state to
+        connect() as usual.
+        """
+        stale_client = self._client
+        if stale_client is not None:
+            try:
+                await stale_client.disconnect()
+            except Exception as ex:
+                logger.warning("error disconnecting not-ready client: %s", ex)
+        await self.connect()
 
     async def _write_raw(self, data: bytes | bytearray, response: bool) -> None:
         try:

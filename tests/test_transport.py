@@ -17,11 +17,18 @@ class StubCharacteristic:
 
 
 class StubServices:
+    """Stand-in for bleak's BleakGATTServiceCollection, which is iterable over
+    resolved services -- is_write_ready relies on that iteration to detect an
+    empty/unresolved collection, so the stub mirrors it with one fake service."""
+
     def __init__(self, max_write: int):
         self._char = StubCharacteristic(max_write)
 
     def get_characteristic(self, _uuid):
         return self._char
+
+    def __iter__(self):
+        return iter([object()])  # one resolved "service"
 
 
 class StubBleakClient:
@@ -39,16 +46,29 @@ class StubBleakClient:
     def __init__(self, address=None, disconnected_callback=None):
         self.is_connected = False
         self.writes: list[tuple[bytes, bool]] = []
-        self.services = StubServices(type(self).reported_write_size)
+        self._services = StubServices(type(self).reported_write_size)
+        # M2 drill: real bleak's `services` property raises BleakError until
+        # discovery has completed for this connection, even if is_connected
+        # is already True (see BleTransport.is_write_ready). Default True so
+        # every existing test -- which never touches this flag -- keeps
+        # seeing a ready client.
+        self.services_ready = True
         self.disconnected_callback = disconnected_callback
         self.notify_cb = None
         self.fail_writes = False
+
+    @property
+    def services(self):
+        if not self.services_ready:
+            raise BleakError("Service Discovery has not been performed yet")
+        return self._services
 
     async def connect(self):
         if type(self).connect_failures_remaining > 0:
             type(self).connect_failures_remaining -= 1
             raise BleakError("simulated adapter unreachable")
         self.is_connected = True
+        self.services_ready = True  # a fresh connect() always re-discovers
 
     async def disconnect(self):
         self.is_connected = False
@@ -228,6 +248,58 @@ async def test_reconnect_backoff_resets_on_a_fresh_drop_after_recovering(monkeyp
     attempts = [e for e in events if e.kind == TransportEventKind.RECONNECT_ATTEMPT]
     assert len(attempts) == 1
     assert "0.01" in attempts[0].detail
+
+
+# --- write readiness (M2 drill: connected but services not resolved) -----
+#
+# Observed on real hardware: after a power-cycle/reconnect, bleak's
+# is_connected can be True while GATT service discovery hasn't completed for
+# the new session. The next write_gatt_char then raises deep inside bleak's
+# `.services` property. is_write_ready / _ensure_connected must catch this
+# and force a clean reconnect instead of writing into a client that will
+# raise.
+
+async def test_write_reconnects_when_connected_but_services_not_ready(transport):
+    await transport.connect()
+    stale_client = transport._client
+    stale_client.services_ready = False  # discovery didn't complete this time
+    assert transport.is_connected  # is_connected alone would say "fine"
+    assert not transport.is_write_ready
+
+    await asyncio.wait_for(transport.write(common.build_set_brightness(50)), timeout=1)
+
+    assert stale_client.is_connected is False  # the stale client was disconnected
+    assert transport._client is not stale_client  # connect() rebuilt a fresh one
+    assert transport._client.writes  # and the write landed on the new client
+
+
+async def test_write_packets_reconnects_when_connected_but_services_not_ready(transport):
+    await transport.connect()
+    stale_client = transport._client
+    stale_client.services_ready = False
+
+    packet = bytearray(range(256)) * 2
+    await asyncio.wait_for(transport.write_packets([[packet]], response=True), timeout=1)
+
+    assert transport._client is not stale_client
+    assert b"".join(data for data, _ in transport._client.writes) == bytes(packet)
+
+
+async def test_write_happy_path_does_not_reconnect(transport):
+    await transport.connect()
+    ready_client = transport._client
+
+    await transport.write(common.build_set_brightness(50))
+
+    assert transport._client is ready_client  # no reconnect triggered
+    assert len(ready_client.writes) == 1  # exactly one write for one packet
+
+
+async def test_write_connects_first_when_not_yet_connected(transport):
+    assert not transport.is_connected
+    await transport.write(common.build_set_brightness(50))
+    assert transport.is_connected
+    assert transport._client.writes
 
 
 # --- device ack correlation ----------------------------------------------
