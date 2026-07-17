@@ -42,6 +42,14 @@ class StubBleakClient:
 
     reported_write_size = 514
     connect_failures_remaining = 0
+    # M2 lid-close finding: a write can fail on a client that looked fully
+    # ready (is_connected True, services resolved) -- a stale post-resume
+    # WinRT session. Class attribute (not per-instance) for the same reason
+    # as connect_failures_remaining: _write_raw's self-heal rebuilds a brand
+    # new StubBleakClient via connect(), so a failure meant to survive that
+    # rebuild (simulating a genuinely-gone device, not just a stale session)
+    # must not reset just because the object changed.
+    write_failures_remaining = 0
 
     def __init__(self, address=None, disconnected_callback=None):
         self.is_connected = False
@@ -77,6 +85,9 @@ class StubBleakClient:
         self.notify_cb = callback
 
     async def write_gatt_char(self, _uuid, data, response=False):
+        if type(self).write_failures_remaining > 0:
+            type(self).write_failures_remaining -= 1
+            raise BleakError("simulated write failure (stale connected client)")
         if self.fail_writes:
             raise RuntimeError("simulated write failure")
         self.writes.append((bytes(data), response))
@@ -85,6 +96,7 @@ class StubBleakClient:
 def _install(monkeypatch, reported_write_size=514):
     StubBleakClient.reported_write_size = reported_write_size
     StubBleakClient.connect_failures_remaining = 0  # reset: class attr persists across tests
+    StubBleakClient.write_failures_remaining = 0  # reset: class attr persists across tests
     monkeypatch.setattr(ble, "BleakClient", StubBleakClient)
 
 
@@ -302,6 +314,45 @@ async def test_write_connects_first_when_not_yet_connected(transport):
     assert transport._client.writes
 
 
+# --- write self-heal on a stale-but-ready client (M2 lid-close finding) ---
+#
+# Observed on real hardware: after a host suspend/resume, bleak/WinRT can
+# report is_connected=True with services resolved -- is_write_ready passes it
+# -- while the underlying session is actually dead. The write itself is what
+# fails (BleakError "Unreachable"), not is_connected or is_write_ready, and
+# bleak's disconnected_callback never fires for it, so plain reconnect
+# supervision never starts on its own. _write_raw must force a reconnect and
+# retry once instead of just propagating the first failure.
+
+async def test_write_reconnects_and_retries_once_after_a_stale_client_write_failure(transport):
+    await transport.connect()
+    stale_client = transport._client
+    assert transport.is_connected and transport.is_write_ready  # looked perfectly healthy
+
+    StubBleakClient.write_failures_remaining = 1  # only the first attempt fails
+    await asyncio.wait_for(transport.write(common.build_set_brightness(50)), timeout=1)
+
+    assert stale_client.is_connected is False  # the stale client was disconnected
+    assert transport._client is not stale_client  # connect() rebuilt a fresh one
+    assert transport._client.writes  # and the retried write landed on the new client
+
+
+async def test_write_raises_when_the_retry_also_fails(transport):
+    """Models a genuinely-gone device (not just a stale session): even the
+    fresh post-reconnect client can't write, so the caller must still see
+    the failure -- only one self-heal attempt is made, not an unbounded loop."""
+    await transport.connect()
+    StubBleakClient.write_failures_remaining = 999  # persists across the rebuilt client too
+    events = []
+    transport.add_event_listener(events.append)
+
+    with pytest.raises(BleakError):
+        await asyncio.wait_for(transport.write(common.build_set_brightness(50)), timeout=1)
+
+    write_failed_events = [e for e in events if e.kind == TransportEventKind.WRITE_FAILED]
+    assert len(write_failed_events) == 2  # the original attempt and the one retry, both recorded
+
+
 # --- device ack correlation ----------------------------------------------
 
 async def test_await_device_ack_correlates_by_type(transport):
@@ -341,12 +392,14 @@ async def test_await_device_ack_rejects_duplicate_wait(transport):
 # --- observability & isolation -------------------------------------------
 
 async def test_write_failure_records_and_emits(transport):
+    """A single failure is still recorded/emitted even though _write_raw's
+    self-heal retry (see the stale-client tests above) recovers it and the
+    overall write() call does not raise."""
     await transport.connect()
-    transport._client.fail_writes = True
+    StubBleakClient.write_failures_remaining = 1  # one failure, then reconnect+retry succeeds
     events = []
     transport.add_event_listener(events.append)
-    with pytest.raises(RuntimeError):
-        await transport.write(common.build_set_brightness(50), response=True)
+    await asyncio.wait_for(transport.write(common.build_set_brightness(50), response=True), timeout=1)
     assert any(e.kind == TransportEventKind.WRITE_FAILED for e in events)
     assert transport.snapshot().last_failure is not None
 

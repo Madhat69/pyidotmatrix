@@ -309,13 +309,48 @@ class BleTransport:
                 logger.warning("error disconnecting not-ready client: %s", ex)
         await self.connect()
 
-    async def _write_raw(self, data: bytes | bytearray, response: bool) -> None:
+    async def _write_raw(self, data: bytes | bytearray, response: bool, _retry_on_failure: bool = True) -> None:
+        """Writes one chunk, with one self-healing retry on failure.
+
+        M2 lid-close finding: after a host suspend/resume, bleak/WinRT can
+        report a client as connected with services resolved (is_write_ready
+        passes it) while the underlying session is dead -- the physical link
+        came back, but this BleakClient object's session did not. That
+        surfaces here, on the write itself (BleakError "Unreachable", or an
+        OSError from a dead adapter) -- NOT as is_write_ready going False and
+        NOT as bleak's disconnected_callback firing, so plain reconnect
+        supervision (_reconnect_loop) never starts on its own. Left
+        unhandled, every future write into this transport fails forever
+        with no visible symptom besides silence -- worse than the crash it
+        replaces, since the daemon looks alive.
+
+        On a write failure, force a clean reconnect (_reconnect_for_readiness:
+        disconnect the stale client, reconnect via connect(), which builds a
+        fresh BleakClient) and retry this exact chunk once. If the device is
+        genuinely gone (powered off, adapter vanished), _reconnect_for_readiness's
+        own connect() call raises and that propagates here unretried -- the
+        caller sees the failure, and the next write attempt's _ensure_connected
+        (is_connected freshly False) will try connect() again on its own, so no
+        separate recovery path is needed here for that case. If reconnect
+        succeeds but the retried write also fails, that failure is raised
+        without a second retry (only one self-heal attempt per write) --
+        callers (Presenter et al.) are expected to survive that, log it, and
+        let the next attempt try again.
+        """
         try:
             await self._client.write_gatt_char(UUID_WRITE, data, response=response)
         except Exception as ex:
             self._record_failure(f"write failed: {ex}")
             self._emit_event(TransportEventKind.WRITE_FAILED, str(ex))
-            raise
+            if not _retry_on_failure:
+                raise
+            logger.warning(
+                "write to %s failed on a client that looked write-ready (%s); "
+                "forcing a clean reconnect and retrying once",
+                self._mac_address, ex,
+            )
+            await self._reconnect_for_readiness()
+            await self._write_raw(data, response=response, _retry_on_failure=False)
 
     async def _resolve_write_size(self, response: bool) -> int:
         """The largest write we may send. Response writes are capped by bleak;
