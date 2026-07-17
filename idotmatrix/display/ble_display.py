@@ -4,6 +4,15 @@ Maps backend calls onto protocol builders and the BLE transport. It holds one
 piece of device state — whether DIY draw mode is active — because a full frame
 can only be shown in that mode, and entering it is a protocol requirement rather
 than app policy.
+
+Entering DIY mode is a protocol requirement, but *how* to enter it is not: the
+device supports a clean entry (mode 1, ENTER_CLEAR_CUR_SHOW -- always takes,
+black-flashes) and a flash-free one (mode 3, ENTER_NO_CLEAR_CUR_SHOW -- does
+not reliably take over an EFFECT state, see protocol/image.py). Choosing
+between them depends on the panel's history across the daemon's run, which
+this driver has no visibility into -- so it stays opinion-free (Architect
+ruling O-27, DAEMON_PLAN.md) and exposes `set_entry_clear` for the embedder
+to drive.
 """
 
 import logging
@@ -24,9 +33,16 @@ class BleDisplay:
         self.height = screen_size.height
         self._transport = transport
         self._diy_mode_enabled = False
+        # Default clear=True (mode 1): with no embedder telling us otherwise,
+        # the panel's prior state is unknown, and mode 1 is the only entry
+        # hardware-confirmed to always take. See set_entry_clear.
+        self._entry_clear = True
 
         # A dropped connection loses device-side mode state; re-enter DIY on the
-        # next frame after any reconnect.
+        # next frame after any reconnect. _entry_clear is deliberately NOT reset
+        # here -- it reflects the embedder's policy (e.g. the daemon's O-27
+        # first-entry-per-run tracking), not per-connection device state, and
+        # persists until the embedder calls set_entry_clear again.
         transport.add_listener(on_disconnected=self._on_disconnected)
 
     @property
@@ -66,14 +82,28 @@ class BleDisplay:
     ) -> None:
         self._transport.add_listener(on_connected, on_disconnected)
 
+    def set_entry_clear(self, clear: bool) -> None:
+        """Sets whether the *next* DIY-mode entry clears the panel.
+
+        `clear=True` enters via mode 1 (ENTER_CLEAR_CUR_SHOW): always takes,
+        black-flashes. `clear=False` enters via mode 3 (ENTER_NO_CLEAR_CUR_SHOW):
+        flash-free, but hardware-confirmed to NOT reliably take over an EFFECT
+        state -- see protocol/image.py's caveat.
+
+        This driver holds no opinion on which is correct for a given moment --
+        that is a function of the panel's history across the daemon's run
+        (Architect ruling O-27, DAEMON_PLAN.md: first entry per run clears,
+        later re-entries don't), which only the embedder tracks. Takes effect
+        on the next entry only (i.e. the next show_frame call after a fresh
+        connect/reconnect, when _diy_mode_enabled is False) -- it does nothing
+        if DIY mode is already active this connection.
+        """
+        self._entry_clear = clear
+
     async def _ensure_diy_mode(self) -> None:
         if not self._diy_mode_enabled:
-            # HARDWARE-CONFIRMED 2026-07-12: ENTER_NO_CLEAR_CUR_SHOW enters DIY mode
-            # with no black flash (unlike ENTER_CLEAR_CUR_SHOW), and frame uploads
-            # under this state render correctly -- see protocol/image.py.
-            await self._transport.write(
-                image.build_set_diy_mode(mode=image.ENTER_NO_CLEAR_CUR_SHOW), response=True
-            )
+            mode = image.ENTER_CLEAR_CUR_SHOW if self._entry_clear else image.ENTER_NO_CLEAR_CUR_SHOW
+            await self._transport.write(image.build_set_diy_mode(mode=mode), response=True)
             self._diy_mode_enabled = True
 
     async def _on_disconnected(self) -> None:
