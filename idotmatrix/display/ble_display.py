@@ -12,7 +12,10 @@ not reliably take over an EFFECT state, see protocol/image.py). Choosing
 between them depends on the panel's history across the daemon's run, which
 this driver has no visibility into -- so it stays opinion-free (Architect
 ruling O-27, DAEMON_PLAN.md) and exposes `set_entry_clear` for the embedder
-to drive.
+to drive. As of O-27's 2026-07-18 amendment the daemon always requests
+clear=True (mode 3 was retired from daemon policy after a live probe showed
+it doesn't reliably take on re-entry) -- this driver still supports both
+modes unchanged; only the embedder's policy moved.
 """
 
 import logging
@@ -40,9 +43,9 @@ class BleDisplay:
 
         # A dropped connection loses device-side mode state; re-enter DIY on the
         # next frame after any reconnect. _entry_clear is deliberately NOT reset
-        # here -- it reflects the embedder's policy (e.g. the daemon's O-27
-        # first-entry-per-run tracking), not per-connection device state, and
-        # persists until the embedder calls set_entry_clear again.
+        # here -- it reflects the embedder's policy (the daemon always requests
+        # clear=True per O-27's 2026-07-18 amendment), not per-connection device
+        # state, and persists until the embedder calls set_entry_clear again.
         transport.add_listener(on_disconnected=self._on_disconnected)
 
     @property
@@ -92,9 +95,13 @@ class BleDisplay:
 
         This driver holds no opinion on which is correct for a given moment --
         that is a function of the panel's history across the daemon's run
-        (Architect ruling O-27, DAEMON_PLAN.md: first entry per run clears,
-        later re-entries don't), which only the embedder tracks. Takes effect
-        on the next entry only (i.e. the next show_frame call after a fresh
+        (Architect ruling O-27, DAEMON_PLAN.md), which only the embedder
+        tracks. As of O-27's 2026-07-18 amendment the daemon always calls
+        this with clear=True -- a live probe found mode 3 does not reliably
+        take once the device has left the daemon's DIY frame, which is true
+        of every re-entry since every re-entry follows a disconnect. Mode 3
+        remains supported here for callers that want it. Takes effect on the
+        next entry only (i.e. the next show_frame call after a fresh
         connect/reconnect, when _diy_mode_enabled is False) -- it does nothing
         if DIY mode is already active this connection.
         """
