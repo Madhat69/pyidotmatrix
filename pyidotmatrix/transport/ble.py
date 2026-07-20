@@ -19,6 +19,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Optional
 
 from bleak import AdvertisementData, BleakClient, BleakScanner
@@ -57,6 +58,16 @@ EventCallback = Callable[[TransportEvent], None]
 Unsubscribe = Callable[[], None]
 
 
+@dataclass(frozen=True)
+class DeviceInfo:
+    """A discovered iDotMatrix device: its advertised name, BLE address, and the
+    advertisement RSSI if the backend reported one."""
+
+    name: str
+    address: str
+    rssi: Optional[int] = None
+
+
 async def discover_devices(name_prefix: str = DEVICE_NAME_PREFIX) -> list[str]:
     """Returns the MAC addresses of nearby iDotMatrix devices."""
     found = await BleakScanner.discover(return_adv=True)
@@ -66,6 +77,21 @@ async def discover_devices(name_prefix: str = DEVICE_NAME_PREFIX) -> list[str]:
             logger.info("found device %s (%s)", device.address, adv.local_name)
             addresses.append(device.address)
     return addresses
+
+
+async def discover(name_prefix: str = DEVICE_NAME_PREFIX) -> list[DeviceInfo]:
+    """Scans for nearby iDotMatrix devices, returning rich DeviceInfo records.
+
+    A thin wrapper over BleakScanner.discover: no retries, no connection. Filters
+    to devices whose advertised name starts with name_prefix ("IDM-"). Pass a
+    DeviceInfo (or its .address) straight to IDotMatrixClient.connect_to.
+    """
+    found = await BleakScanner.discover(return_adv=True)
+    devices = []
+    for device, adv in found.values():
+        if isinstance(adv, AdvertisementData) and adv.local_name and adv.local_name.startswith(name_prefix):
+            devices.append(DeviceInfo(name=adv.local_name, address=device.address, rssi=adv.rssi))
+    return devices
 
 
 class BleTransport:

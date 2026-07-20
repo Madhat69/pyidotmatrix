@@ -6,8 +6,15 @@ import pytest
 
 from pyidotmatrix import client as client_module
 from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
+from pyidotmatrix.exceptions import CommandRejectedError, UploadError
 from pyidotmatrix.protocol import schedule, timer
-from pyidotmatrix.protocol.response import STATUS_FAILED, STATUS_NEXT_CHUNK, STATUS_SAVED, StatusAck
+from pyidotmatrix.protocol.response import (
+    STATUS_FAILED,
+    STATUS_NEXT_CHUNK,
+    STATUS_SAVED,
+    DeviceAck,
+    StatusAck,
+)
 from pyidotmatrix.screen import ScreenSize
 
 
@@ -19,12 +26,34 @@ class FakeTransport:
         self.packet_writes: list = []
         self.response_listeners: list = []
         self.is_connected = False
+        # Commands routed through await_device_ack (the verified path), so a
+        # test can tell a verified send from a fire-and-forget one -- both land
+        # in `writes` as response=True writes, indistinguishable there.
+        self.ack_waits: list[bytes] = []
+        # What await_device_ack hands back to a verified _send. Default None
+        # models the bounded-timeout "no ack arrived" case (no raise); a test
+        # sets it to a DeviceAck to drive the accept/reject paths.
+        self.next_ack = None
+
+    async def connect(self):
+        self.is_connected = True
+
+    async def disconnect(self):
+        self.is_connected = False
 
     async def write(self, data, response=False):
         self.writes.append((bytes(data), response))
 
     async def write_packets(self, packets, response=False):
         self.packet_writes.append((packets, response))
+
+    async def await_device_ack(self, command, timeout=2.0):
+        # Mirrors the real transport: the verified write is recorded here (as a
+        # response=True write) instead of via write(), so writes-assertions on
+        # verified commands still hold. Returns the preset ack (or None).
+        self.ack_waits.append(bytes(command))
+        self.writes.append((bytes(command), True))
+        return self.next_ack
 
     def add_listener(self, on_connected=None, on_disconnected=None):
         return lambda: None
@@ -310,3 +339,119 @@ async def test_schedule_set_theme_timeout_raises(monkeypatch):
     client, _ = _client()
     with pytest.raises(ChunkedUploadError):
         await client.experimental.schedule_set_theme(_theme_obj(), b"a" * 5, schedule.CONTENT_GIF)
+
+
+# --- reject-raises-by-default: _send awaits the device ack (M2) --------------
+
+
+def _device_ack(command_type: int, command_subtype: int, accepted: bool) -> DeviceAck:
+    status = 0x01 if accepted else 0x00
+    return DeviceAck(
+        command_type=command_type,
+        command_subtype=command_subtype,
+        accepted=accepted,
+        raw=bytes([0x05, 0x00, command_type, command_subtype, status]),
+    )
+
+
+async def test_send_raises_command_rejected_on_nack():
+    client, transport = _client()
+    transport.next_ack = _device_ack(7, 8, accepted=False)  # countdown's key
+    with pytest.raises(CommandRejectedError) as excinfo:
+        await client.countdown.start(25, 0)
+    assert excinfo.value.ack.accepted is False
+    assert excinfo.value.raw == bytes([0x05, 0x00, 7, 8, 0x00])  # carries the raw ack
+
+
+async def test_send_does_not_raise_on_accept():
+    client, transport = _client()
+    transport.next_ack = _device_ack(7, 8, accepted=True)
+    await client.countdown.start(25, 0)  # must not raise
+    assert transport.writes == [(bytes([7, 0, 8, 128, 1, 25, 0]), True)]
+
+
+async def test_send_does_not_raise_on_missing_ack():
+    client, transport = _client()
+    transport.next_ack = None  # bounded-timeout "no ack" case
+    await client.common.set_brightness(50)  # must not raise
+
+
+async def test_status_ack_saved_is_not_a_rejection():
+    """The misparse that shipped three broken features: a StatusAck SAVED
+    (status=3) must never be read as a nack. A verified _send whose command's
+    ack is a StatusAck must not raise."""
+    client, transport = _client()
+    # Text upload (0x03, 0x00) is a StatusAck key; SAVED is a successful save.
+    transport.next_ack = StatusAck(command_type=0x03, command_subtype=0x00, status=STATUS_SAVED, raw=b"\x05\x00\x03\x00\x03")
+    await client.experimental.timer_close(_timer_obj())  # StatusAck path, must not raise
+
+
+async def test_set_command_verification_false_suppresses_the_raise():
+    client, transport = _client()
+    client.set_command_verification(False)
+    transport.next_ack = _device_ack(4, 128, accepted=False)  # would nack if awaited
+    await client.common.set_brightness(50)  # fire-and-forget: must not raise
+    # written directly (response via write(), not the await_device_ack path)
+    assert transport.writes == [(bytes([5, 0, 4, 128, 50]), True)]
+
+
+async def test_verify_commands_false_constructor_kwarg_suppresses_the_raise():
+    transport = FakeTransport()
+    transport.next_ack = _device_ack(4, 128, accepted=False)
+    client = IDotMatrixClient(ScreenSize.SIZE_32x32, transport=transport, verify_commands=False)
+    await client.common.set_brightness(50)  # must not raise
+
+
+async def test_verify_password_is_fire_and_forget():
+    """verify_password must not open a pending (5, 2) ack wait -- that key
+    collides with graffiti's nack (docs/APK_SECOND_PASS.md Q4)."""
+    client, transport = _client()
+    transport.next_ack = _device_ack(5, 2, accepted=False)  # a colliding graffiti-style nack
+    await client.common.verify_password(123456)  # must not raise despite the nack
+    assert transport.writes == [(bytes([7, 0, 5, 2, 12, 34, 56]), True)]
+    assert transport.ack_waits == []  # never opened a pending (5, 2) ack wait
+
+
+async def test_graffiti_send_skips_the_ack_wait():
+    """Graffiti is genuinely ack-silent; a verified _send must write it directly
+    rather than await_device_ack (which refuses graffiti)."""
+    client, transport = _client()
+    transport.next_ack = _device_ack(5, 2, accepted=False)  # ignored: graffiti never awaits
+    await client.graffiti.set_pixels((0, 255, 0), [(1, 1)])  # must not raise
+    assert transport.ack_waits == []  # graffiti wrote directly, never awaited an ack
+
+
+# --- context manager + connect_to convenience (M2) --------------------------
+
+
+async def test_async_context_manager_connects_and_disconnects():
+    transport = FakeTransport()
+    client = IDotMatrixClient(ScreenSize.SIZE_32x32, transport=transport)
+    async with client as entered:
+        assert entered is client
+        assert transport.is_connected  # connected on enter
+    assert not transport.is_connected  # disconnected on exit
+
+
+async def test_async_context_manager_disconnects_on_exception():
+    transport = FakeTransport()
+    client = IDotMatrixClient(ScreenSize.SIZE_32x32, transport=transport)
+    with pytest.raises(RuntimeError):
+        async with client:
+            assert transport.is_connected
+            raise RuntimeError("boom")
+    assert not transport.is_connected  # exit ran despite the exception
+
+
+async def test_connect_to_accepts_deviceinfo_and_defers_connect():
+    from pyidotmatrix import DeviceInfo
+
+    info = DeviceInfo(name="IDM-A03EAF", address="AA:BB:CC:DD:EE:01", rssi=-40)
+    client = IDotMatrixClient.connect_to(info, ScreenSize.SIZE_32x32)
+    assert client._transport._mac_address == "AA:BB:CC:DD:EE:01"
+    assert not client.is_connected  # connect_to constructs; connect happens on __aenter__
+
+
+async def test_connect_to_accepts_bare_address_string():
+    client = IDotMatrixClient.connect_to("11:22:33:44:55:66", ScreenSize.SIZE_32x32)
+    assert client._transport._mac_address == "11:22:33:44:55:66"

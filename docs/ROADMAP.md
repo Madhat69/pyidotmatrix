@@ -741,13 +741,28 @@ gate releases:
 filter-repo extraction · LICENSE + NOTICE + full credits · GlanceOS-reference
 scrub · artifact cleanup · packaging metadata + `py.typed` · migrate RE docs.
 *Accept: fresh clone builds, tests green, zero monorepo references, license
-audit clean.*
+audit clean.* *Status 2026-07-20: ✅ CLOSED — extraction done (subtree split,
+full history), LICENSE/NOTICE/credits in place, RE docs migrated to
+docs/reverse-engineering/, CONTRIBUTING + CI workflow added, fresh-venv
+install verified green.*
 
 **SDK-M2 — API stabilization (the one breaking pass)**
 Package rename (§14) · namespace renames (`device`, `stopwatch`, `alarms`,
 `media`) · `discover()` → `DeviceInfo` · async context manager · exception
 hierarchy + reject-raises-by-default · command serialization lock · typed
 callbacks. *Accept: greenfield examples in §2.2 run verbatim; mypy clean.*
+
+*Status 2026-07-20 — additive half DONE:* package rename, `discover()` →
+`DeviceInfo`, async context manager + `connect_to()`, exception hierarchy
+(`exceptions.py`), and reject-raises-by-default in `_send` (with a
+`verify_commands` escape hatch; `verify_password` stays fire-and-forget because
+its (5, 2) ack key collides with graffiti's nack — see the call-site note).
+*Deliberately deferred to just before PyPI publish:* the namespace renames
+(`device`/`stopwatch`/`alarms`/`media`), mapping transport failures to
+`ConnectionLostError`, serialization lock, and typed callbacks — the monorepo
+driver still evolves against the old names, and renaming now would turn every
+cross-repo sync into a rename-translation exercise for zero user benefit before
+the first published release.
 
 **SDK-M3 — Protocol completeness & verification**
 Port `sendTextTo3232` (unblocks text — the known-broken feature) · unify the 4

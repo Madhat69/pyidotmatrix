@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional
 
 from pyidotmatrix.display.ble_display import BleDisplay
+from pyidotmatrix.exceptions import CommandRejectedError, UploadError
 from pyidotmatrix.imaging import ResizeMode, adapt_image
 from pyidotmatrix.protocol import (
     chronograph,
@@ -34,7 +35,7 @@ from pyidotmatrix.protocol import (
 )
 from pyidotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
 from pyidotmatrix.screen import ScreenSize
-from pyidotmatrix.transport.ble import BleTransport, ConnectionCallback
+from pyidotmatrix.transport.ble import _GRAFFITI_TYPE_BYTE, BleTransport, ConnectionCallback, DeviceInfo
 from pyidotmatrix.transport.status import TransportEvent, TransportSnapshot
 
 Color = tuple[int, int, int]
@@ -45,9 +46,11 @@ Color = tuple[int, int, int]
 _CHUNK_ACK_TIMEOUT_SECONDS = 5.0
 
 
-class ChunkedUploadError(RuntimeError):
-    """Raised when a Timer/Schedule chunked upload is rejected (StatusAck
-    STATUS_FAILED) or no ack arrives for an outer chunk within the timeout."""
+# Back-compat alias: this driver raised ChunkedUploadError before the unified
+# exception hierarchy (exceptions.py) existed. The name stays importable; it is
+# now UploadError, so `except ChunkedUploadError` and `except UploadError` are
+# the same catch, and both sit under IDotMatrixError.
+ChunkedUploadError = UploadError
 
 
 async def _send_chunked_upload(
@@ -76,8 +79,8 @@ async def _send_chunked_upload(
 
     NEXT_CHUNK -> send the next outer chunk. SAVED -> return (tolerates a
     single-chunk upload skipping NEXT_CHUNK and going straight to SAVED,
-    hardware-confirmed 2026-07-12). FAILED -> raise ChunkedUploadError.
-    Timeout waiting for an ack -> raise ChunkedUploadError.
+    hardware-confirmed 2026-07-12). FAILED -> raise UploadError.
+    Timeout waiting for an ack -> raise UploadError.
 
     Duplicate StatusAck frames (hardware sends them -- the same status
     observed twice for one chunk) are tolerated by draining any ack still
@@ -97,7 +100,7 @@ async def _send_chunked_upload(
             try:
                 ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
             except asyncio.TimeoutError as ex:
-                raise ChunkedUploadError(
+                raise UploadError(
                     f"{label} upload: no ack within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
                     f"chunk {index + 1}/{len(chunks)}"
                 ) from ex
@@ -105,7 +108,7 @@ async def _send_chunked_upload(
             if ack.status == STATUS_SAVED:
                 return  # early SAVED is expected for single-chunk uploads; tolerate it any time
             if ack.status == STATUS_FAILED:
-                raise ChunkedUploadError(
+                raise UploadError(
                     f"{label} upload rejected (status=FAILED) at chunk {index + 1}/{len(chunks)}"
                 )
             # STATUS_NEXT_CHUNK (or any other value): proceed to the next chunk.
@@ -124,11 +127,45 @@ def _drain_stale_acks(acks: "asyncio.Queue") -> None:
 class _Feature:
     """Base for feature namespaces: holds the transport and sends built commands."""
 
+    # Whether _send awaits the device ack and raises on a nack (see _send). The
+    # client toggles this across all features via set_command_verification; a
+    # single _send call can still override it explicitly (verify=...).
+    _verify_commands = True
+
     def __init__(self, transport: BleTransport):
         self._transport = transport
 
-    async def _send(self, data: bytearray) -> None:
-        await self._transport.write(data, response=True)
+    async def _send(self, data: bytearray, verify: Optional[bool] = None) -> None:
+        """Sends one flat command. By default awaits the device's fa03 ack and
+        raises CommandRejectedError if the device nacks it.
+
+        verify=None follows this feature's _verify_commands default (which the
+        client's set_command_verification / verify_commands kwarg controls, the
+        caller-facing fire-and-forget escape hatch). verify=True/False overrides
+        it for this one call -- used internally to force fire-and-forget on the
+        two paths that must never open a pending ack wait (graffiti, which is
+        ack-silent, and verify_password, whose (5, 2) key collides with a
+        graffiti nack).
+
+        A StatusAck (Timer/Schedule/text upload family) is NEVER a rejection: a
+        SAVED (status=3) reply is a success, and reading it as a nack is the
+        misparse that shipped three broken features (see protocol/response.py).
+        Only a boolean DeviceAck with accepted=False raises here.
+
+        Correlation and silence are delegated to transport.await_device_ack: it
+        registers the pending wait before writing (no race), and returns None on
+        its bounded timeout, so a command that unexpectedly stays silent falls
+        through rather than hanging. Graffiti (type byte 5) is genuinely
+        ack-silent and await_device_ack refuses it, so any verified send skips
+        the await for it and writes directly.
+        """
+        should_verify = self._verify_commands if verify is None else verify
+        if not should_verify or len(data) < 4 or data[2] == _GRAFFITI_TYPE_BYTE:
+            await self._transport.write(data, response=True)
+            return
+        ack = await self._transport.await_device_ack(data)
+        if isinstance(ack, DeviceAck) and not ack.accepted:
+            raise CommandRejectedError(ack)
 
     async def _send_packets(self, packets: list[list[bytearray]]) -> None:
         await self._transport.write_packets(packets, response=True)
@@ -327,8 +364,18 @@ class CommonFeature(_Feature):
         await self._send(common.build_set_password(password))
 
     async def verify_password(self, password: int) -> None:
-        """Authenticates against a password already set with set_password."""
-        await self._send(common.build_verify_password(password))
+        """Authenticates against a password already set with set_password.
+
+        Fire-and-forget (verify=False) deliberately: verify_password's expected
+        ack key is (5, 2), byte-identical to graffiti's out-of-range nack
+        [5,0,5,2,0] (docs/APK_SECOND_PASS.md Q4; protocol/response.py). Awaiting
+        it by default -- the M2 reject-raises behavior -- would open a pending
+        (5, 2) wait that an interleaved graffiti nack could wrongly resolve, so
+        this path keeps the pre-M2 no-await behavior. A caller that needs the
+        real verify result must await_device_ack it itself, having ensured no
+        graffiti write is in flight.
+        """
+        await self._send(common.build_verify_password(password), verify=False)
 
     async def set_screen_timeout(self, value: int) -> None:
         """Sets the screen-on / auto-dim timer. Units unknown pending hardware test."""
@@ -400,9 +447,9 @@ class ExperimentalFeature(_Feature):
         HARDWARE-VERIFIED handshake (2026-07-12, real 32x32 panel): sends each
         outer chunk from protocol.timer.build_timer_data_packets as a
         write-with-response, then waits for the matching StatusAck before
-        sending the next one -- see _send_chunked_upload. Raises
-        ChunkedUploadError if the device reports STATUS_FAILED for a chunk, or
-        if no ack arrives within the timeout.
+        sending the next one -- see _send_chunked_upload. Raises UploadError if
+        the device reports STATUS_FAILED for a chunk, or if no ack arrives
+        within the timeout.
 
         `payload` format depends on content_type. With CONTENT_GIF, it must be
         an encoded GIF bytestream (the same encoding protocol/gif.py produces)
@@ -432,7 +479,7 @@ class ExperimentalFeature(_Feature):
         _send_chunked_upload) -- a real upload completed with StatusAck
         status=SAVED, which is what motivated dispatching this ack family as
         StatusAck instead of a plain DeviceAck (see protocol.response). Raises
-        ChunkedUploadError on STATUS_FAILED or ack timeout.
+        UploadError on STATUS_FAILED or ack timeout.
 
         `payload` format depends on content. With schedule.CONTENT_GIF, it must
         be an encoded GIF bytestream, mirroring Timer's confirmed content_type
@@ -463,6 +510,7 @@ class IDotMatrixClient:
         screen_size: ScreenSize,
         mac_address: Optional[str] = None,
         transport: Optional[BleTransport] = None,
+        verify_commands: bool = True,
     ):
         self._transport = transport or BleTransport(mac_address)
         self.screen_size = screen_size
@@ -481,6 +529,50 @@ class IDotMatrixClient:
         self.gif = GifFeature(self._transport, screen_size)
         self.common = CommonFeature(self._transport)
         self.experimental = ExperimentalFeature(self._transport)
+
+        self._features = (
+            self.chronograph, self.countdown, self.clock, self.scoreboard, self.eco,
+            self.color, self.graffiti, self.effect, self.music_sync, self.text,
+            self.gif, self.common, self.experimental,
+        )
+        if not verify_commands:
+            self.set_command_verification(False)
+
+    def set_command_verification(self, enabled: bool) -> None:
+        """Turns per-command ack verification on or off across every feature
+        namespace. When off, feature calls fire-and-forget instead of awaiting
+        the device ack and raising CommandRejectedError on a nack -- the pre-M2
+        behavior, useful for latency-sensitive or best-effort callers.
+
+        Individual paths that must always fire-and-forget (graffiti,
+        verify_password) are unaffected: they opt out at the call site
+        regardless of this flag.
+        """
+        for feature in self._features:
+            feature._verify_commands = enabled
+
+    @classmethod
+    def connect_to(
+        cls,
+        device: "DeviceInfo | str",
+        screen_size: ScreenSize,
+        **kwargs,
+    ) -> "IDotMatrixClient":
+        """Constructs a client for a DeviceInfo (from discover()) or a MAC string.
+
+        The actual connect happens on `async with` entry (__aenter__), so this
+        reads naturally as `async with IDotMatrixClient.connect_to(dev, size) as
+        client:`. Extra kwargs pass through to __init__.
+        """
+        address = device.address if isinstance(device, DeviceInfo) else device
+        return cls(screen_size, mac_address=address, **kwargs)
+
+    async def __aenter__(self) -> "IDotMatrixClient":
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        await self.disconnect()
 
     @property
     def is_connected(self) -> bool:

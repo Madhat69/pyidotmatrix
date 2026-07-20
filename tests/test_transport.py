@@ -3,11 +3,12 @@
 import asyncio
 
 import pytest
+from bleak import AdvertisementData
 from bleak.exc import BleakError
 
 from pyidotmatrix.protocol import common, graffiti
 from pyidotmatrix.transport import ble
-from pyidotmatrix.transport.ble import BleTransport
+from pyidotmatrix.transport.ble import BleTransport, DeviceInfo, discover
 from pyidotmatrix.transport.status import TransportEventKind
 
 
@@ -351,6 +352,47 @@ async def test_write_raises_when_the_retry_also_fails(transport):
 
     write_failed_events = [e for e in events if e.kind == TransportEventKind.WRITE_FAILED]
     assert len(write_failed_events) == 2  # the original attempt and the one retry, both recorded
+
+
+# --- discovery ------------------------------------------------------------
+
+
+class _StubDevice:
+    def __init__(self, address: str):
+        self.address = address
+
+
+def _adv(local_name, rssi=-52) -> AdvertisementData:
+    return AdvertisementData(
+        local_name=local_name, manufacturer_data={}, service_data={},
+        service_uuids=[], tx_power=None, rssi=rssi, platform_data=(),
+    )
+
+
+def _install_scanner(monkeypatch, found: dict) -> None:
+    class StubScanner:
+        @staticmethod
+        async def discover(return_adv=False):
+            return found
+
+    monkeypatch.setattr(ble, "BleakScanner", StubScanner)
+
+
+async def test_discover_returns_deviceinfo_for_idm_devices(monkeypatch):
+    found = {
+        "AA:BB:CC:DD:EE:01": (_StubDevice("AA:BB:CC:DD:EE:01"), _adv("IDM-A03EAF", rssi=-40)),
+        "AA:BB:CC:DD:EE:02": (_StubDevice("AA:BB:CC:DD:EE:02"), _adv("SomeOtherThing", rssi=-70)),
+    }
+    _install_scanner(monkeypatch, found)
+
+    devices = await discover()
+
+    assert devices == [DeviceInfo(name="IDM-A03EAF", address="AA:BB:CC:DD:EE:01", rssi=-40)]
+
+
+async def test_discover_returns_empty_when_none_match(monkeypatch):
+    _install_scanner(monkeypatch, {"X": (_StubDevice("X"), _adv("NotADisplay"))})
+    assert await discover() == []
 
 
 # --- device ack correlation ----------------------------------------------
