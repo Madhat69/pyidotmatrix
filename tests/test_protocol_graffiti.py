@@ -33,15 +33,25 @@ def test_rejects_too_many_pixels():
         graffiti.build_set_pixels((0, 0, 0), [(0, 0)] * (graffiti.MAX_PIXELS_PER_COMMAND + 1))
 
 
-def test_mirror_defaults_to_none():
-    assert graffiti.build_set_pixels((1, 2, 3), [(0, 0)])[3] == graffiti.MIRROR_NONE
+def test_byte3_is_pinned_to_the_only_drawing_value():
+    # HARDWARE-MAPPED 2026-07-21: byte 3 = 1 is the sole value the device
+    # draws for (2 nacks, 0/3/4 silently swallowed); it is not caller-visible.
+    payload = graffiti.build_set_pixels((1, 2, 3), [(0, 0)])
+    assert payload[3] == 1
 
 
-def test_mirror_sets_byte_three():
-    assert graffiti.build_set_pixels((1, 2, 3), [(0, 0)], mirror=3)[3] == 3
+def test_move_type_defaults_to_none_and_sets_byte_four():
+    assert graffiti.build_set_pixels((1, 2, 3), [(0, 0)])[4] == graffiti.MOVE_NONE
+    payload = graffiti.build_set_pixels(
+        (1, 2, 3), [(0, 0)], move_type=graffiti.MOVE_VERTICAL_MIRROR
+    )
+    assert payload[4] == graffiti.MOVE_VERTICAL_MIRROR
+    assert payload[3] == 1  # byte 3 stays pinned regardless
 
 
-@pytest.mark.parametrize("mirror", [0, 5, -1])
-def test_mirror_out_of_range_rejected(mirror):
+@pytest.mark.parametrize("move_type", [3, 4, 5, -1])
+def test_unmapped_move_types_rejected(move_type):
+    # 3 (OVERALL_MOVEMENT) and 4 (ERASE) exist in the APK enum but drew plainly
+    # or unresolved on hardware -- not exposed until their semantics are mapped.
     with pytest.raises(ValueError):
-        graffiti.build_set_pixels((0, 0, 0), [(0, 0)], mirror=mirror)
+        graffiti.build_set_pixels((0, 0, 0), [(0, 0)], move_type=move_type)

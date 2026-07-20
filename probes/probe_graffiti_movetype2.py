@@ -11,10 +11,13 @@ Sequence (operator narrates after each step):
   3. BLUE square bottom-left, byte4=2   -> which of red/green recolor?
   4. YELLOW square bottom-right, byte4=2 -> which of the three recolor?
 
-RESULT (2026-07-20, real 32x32, operator-observed): step 3 recolored RED
-(two commands back), step 4 recolored GREEN (again two back). Disambiguated
-from FIFO by probe_graffiti_movetype3.py: the reference is positional --
-byte4=2 recolors the command exactly TWO back.
+RESULT (2026-07-20, real 32x32, operator-observed): step 3 appeared to
+recolor RED, step 4 GREEN -- read then as a positional two-back reference.
+
+CORRECTION (2026-07-21, probe_graffiti_transform.py): byte4=2 is
+VERTICAL_MIRROR. The bottom-row squares mirrored onto the top-row squares'
+exact positions, overpainting them -- no recoloring ever happened. See
+probe_graffiti_movetype3.py's correction note.
 """
 
 import asyncio

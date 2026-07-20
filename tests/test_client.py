@@ -7,7 +7,7 @@ import pytest
 from pyidotmatrix import client as client_module
 from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
 from pyidotmatrix.exceptions import CommandRejectedError
-from pyidotmatrix.protocol import schedule, timer
+from pyidotmatrix.protocol import graffiti, schedule, timer
 from pyidotmatrix.protocol.response import (
     STATUS_FAILED,
     STATUS_NEXT_CHUNK,
@@ -84,11 +84,14 @@ async def test_all_feature_namespaces_present():
         assert hasattr(client, name), f"missing namespace: {name}"
 
 
-async def test_graffiti_mirror_passes_through():
+async def test_graffiti_move_type_passes_through():
     client, transport = _client()
-    await client.graffiti.set_pixels((0, 255, 0), [(1, 1)], mirror=3)
+    await client.graffiti.set_pixels(
+        (0, 255, 0), [(1, 1)], move_type=graffiti.MOVE_VERTICAL_MIRROR
+    )
     (data, _ack), = transport.writes
-    assert data[3] == 3  # mirror byte
+    assert data[4] == graffiti.MOVE_VERTICAL_MIRROR  # DiyImageMoveType byte
+    assert data[3] == 1  # byte 3 pinned: the only value the device draws for
 
 
 async def test_effect_show_passes_speed_through():

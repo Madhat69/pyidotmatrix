@@ -246,19 +246,21 @@ class FullscreenColorFeature(_Feature):
 class GraffitiFeature(_Feature):
     """Draws pixels over the current framebuffer, with optional mirroring.
 
-    The frame pipeline uses display.set_pixels (mirror off) for deltas; this
-    namespace exists for graffiti drawing that wants the mirror modes.
+    The frame pipeline uses display.set_pixels (move_type off) for deltas;
+    this namespace exists for graffiti drawing that wants the mirror modes
+    (move_type MOVE_HORIZONTAL_MIRROR / MOVE_VERTICAL_MIRROR draws the pixels
+    plus a mirrored copy -- hardware-mapped 2026-07-21, see protocol.graffiti).
     """
 
     async def set_pixels(
         self,
         color: Color,
         xys: list[tuple[int, int]],
-        mirror: int = graffiti.MIRROR_NONE,
+        move_type: int = graffiti.MOVE_NONE,
     ) -> None:
         for start in range(0, len(xys), graffiti.MAX_PIXELS_PER_COMMAND):
             batch = xys[start:start + graffiti.MAX_PIXELS_PER_COMMAND]
-            await self._send(graffiti.build_set_pixels(color, batch, mirror))
+            await self._send(graffiti.build_set_pixels(color, batch, move_type))
 
 
 class EffectFeature(_Feature):
@@ -483,14 +485,12 @@ class ExperimentalFeature(_Feature):
         `payload` format depends on content_type. With CONTENT_GIF, it must be
         an encoded GIF bytestream (the same encoding protocol/gif.py produces)
         -- CONFIRMED on hardware: renders animated at fire time, buzzer
-        included. With CONTENT_IMAGE, it must be raw, uncompressed RGB, no
-        header: exactly width*height*3 bytes, row-major, [R,G,B] per pixel
-        (CONFIRMED-FROM-SOURCE, docs/APK_SECOND_PASS.md Q2 -- byte-identical to
-        the app's own image-alarm path). Our one hardware test of
-        CONTENT_IMAGE used a payload with an accidentally big-endian duration
-        header (a test bug, not a format bug); the device accepted and saved
-        it (StatusAck status=SAVED) but rendering is UNVERIFIED-PENDING-RETEST
-        -- do not treat that result as CONTENT_IMAGE being broken. At fire
+        included. With CONTENT_IMAGE, it must be an encoded PNG bytestream --
+        HARDWARE-CONFIRMED 2026-07-21 (probes/probe_content_image_and_recolor
+        .py): a PNG payload fired and RENDERED at alarm time, while raw
+        width*height*3 RGB was SAVED but never rendered (2026-07-12). The
+        earlier raw-RGB reading of APK_SECOND_PASS.md Q2 described the
+        pre-encoding pixel source, not the wire payload. At fire
         time the panel shows the clock for a few seconds before the alarm's
         content takes over -- expected, not a bug. Set the device's clock
         (client.common.set_time) before relying on a Timer firing at the

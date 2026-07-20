@@ -146,19 +146,21 @@ _ENTRIES: tuple[Capability, ...] = (
         "awaits an ack for it (ROADMAP.md section 3 Display; FEATURE_MATRIX.md).",
     ),
     Capability(
-        "graffiti", "byte4_recolor_two_back", CapabilityStatus.VERIFIED, _S32,
-        "Header byte 4 (always 0 in our builder; LumiSync's RE doc calls it moveType): value 2 "
-        "draws its pixels AND recolors the graffiti command sent exactly TWO commands earlier "
-        "to the new color -- positional, reproduced 3/3 (probes/probe_graffiti_movetype*.py, "
-        "2026-07-20). Values 0/1/3/4 draw plainly with no side effect. A trap for callers that "
-        "set the byte blindly, and a cheap recolor primitive (retint a <=255-px group without "
-        "resending coordinates) for callers that sequence it deliberately.",
+        "graffiti", "move_type", CapabilityStatus.VERIFIED, _S32,
+        "Header byte 4 = the APK's DiyImageMoveType: 1 = HORIZONTAL_MIRROR, 2 = VERTICAL_MIRROR "
+        "-- draws the pixels PLUS a mirrored copy across the panel's center axis (single-pixel "
+        "discriminator, probes/probe_graffiti_transform{,2}.py, 2026-07-21). 0 and 3 draw "
+        "plainly; 4 unresolved. CORRECTION: the earlier 'recolors the command two back' theory "
+        "(probe_graffiti_movetype*.py, 2026-07-20) was FALSE -- vertical mirroring onto "
+        "symmetric probe layouts mimicked recoloring exactly; the single-pixel test killed it.",
     ),
     Capability(
-        "graffiti", "mirror", CapabilityStatus.UNKNOWN, _S32,
-        "Byte-3 values 0/1/2/4 render identically, 3 is nacked [5,0,5,2,0] (probe 2026-07-12; "
-        "probes/probe_graffiti_mirror.py); no counterpart in the current app's own send path "
-        "(APK_SECOND_PASS.md Q5(c)) -- treated as a firmware quirk.",
+        "graffiti", "byte3_required_one", CapabilityStatus.VERIFIED, _S32,
+        "Header byte 3 is NOT a mirror field: only value 1 (the app's hardcoded constant) "
+        "draws; 2 is nacked [5,0,5,2,0] (4/4 reproductions), 0/3/4 are acked and silently "
+        "swallowed (probes/probe_graffiti_byte3_*.py, control case, 2026-07-21). CORRECTION of "
+        "the 2026-07-12 sweep, whose re-sent same-coordinate pattern over a lit L made five "
+        "no-ops look identical.",
     ),
     Capability(
         "effect", "show", CapabilityStatus.VERIFIED, _S32,
@@ -306,10 +308,12 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "experimental", "timer_set", CapabilityStatus.VERIFIED, _S32,
-        "Chunked handshake proven; GIF content fired animated with buzzer, and raw-RGB image "
-        "content renders after the little-endian header fix (2026-07-12; ROADMAP.md section 3 "
-        "Alarms; ALARM_BUZZER_APK_FINDINGS.md). Text content unmapped (textSolve offsets "
-        "untrustworthy in the decompile). Week bitmask VERIFIED 2026-07-21 via RTC spoofing "
+        "Chunked handshake proven; GIF content fired animated with buzzer (2026-07-12; "
+        "ROADMAP.md section 3 Alarms; ALARM_BUZZER_APK_FINDINGS.md). CONTENT_IMAGE SOLVED "
+        "2026-07-21: it wants an encoded PNG bytestream, which fired and RENDERED at alarm "
+        "time (probes/probe_content_image_and_recolor.py); raw RGB was SAVED but never "
+        "rendered (2026-07-12). Text content unmapped (textSolve offsets untrustworthy in "
+        "the decompile). Week bitmask VERIFIED 2026-07-21 via RTC spoofing "
         "(probes/probe_timer_weekbit.py): bit(d+1) for weekday d (Monday=0), bit0=enable; "
         "today-bit fired on the real day, went silent with the RTC spoofed to tomorrow, and "
         "tomorrow's bit fired under the spoof -- fire -> silence -> fire, mask evaluated "

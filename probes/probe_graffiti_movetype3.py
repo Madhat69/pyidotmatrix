@@ -5,8 +5,14 @@ byte4=2. FIFO-recolor predicts RED (oldest) recolors; a relative two-commands-
 back reference predicts GREEN.
 
 RESULT (2026-07-20, real 32x32, operator-observed): GREEN turned yellow --
-byte4=2 recolors the command exactly TWO back. Positional, reproduced 3/3
-across probe_graffiti_movetype{,2,3}.py.
+read at the time as "byte4=2 recolors the command exactly TWO back".
+
+CORRECTION (2026-07-21, probe_graffiti_transform.py): that theory was FALSE.
+byte4=2 is VERTICAL_MIRROR -- it draws the pixels plus a vertically mirrored
+copy. Every square in these probes sat at a position whose vertical mirror
+was exactly the square from two commands earlier, so mirroring reproduced
+the "two-back recolor" illusion 3/3. A single off-center pixel (two dots,
+one mirrored) killed it. Kept as a lesson in symmetric-layout blindness.
 """
 
 import asyncio
