@@ -709,6 +709,18 @@ gate releases:
   queue collapse (soak-test evidence: 24 h+ at ~1 fps, flat memory).
 - **Minimal transport overhead**: respect negotiated MTU, chunk exactly once,
   never re-encode payloads that are already wire-shaped.
+- **Streaming mode (candidate, evidence-backed 2026-07-20)**: two independent
+  projects sustain far higher frame rates than our acked cost model by simply
+  not waiting: [IDotMatrixXLedFx](https://github.com/suchyindustries/IDotMatrixXLedFx)
+  logs 24–28 fps of DIY frame pushes to a 32×32 (same fa02 protocol, ~1–2 KB
+  PNG-sized payloads, zero ack reads), and
+  [idotmatrix-overclocked](https://github.com/pracucci/idotmatrix-overclocked)
+  runs playable Snake/Tetris on a 64×64 using write-WITHOUT-response — which
+  its docs report working there, while LumiSync's notes claim no-response
+  writes are ignored on their variant (a firmware difference; capability-table
+  material). Design implication: an opt-in unacked frame path (`verify=False`
+  streaming) could unlock real-time animation. Needs a hardware benchmark on
+  our panel before any API commitment.
 
 ## 16. Independent review — findings not covered above (Addendum 8)
 
