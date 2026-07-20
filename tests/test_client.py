@@ -6,7 +6,7 @@ import pytest
 
 from pyidotmatrix import client as client_module
 from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
-from pyidotmatrix.exceptions import CommandRejectedError, UploadError
+from pyidotmatrix.exceptions import CommandRejectedError
 from pyidotmatrix.protocol import schedule, timer
 from pyidotmatrix.protocol.response import (
     STATUS_FAILED,
@@ -89,6 +89,31 @@ async def test_graffiti_mirror_passes_through():
     await client.graffiti.set_pixels((0, 255, 0), [(1, 1)], mirror=3)
     (data, _ack), = transport.writes
     assert data[3] == 3  # mirror byte
+
+
+async def test_effect_show_passes_speed_through():
+    client, transport = _client()
+    await client.effect.show(1, [(255, 0, 0), (0, 255, 0)], speed=120)
+    (data, _ack), = transport.writes
+    assert data[5] == 120  # speed byte (APK_SECOND_PASS.md Q5(a))
+
+
+async def test_effect_show_default_speed_is_legacy_90():
+    client, transport = _client()
+    await client.effect.show(1, [(255, 0, 0), (0, 255, 0)])
+    (data, _ack), = transport.writes
+    assert data[5] == 90
+
+
+async def test_effect_show_chunked_uses_packet_path():
+    from pyidotmatrix.protocol import effect as effect_protocol
+
+    client, transport = _client()
+    colors = [(255, 0, 0), (0, 255, 0)]
+    await client.effect.show_chunked(1, colors, speed=120, mtu_negotiated=False)
+    assert transport.writes == []  # not the flat-command path
+    (packets, _response), = transport.packet_writes
+    assert packets == [effect_protocol.build_show_packets(1, colors, 120, mtu_negotiated=False)]
 
 
 async def test_response_listener_registers_with_transport():
@@ -382,7 +407,9 @@ async def test_status_ack_saved_is_not_a_rejection():
     ack is a StatusAck must not raise."""
     client, transport = _client()
     # Text upload (0x03, 0x00) is a StatusAck key; SAVED is a successful save.
-    transport.next_ack = StatusAck(command_type=0x03, command_subtype=0x00, status=STATUS_SAVED, raw=b"\x05\x00\x03\x00\x03")
+    transport.next_ack = StatusAck(
+        command_type=0x03, command_subtype=0x00, status=STATUS_SAVED, raw=b"\x05\x00\x03\x00\x03"
+    )
     await client.experimental.timer_close(_timer_obj())  # StatusAck path, must not raise
 
 

@@ -9,8 +9,7 @@ than a pixel update), so pacing logic can be exercised without hardware.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from typing import Optional
+from collections.abc import Callable
 
 from pyidotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
 from pyidotmatrix.screen import ScreenSize
@@ -30,7 +29,7 @@ class SimulatorDisplay:
         screen_size: ScreenSize,
         id: str = "simulator",
         emulate_timing: bool = False,
-        on_frame: Optional[FrameCallback] = None,
+        on_frame: FrameCallback | None = None,
     ):
         self.id = id
         self.width = screen_size.width
@@ -99,8 +98,8 @@ class SimulatorDisplay:
 
     def add_listener(
         self,
-        on_connected: Optional[ConnectionCallback] = None,
-        on_disconnected: Optional[ConnectionCallback] = None,
+        on_connected: ConnectionCallback | None = None,
+        on_disconnected: ConnectionCallback | None = None,
     ) -> None:
         if on_connected:
             self._on_connected.append(on_connected)

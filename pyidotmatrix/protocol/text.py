@@ -21,6 +21,7 @@ scoped here.
 """
 
 import binascii
+from typing import cast
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -206,7 +207,8 @@ def _pack_bitmap(image: Image.Image) -> bytearray:
         for x in range(_CHAR_WIDTH):
             if x % 8 == 0:
                 byte = 0
-            byte |= (image.getpixel((x, y)) & 1) << (x % 8)
+            pixel = cast(int, image.getpixel((x, y)))  # mode "1" bitmap: always an int
+            byte |= (pixel & 1) << (x % 8)
             if x % 8 == 7 or x == _CHAR_WIDTH - 1:
                 bitmap.append(byte)
     return bitmap

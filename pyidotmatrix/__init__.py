@@ -14,11 +14,14 @@ Public surface:
     IDotMatrixError                  base of the exception hierarchy
     ConnectionLostError / CommandRejectedError / UploadError
                                       narrower failure types
+    capability / CAPABILITIES        per-feature hardware-verification table
+    Capability / CapabilityStatus    its row type and status enum
 
 The driver builds protocol bytes and moves them to the device. It holds no
 scheduling, rendering, delta, or app logic — that belongs to callers.
 """
 
+from pyidotmatrix.capabilities import CAPABILITIES, Capability, CapabilityStatus, capability
 from pyidotmatrix.client import IDotMatrixClient
 from pyidotmatrix.display import BleDisplay, DisplayBackend, SimulatorDisplay
 from pyidotmatrix.exceptions import (
@@ -51,4 +54,8 @@ __all__ = [
     "ConnectionLostError",
     "CommandRejectedError",
     "UploadError",
+    "CAPABILITIES",
+    "Capability",
+    "CapabilityStatus",
+    "capability",
 ]

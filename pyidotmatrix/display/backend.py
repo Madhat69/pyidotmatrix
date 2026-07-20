@@ -9,7 +9,7 @@ caller's policy, not the backend's — the backend just does what it is told.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 Color = tuple[int, int, int]
 Coordinate = tuple[int, int]
@@ -62,6 +62,6 @@ class DisplayBackend(Protocol):
 
     def add_listener(
         self,
-        on_connected: Optional[ConnectionCallback] = None,
-        on_disconnected: Optional[ConnectionCallback] = None,
+        on_connected: ConnectionCallback | None = None,
+        on_disconnected: ConnectionCallback | None = None,
     ) -> None: ...

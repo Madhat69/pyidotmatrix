@@ -60,6 +60,50 @@ def test_effect_length_fields_count_colors():
     assert payload[7:] == bytearray([255, 0, 0, 0, 255, 0, 0, 0, 255])
 
 
+def test_effect_default_speed_is_byte_identical_to_legacy():
+    # The lab-era builder hardcoded speed=90; the default must not change the wire bytes.
+    payload = effect.build_show(1, [(255, 0, 0), (0, 255, 0)])
+    assert payload == bytearray([8, 0, 3, 2, 1, 90, 2, 255, 0, 0, 0, 255, 0])
+
+
+def test_effect_speed_is_byte_offset_5():
+    # APK_SECOND_PASS.md Q5(a): header [len, 0, 3, 2, style, speed, colorCount].
+    payload = effect.build_show(4, [(1, 2, 3), (4, 5, 6)], speed=200)
+    assert payload[:7] == bytearray([8, 0, 3, 2, 4, 200, 2])
+    assert payload[7:] == bytearray([1, 2, 3, 4, 5, 6])
+
+
+def test_effect_validation():
+    two_colors = [(0, 0, 0), (255, 255, 255)]
+    with pytest.raises(ValueError):
+        effect.build_show(7, two_colors)
+    with pytest.raises(ValueError):
+        effect.build_show(0, two_colors[:1])
+    with pytest.raises(ValueError):
+        effect.build_show(0, two_colors, speed=256)
+    with pytest.raises(ValueError):
+        effect.build_show(0, two_colors, speed=-1)
+
+
+def test_effect_chunked_single_packet_under_mtu():
+    # 7 colors -> flat command is 7 + 21 = 28 bytes, one 96-byte-budget chunk:
+    # sub-header [chunkLen + 1, chunkIndex] then the whole flat command.
+    colors = [(i, i, i) for i in range(7)]
+    flat = effect.build_show(2, colors)
+    packets = effect.build_show_packets(2, colors)
+    assert packets == [bytearray([len(flat) + 1, 0]) + flat]
+
+
+def test_effect_chunked_18_byte_framing_reassembles_to_flat():
+    colors = [(i, i, i) for i in range(7)]
+    flat = effect.build_show(2, colors, speed=120)
+    packets = effect.build_show_packets(2, colors, speed=120, mtu_negotiated=False)
+    assert len(packets) == 2  # 28 payload bytes at <=18 per chunk
+    assert packets[0][:2] == bytearray([18 + 1, 0])
+    assert packets[1][:2] == bytearray([(len(flat) - 18) + 1, 1])
+    assert packets[0][2:] + packets[1][2:] == flat
+
+
 def test_music_sync():
     assert music_sync.build_set_mic_type(2) == bytearray([6, 0, 11, 128, 2])
     assert music_sync.build_send_image_rhythm(5) == bytearray([6, 0, 0, 2, 5, 1])

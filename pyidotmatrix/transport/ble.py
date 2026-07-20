@@ -20,7 +20,6 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Optional
 
 from bleak import AdvertisementData, BleakClient, BleakScanner
 from bleak.exc import BleakError
@@ -65,7 +64,7 @@ class DeviceInfo:
 
     name: str
     address: str
-    rssi: Optional[int] = None
+    rssi: int | None = None
 
 
 async def discover_devices(name_prefix: str = DEVICE_NAME_PREFIX) -> list[str]:
@@ -97,9 +96,9 @@ async def discover(name_prefix: str = DEVICE_NAME_PREFIX) -> list[DeviceInfo]:
 class BleTransport:
     def __init__(
         self,
-        mac_address: Optional[str] = None,
+        mac_address: str | None = None,
         auto_reconnect: bool = True,
-        write_size_override: Optional[int] = None,
+        write_size_override: int | None = None,
     ):
         """
         Args:
@@ -113,10 +112,10 @@ class BleTransport:
         self._auto_reconnect = auto_reconnect      # configured intent
         self._reconnect_armed = False              # armed on connect, disarmed on explicit disconnect
         self._write_size_override = write_size_override
-        self._client: Optional[BleakClient] = None
+        self._client: BleakClient | None = None
         self._connect_lock = asyncio.Lock()        # per-instance: multiple devices don't serialize
-        self._write_size: Optional[int] = None     # negotiated no-response size, cached per connection
-        self._reconnect_task: Optional[asyncio.Task] = None
+        self._write_size: int | None = None     # negotiated no-response size, cached per connection
+        self._reconnect_task: asyncio.Task | None = None
 
         self._on_connected: list[ConnectionCallback] = []
         self._on_disconnected: list[ConnectionCallback] = []
@@ -136,8 +135,8 @@ class BleTransport:
         self._pending_acks: dict[tuple[int, int], asyncio.Future] = {}
 
         self._reconnect_count = 0
-        self._last_failure: Optional[str] = None
-        self._last_failure_at: Optional[float] = None
+        self._last_failure: str | None = None
+        self._last_failure_at: float | None = None
 
     # --- connection lifecycle ---------------------------------------------
 
@@ -162,6 +161,7 @@ class BleTransport:
         """
         if not self.is_connected:
             return False
+        assert self._client is not None  # is_connected just guaranteed it
         try:
             services = self._client.services
         except BleakError:
@@ -198,6 +198,7 @@ class BleTransport:
             self._reconnect_task = None
         async with self._connect_lock:
             if self.is_connected:
+                assert self._client is not None  # is_connected just guaranteed it
                 await self._client.disconnect()
 
     def set_auto_reconnect(self, enabled: bool) -> None:
@@ -259,7 +260,7 @@ class BleTransport:
 
     async def await_device_ack(
         self, command: bytes | bytearray, timeout: float = _DEFAULT_ACK_TIMEOUT
-    ) -> Optional[DeviceAck]:
+    ) -> DeviceAck | None:
         """Sends a command and waits for the device's fa03 ack for it.
 
         Returns the DeviceAck, or None if none arrived within timeout (the device
@@ -290,7 +291,7 @@ class BleTransport:
         try:
             await self.write(command, response=True)
             return await asyncio.wait_for(future, timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
         finally:
             self._pending_acks.pop(key, None)
@@ -363,6 +364,7 @@ class BleTransport:
         callers (Presenter et al.) are expected to survive that, log it, and
         let the next attempt try again.
         """
+        assert self._client is not None  # callers hold a connected transport (_ensure_connected)
         try:
             await self._client.write_gatt_char(UUID_WRITE, data, response=response)
         except Exception as ex:
@@ -386,7 +388,9 @@ class BleTransport:
         if self._write_size_override is not None:
             return self._write_size_override
         if self._write_size is None:
+            assert self._client is not None  # only reachable on a connected transport
             char = self._client.services.get_characteristic(UUID_WRITE)
+            assert char is not None  # UUID_WRITE resolved at connect time
             self._write_size = char.max_write_without_response_size
             if self._write_size <= _LIKELY_UNDERREPORT_SIZE:
                 logger.info(
@@ -413,7 +417,7 @@ class BleTransport:
         self._last_failure = message
         self._last_failure_at = time.time()
 
-    def _emit_event(self, kind: TransportEventKind, detail: Optional[str] = None) -> None:
+    def _emit_event(self, kind: TransportEventKind, detail: str | None = None) -> None:
         event = TransportEvent(kind=kind, detail=detail)
         for callback in list(self._on_event):
             _safe_call(callback, event)
@@ -422,8 +426,8 @@ class BleTransport:
 
     def add_listener(
         self,
-        on_connected: Optional[ConnectionCallback] = None,
-        on_disconnected: Optional[ConnectionCallback] = None,
+        on_connected: ConnectionCallback | None = None,
+        on_disconnected: ConnectionCallback | None = None,
     ) -> Unsubscribe:
         """Registers async connection-state callbacks. Returns an unsubscribe callable."""
         if on_connected:
@@ -455,12 +459,13 @@ class BleTransport:
         Best-effort: a stack that doesn't support notifications must not break the
         connection, since acks are observability, not a hard requirement.
         """
+        assert self._client is not None  # called from connect() right after the client is built
         try:
             await self._client.start_notify(UUID_NOTIFY, self._handle_notification)
         except Exception as ex:
             logger.warning("could not subscribe to device notifications: %s", ex)
 
-    def _handle_notification(self, _sender, data: bytearray) -> None:
+    def _handle_notification(self, _sender: object, data: bytearray) -> None:
         ack = parse_response(bytes(data))
         if ack is None:
             logger.debug("unrecognized notification: %s", bytes(data).hex())
@@ -506,7 +511,9 @@ class BleTransport:
         while self._reconnect_armed and not self.is_connected:
             await asyncio.sleep(delay)
             if not self._reconnect_armed:
-                break
+                # mypy narrows _reconnect_armed to True from the loop condition, but
+                # disconnect()/set_auto_reconnect flip it concurrently across the await.
+                break  # type: ignore[unreachable]
             self._emit_event(TransportEventKind.RECONNECT_ATTEMPT, f"rebuilding client (next backoff {delay}s)")
             try:
                 await self.connect()
@@ -527,7 +534,7 @@ class BleTransport:
                 logger.warning("connection listener raised: %s", ex)
 
 
-def _safe_call(callback: Callable, argument) -> None:
+def _safe_call(callback: Callable, argument: object) -> None:
     """Invokes a sync listener, isolating its failure from connection handling."""
     try:
         callback(argument)
@@ -535,6 +542,6 @@ def _safe_call(callback: Callable, argument) -> None:
         logger.warning("listener raised: %s", ex)
 
 
-def _discard(callbacks: list, callback) -> None:
+def _discard(callbacks: list, callback: object) -> None:
     if callback in callbacks:
         callbacks.remove(callback)

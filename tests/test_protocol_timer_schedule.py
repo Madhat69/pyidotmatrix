@@ -107,7 +107,7 @@ def test_timer_data_header_multi_chunk_continuation():
 
     total_crc = binascii.crc32(payload) & 0xFFFFFFFF
     expected_chunk_sizes = [4096, 904]
-    for chunk_index, (chunk_packets, chunk_size) in enumerate(zip(packets, expected_chunk_sizes)):
+    for chunk_index, (chunk_packets, chunk_size) in enumerate(zip(packets, expected_chunk_sizes, strict=True)):
         raw = _flatten(chunk_packets)
         header, body = raw[:24], raw[24:]
         assert len(body) == chunk_size
@@ -360,7 +360,7 @@ def test_schedule_theme_header_image_multi_chunk_continuation():
 
     total_crc = binascii.crc32(payload) & 0xFFFFFFFF
     expected_chunk_sizes = [4096, 104]
-    for chunk_index, (chunk_packets, chunk_size) in enumerate(zip(packets, expected_chunk_sizes)):
+    for chunk_index, (chunk_packets, chunk_size) in enumerate(zip(packets, expected_chunk_sizes, strict=True)):
         raw = _flatten(chunk_packets)
         header, body = raw[:23], raw[23:]
         assert len(body) == chunk_size

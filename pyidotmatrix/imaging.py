@@ -30,8 +30,12 @@ def adapt_image(
     DisplayBackend.show_frame. Palettizing suits pixel art (uses nearest-neighbour
     resampling); leave it off for photos.
     """
-    opened = Image.open(image) if not isinstance(image, Image.Image) else None
-    source = opened if opened is not None else image
+    if isinstance(image, Image.Image):
+        opened = None
+        source = image
+    else:
+        opened = Image.open(image)
+        source = opened
     try:
         fitted = ImageOps.exif_transpose(source)
         resample = Image.Resampling.NEAREST if do_palettize else Image.Resampling.LANCZOS
@@ -74,7 +78,8 @@ def resize_to_canvas(
 
     # Composite onto a background so transparent areas and letterboxing are filled.
     with_alpha = Image.new("RGBA", (canvas_size, canvas_size), background_color)
-    with_alpha.paste(image, ((canvas_size - image.width) // 2, (canvas_size - image.height) // 2), mask=image.convert("RGBA"))
+    offset = ((canvas_size - image.width) // 2, (canvas_size - image.height) // 2)
+    with_alpha.paste(image, offset, mask=image.convert("RGBA"))
 
     canvas = Image.new(mode, (canvas_size, canvas_size), background_color)
     canvas.paste(with_alpha, ((canvas_size - with_alpha.width) // 2, (canvas_size - with_alpha.height) // 2))

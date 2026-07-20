@@ -29,7 +29,9 @@ GIF_PACKETS_SHA256 = "c101b700bdab4d752b6cd064f1e778b902737ed1bd8e3a92ecfb62e353
 
 
 def test_text_matches_golden():
-    payload = text.build_text_packet("HI", str(FONT), 16, text.MODE_MARQUEE, 95, text.COLOR_WHITE, (255, 255, 255), None)
+    payload = text.build_text_packet(
+        "HI", str(FONT), 16, text.MODE_MARQUEE, 95, text.COLOR_WHITE, (255, 255, 255), None
+    )
     assert hashlib.sha256(bytes(payload)).hexdigest() == TEXT_HI_SHA256
 
 

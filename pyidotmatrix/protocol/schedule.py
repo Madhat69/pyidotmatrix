@@ -32,6 +32,7 @@ split_into_ble_packets.
 import binascii
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import NoReturn
 
 from pyidotmatrix.protocol import bytes_
 from pyidotmatrix.validation import validate_byte
@@ -68,7 +69,7 @@ class ScheduleTheme:
     end_hour: int
     end_min: int
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         validate_byte(self.index, "index")
         validate_byte(self.week, "week")
         if not (0 <= self.start_hour <= 23):
@@ -193,7 +194,7 @@ def _build_theme_header(chunk: bytearray, payload: bytes, theme: ScheduleTheme, 
     return bytes(header)
 
 
-def build_schedule_text_packets(*_args, **_kwargs):
+def build_schedule_text_packets(*_args: object, **_kwargs: object) -> NoReturn:
     """NOT PORTED: Schedule's textSolve byte offsets are untrustworthy.
 
     The decompiled ScheduleAgreement.textSolve (lines 278-487) reuses obfuscated

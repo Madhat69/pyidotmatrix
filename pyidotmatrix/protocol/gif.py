@@ -9,9 +9,9 @@ The device has limited memory, so total frames and duration are capped.
 
 import binascii
 import io
+from os import PathLike
 
-from PIL import GifImagePlugin
-from PIL import Image
+from PIL import GifImagePlugin, Image
 
 from pyidotmatrix.imaging import ResizeMode, palettize, resize_to_canvas
 from pyidotmatrix.protocol import bytes_
@@ -29,7 +29,7 @@ GIF_TYPE_DIY_ANIMATION = 13
 
 
 def adapt_gif(
-    file_path,
+    file_path: str | PathLike,
     canvas_size: int,
     resize_mode: ResizeMode = ResizeMode.FIT,
     do_palettize: bool = True,
@@ -56,7 +56,7 @@ def adapt_gif(
         except EOFError:
             pass
 
-        frames, duration_per_frame_ms = _limit_frames(source, frames, duration_per_frame_ms)
+        frames, frame_duration_ms = _limit_frames(source, frames, duration_per_frame_ms)
 
         buffer = io.BytesIO()
         frames[0].save(
@@ -66,7 +66,7 @@ def adapt_gif(
             optimize=True,  # required: disabling it breaks the transfer
             append_images=frames[1:],
             loop=0,
-            duration=duration_per_frame_ms,
+            duration=frame_duration_ms,
             disposal=2,
         )
         return buffer.getvalue()
@@ -110,13 +110,16 @@ def _convert_time_sign(key: int) -> int:
     return {1: 10, 2: 30, 3: 60, 4: 300}.get(key, 5)
 
 
-def _limit_frames(source: Image.Image, frames: list, duration_ms: int | None):
+def _limit_frames(
+    source: Image.Image, frames: list, duration_ms: int | None
+) -> tuple[list, float]:
     """Caps frame count and total duration to what the device can handle."""
-    if duration_ms is None:
-        duration_ms = _frame_duration(source, len(frames))
+    # A caller-supplied duration is used as-is; otherwise derive one (which may
+    # be fractional -- see _frame_duration), hence the float-typed local.
+    duration: float = _frame_duration(source, len(frames)) if duration_ms is None else duration_ms
 
     if len(frames) <= 1:
-        return frames, duration_ms  # nothing to sample
+        return frames, duration  # nothing to sample
 
     # Hard cap: the device cannot handle more than MAX_FRAME_COUNT frames,
     # regardless of duration.
@@ -124,14 +127,14 @@ def _limit_frames(source: Image.Image, frames: list, duration_ms: int | None):
         frames = _sample_frames(frames, MAX_FRAME_COUNT - 2)  # -2: first/last always kept
 
     # Duration cap: drop intermediate frames so uploads stay fast.
-    if len(frames) * duration_ms > TOTAL_DURATION_LIMIT_MS:
-        keep = min(MAX_FRAME_COUNT - 2, int(TOTAL_DURATION_LIMIT_MS / duration_ms) - 2)
+    if len(frames) * duration > TOTAL_DURATION_LIMIT_MS:
+        keep = min(MAX_FRAME_COUNT - 2, int(TOTAL_DURATION_LIMIT_MS / duration) - 2)
         if keep < len(frames):
             frames = _sample_frames(frames, keep)
-    return frames, duration_ms
+    return frames, duration
 
 
-def _frame_duration(source: Image.Image, frame_count: int) -> int | float:
+def _frame_duration(source: Image.Image, frame_count: int) -> float:
     """Chooses a per-frame duration from the GIF, or computes a sane one."""
     duration = source.info.get("duration", DEFAULT_FRAME_DURATION_MS)
     if not isinstance(duration, int) or duration <= 0:

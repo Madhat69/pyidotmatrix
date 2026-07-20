@@ -5,7 +5,6 @@ bytes, each chunk gets a 9-byte header (length, continuation flag, total size),
 and each header+chunk is split into BLE packets. Pure functions, no I/O.
 """
 
-from typing import Optional
 
 from pyidotmatrix.protocol import bytes_
 
@@ -39,7 +38,7 @@ DIY_MODE_DISABLE = QUIT_NOSAVE_KEEP_PREV
 _DIY_HEADER_SIZE = 9
 
 
-def build_set_diy_mode(enable: bool = True, mode: Optional[int] = None) -> bytearray:
+def build_set_diy_mode(enable: bool = True, mode: int | None = None) -> bytearray:
     """Command that enters or leaves DIY draw mode. Send before the first frame.
 
     `enable` selects between the two originally-supported modes (ENTER_CLEAR_CUR_SHOW

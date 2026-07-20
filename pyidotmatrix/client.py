@@ -12,7 +12,11 @@ the device's flow-control signal, so no inter-command sleeps are needed.
 import asyncio
 from collections.abc import Callable
 from datetime import datetime
-from typing import Optional
+from os import PathLike
+from types import TracebackType
+from typing import Any
+
+from PIL import Image
 
 from pyidotmatrix.display.ble_display import BleDisplay
 from pyidotmatrix.exceptions import CommandRejectedError, UploadError
@@ -22,8 +26,8 @@ from pyidotmatrix.protocol import (
     clock,
     common,
     countdown,
-    effect,
     eco,
+    effect,
     fullscreen_color,
     gif,
     graffiti,
@@ -88,7 +92,7 @@ async def _send_chunked_upload(
     """
     acks: asyncio.Queue = asyncio.Queue()
 
-    def _on_ack(ack) -> None:
+    def _on_ack(ack: DeviceAck | StatusAck) -> None:
         if isinstance(ack, StatusAck) and ack.command_type == ack_type and ack.command_subtype == ack_subtype:
             acks.put_nowait(ack)
 
@@ -99,7 +103,7 @@ async def _send_chunked_upload(
             await transport.write_packets([chunk], response=True)
             try:
                 ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError as ex:
+            except TimeoutError as ex:
                 raise UploadError(
                     f"{label} upload: no ack within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
                     f"chunk {index + 1}/{len(chunks)}"
@@ -135,7 +139,7 @@ class _Feature:
     def __init__(self, transport: BleTransport):
         self._transport = transport
 
-    async def _send(self, data: bytearray, verify: Optional[bool] = None) -> None:
+    async def _send(self, data: bytearray, verify: bool | None = None) -> None:
         """Sends one flat command. By default awaits the device's fa03 ack and
         raises CommandRejectedError if the device nacks it.
 
@@ -258,8 +262,33 @@ class GraffitiFeature(_Feature):
 
 
 class EffectFeature(_Feature):
-    async def show(self, style: int, colors: list[Color]) -> None:
-        await self._send(effect.build_show(style, colors))
+    """Built-in multi-color lighting effects (7 styles, 2..7 colors)."""
+
+    async def show(self, style: int, colors: list[Color], speed: int = effect.SPEED_DEFAULT) -> None:
+        """Activates an effect as a single flat command.
+
+        speed is the real per-effect speed byte from the vendor app
+        (docs/reverse-engineering/APK_SECOND_PASS.md Q5(a)); the default 90 is
+        the historical hardcoded value this SDK has always sent. ⚠ speed
+        values other than 90 are SOURCE-DERIVED, unverified on hardware.
+        """
+        await self._send(effect.build_show(style, colors, speed))
+
+    async def show_chunked(
+        self,
+        style: int,
+        colors: list[Color],
+        speed: int = effect.SPEED_DEFAULT,
+        mtu_negotiated: bool = True,
+    ) -> None:
+        """Activates an effect using the vendor app's own chunked framing.
+
+        ⚠ SOURCE-DERIVED, unverified on hardware -- see
+        protocol.effect.build_show_packets. show() is the hardware-proven path
+        on 32x32; this exists for firmware that may expect the app's bespoke
+        [chunkLen+1, chunkIndex]-framed transmission.
+        """
+        await self._send_packets([effect.build_show_packets(style, colors, speed, mtu_negotiated)])
 
 
 class MusicSyncFeature(_Feature):
@@ -284,7 +313,7 @@ class TextFeature(_Feature):
     their own per-size ports.
     """
 
-    def __init__(self, transport: BleTransport, screen_size: Optional[ScreenSize] = None):
+    def __init__(self, transport: BleTransport, screen_size: ScreenSize | None = None):
         super().__init__(transport)
         self._screen_size = screen_size
 
@@ -297,7 +326,7 @@ class TextFeature(_Feature):
         speed: int = 95,
         color_mode: int = text.COLOR_WHITE,
         color: Color = (255, 255, 255),
-        bg_color: Optional[Color] = None,
+        bg_color: Color | None = None,
     ) -> None:
         if self._screen_size == ScreenSize.SIZE_32x32:
             packets = text.build_text_packet_32x32(
@@ -319,11 +348,11 @@ class GifFeature(_Feature):
 
     async def upload_file(
         self,
-        file_path,
+        file_path: str | PathLike,
         resize_mode: ResizeMode = ResizeMode.FIT,
         do_palettize: bool = True,
         background_color: Color = (0, 0, 0),
-        duration_per_frame_ms: Optional[int] = None,
+        duration_per_frame_ms: int | None = None,
     ) -> None:
         gif_data = gif.adapt_gif(
             file_path, self._canvas_size, resize_mode, do_palettize, background_color, duration_per_frame_ms
@@ -508,8 +537,8 @@ class IDotMatrixClient:
     def __init__(
         self,
         screen_size: ScreenSize,
-        mac_address: Optional[str] = None,
-        transport: Optional[BleTransport] = None,
+        mac_address: str | None = None,
+        transport: BleTransport | None = None,
         verify_commands: bool = True,
     ):
         self._transport = transport or BleTransport(mac_address)
@@ -556,7 +585,7 @@ class IDotMatrixClient:
         cls,
         device: "DeviceInfo | str",
         screen_size: ScreenSize,
-        **kwargs,
+        **kwargs: Any,
     ) -> "IDotMatrixClient":
         """Constructs a client for a DeviceInfo (from discover()) or a MAC string.
 
@@ -571,7 +600,12 @@ class IDotMatrixClient:
         await self.connect()
         return self
 
-    async def __aexit__(self, exc_type, exc, traceback) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         await self.disconnect()
 
     @property
@@ -594,13 +628,13 @@ class IDotMatrixClient:
 
     def add_listener(
         self,
-        on_connected: Optional[ConnectionCallback] = None,
-        on_disconnected: Optional[ConnectionCallback] = None,
+        on_connected: ConnectionCallback | None = None,
+        on_disconnected: ConnectionCallback | None = None,
     ) -> Callable[[], None]:
         """Registers async connection-state callbacks. Returns an unsubscribe callable."""
         return self._transport.add_listener(on_connected, on_disconnected)
 
-    def add_response_listener(self, callback: Callable[[DeviceAck], None]) -> Callable[[], None]:
+    def add_response_listener(self, callback: Callable[[DeviceAck | StatusAck], None]) -> Callable[[], None]:
         """Registers a callback for device acks. Returns an unsubscribe callable."""
         return self._transport.add_response_listener(callback)
 
@@ -612,7 +646,7 @@ class IDotMatrixClient:
         """A read-only view of the connection state (for observability)."""
         return self._transport.snapshot()
 
-    async def await_device_ack(self, command: bytearray, timeout: float = 2.0) -> Optional[DeviceAck]:
+    async def await_device_ack(self, command: bytearray, timeout: float = 2.0) -> DeviceAck | None:
         """Sends a command and returns the device's ack, or None on timeout.
 
         Command bytes come from the protocol builders, e.g.
@@ -622,7 +656,7 @@ class IDotMatrixClient:
 
     async def show_image(
         self,
-        image,
+        image: Image.Image | str | PathLike,
         resize_mode: ResizeMode = ResizeMode.FIT,
         background_color: Color = (0, 0, 0),
         do_palettize: bool = False,

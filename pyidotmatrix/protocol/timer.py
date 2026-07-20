@@ -92,7 +92,7 @@ class Timer:
     content_type: int
     buzzer_enable: bool
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not (0 <= self.num <= 9):
             raise ValueError(f"timer slot (num) must be 0..9, got {self.num}")
         validate_byte(self.week, "week")

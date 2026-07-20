@@ -19,7 +19,6 @@ modes unchanged; only the embedder's policy moved.
 """
 
 import logging
-from typing import Optional
 
 from pyidotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
 from pyidotmatrix.protocol import common, graffiti, image
@@ -80,8 +79,8 @@ class BleDisplay:
 
     def add_listener(
         self,
-        on_connected: Optional[ConnectionCallback] = None,
-        on_disconnected: Optional[ConnectionCallback] = None,
+        on_connected: ConnectionCallback | None = None,
+        on_disconnected: ConnectionCallback | None = None,
     ) -> None:
         self._transport.add_listener(on_connected, on_disconnected)
 

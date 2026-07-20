@@ -6,19 +6,18 @@ snapshot can't be mutated by the consumer.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class TransportSnapshot:
     """A point-in-time view of one transport's connection."""
 
-    address: Optional[str]
+    address: str | None
     is_connected: bool
-    write_size: Optional[int]         # negotiated no-response write size; None until first write
+    write_size: int | None         # negotiated no-response write size; None until first write
     reconnect_count: int              # successful reconnects since creation
-    last_failure: Optional[str]       # human-readable, most recent
-    last_failure_at: Optional[float]  # unix time of last_failure
+    last_failure: str | None       # human-readable, most recent
+    last_failure_at: float | None  # unix time of last_failure
 
 
 class TransportEventKind(Enum):
@@ -31,4 +30,4 @@ class TransportEventKind(Enum):
 @dataclass(frozen=True)
 class TransportEvent:
     kind: TransportEventKind
-    detail: Optional[str] = None
+    detail: str | None = None
