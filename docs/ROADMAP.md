@@ -775,15 +775,18 @@ CHANGELOG · release process doc · announcement (the RE notes are the marketing
 
 ---
 
-## 18. Open questions (maintainer decisions needed)
+## 18. Open questions — ALL DECIDED (maintainer sign-off 2026-07-20)
 
-1. Final sign-off on **GPL-3.0-or-later** (§13) — closes the MIT question.
-2. Final name pick: **`pyidotmatrix`** recommended (§14).
-3. GitHub org/repo home for the extraction.
-4. Hardware access plan for verification milestones: currently one 32×32 panel;
-   16×16/64×64 coverage will come from community probes — acceptable?
-5. Should GlanceOS pin the SDK version immediately after extraction (recommended:
-   yes, `>=0.x,<0.y` until 1.0)?
+1. **License: GPL-3.0-or-later — FINAL** (closes the MIT question, per §13's
+   provenance basis).
+2. **Name: `pyidotmatrix`** — distribution and import namespace both
+   (collision with the incumbent verified impossible to avoid otherwise, §14).
+3. **Repo home: `github.com/Madhat69/pyidotmatrix`.**
+4. **Hardware verification: community probes cover 16×16/64×64** — accepted;
+   the capability table + probe checklist are the contribution mechanism.
+5. **GlanceOS pins the SDK version** once the package is published
+   (`>=0.x,<0.y` until 1.0). Until then the monorepo copy remains GlanceOS's
+   source of truth and changes are synced to the standalone repo manually.
 
 ---
 

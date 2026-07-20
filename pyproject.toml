@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-# Repo home TBD (ROADMAP §18); placeholder until extraction.
-Homepage = "https://github.com/Madhat69"
+# Decided 2026-07-20 (ROADMAP §18).
+Homepage = "https://github.com/Madhat69/pyidotmatrix"
 
 [project.optional-dependencies]
 test = [
