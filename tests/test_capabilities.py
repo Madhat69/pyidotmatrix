@@ -70,9 +70,13 @@ def test_lookup_and_unknown_name():
 def test_spot_checks_match_the_evidence_record():
     assert capability("common.set_screen_timeout").status is CapabilityStatus.KNOWN_BROKEN
     assert capability("common.verify_password").status is CapabilityStatus.SOURCE_DERIVED
-    assert capability("effect.show_chunked").status is CapabilityStatus.SOURCE_DERIVED
+    # 2026-07-21 sweep: chunked framing acked but inert on hardware.
+    assert capability("effect.show_chunked").status is CapabilityStatus.KNOWN_BROKEN
     assert capability("graffiti.mirror").status is CapabilityStatus.UNKNOWN
     assert capability("experimental.timer_set").status is CapabilityStatus.VERIFIED
+    # 2026-07-20/21 sweep: native modes and eco moved to VERIFIED.
+    assert capability("eco.set_mode").status is CapabilityStatus.VERIFIED
+    assert capability("common.freeze_screen").status is CapabilityStatus.KNOWN_BROKEN
 
 
 def test_table_is_read_only():

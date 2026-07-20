@@ -109,14 +109,17 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     # --- native modes ---
     Capability(
-        "chronograph", "set_mode", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setSecondChronograph (FEATURE_MATRIX.md Time-based); "
-        "ROADMAP.md section 3: source-confirmed, never hardware-A/B'd.",
+        "chronograph", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "Stopwatch counts up on panel; start-after-pause RESTARTS from zero rather than "
+        "resuming (probes/probe_chronograph_clean.py, 2026-07-21). Caveat: with a paused "
+        "countdown pending, chronograph commands acted on THAT state instead (sweep 2 "
+        "2026-07-20) -- the native timer modes share device-side state.",
     ),
     Capability(
-        "countdown", "set_mode", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setCountDown (FEATURE_MATRIX.md Time-based); "
-        "ROADMAP.md section 3: source-confirmed, runs autonomously on device.",
+        "countdown", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "30s countdown ran on panel, auto-returned to clock at zero; runs autonomously on "
+        "device (probes/probe_capability_sweep1.py, 2026-07-20). MODE_DISABLE left resumable "
+        "state rather than clearing (see chronograph caveat).",
     ),
     Capability(
         "clock", "show", CapabilityStatus.VERIFIED, _S32,
@@ -124,14 +127,13 @@ _ENTRIES: tuple[Capability, ...] = (
         "2026-07-17; 3-run clock probe 2026-07-19; ROADMAP.md section 3 Native modes).",
     ),
     Capability(
-        "scoreboard", "show", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setScoreboard (FEATURE_MATRIX.md Time-based); "
-        "ROADMAP.md section 3: source-confirmed only.",
+        "scoreboard", "show", CapabilityStatus.VERIFIED, _S32,
+        "12:34 rendered as two scores on panel (probes/probe_capability_sweep1.py, 2026-07-20).",
     ),
     Capability(
-        "eco", "set_mode", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setEco (FEATURE_MATRIX.md Device control); "
-        "ROADMAP.md section 3: source-confirmed only.",
+        "eco", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "With the eco window covering now and eco_brightness=5, the panel visibly dimmed; "
+        "disable restored brightness (probes/probe_capability_sweep3.py, 2026-07-21).",
     ),
     Capability(
         "color", "show", CapabilityStatus.VERIFIED, _S32,
@@ -165,27 +167,34 @@ _ENTRIES: tuple[Capability, ...] = (
         "MutilColorAgreement.java:42-72 (APK_SECOND_PASS.md Q5(a)).",
     ),
     Capability(
-        "effect", "speed", CapabilityStatus.SOURCE_DERIVED, None,
-        "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)); this SDK has "
-        "only ever sent 90 to hardware, so other values are source-derived.",
+        "effect", "speed", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)), and every "
+        "value is accepted -- but 1 vs 255 produced NO observable animation-rate difference on "
+        "styles 2 and 4 (probes/probe_effect_speed{,2}.py, 2026-07-21). Joins common.set_speed "
+        "in this firmware's ignored-speed-fields club.",
     ),
     Capability(
-        "effect", "show_chunked", CapabilityStatus.SOURCE_DERIVED, None,
+        "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
         "MutilColorAgreement.getSendData() bespoke [chunkLen+1, chunkIndex] 96/18-byte framing "
-        "(APK_SECOND_PASS.md Q5(a)); never sent to hardware by this SDK.",
+        "(APK_SECOND_PASS.md Q5(a)): both mtu variants ACKED but NO effect appeared on panel "
+        "(probes/probe_capability_sweep3.py, 2026-07-21). The flat show() is the working path.",
     ),
     Capability(
-        "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setMicType (FEATURE_MATRIX.md Audio/sensor); kept for parity, never "
-        "hardware-exercised (ROADMAP.md section 3 Native modes).",
+        "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "BleProtocolN.setMicType; acked on hardware 2026-07-21 with no visible change of its "
+        "own (probes/probe_capability_sweep3.py) -- effect unobservable in isolation.",
     ),
     Capability(
-        "music_sync", "send_image_rhythm", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.sendImageRhythm (FEATURE_MATRIX.md Audio/sensor); never hardware-exercised.",
+        "music_sync", "send_image_rhythm", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "BleProtocolN.sendImageRhythm promises a dancing figure; a 10-value stream was fully "
+        "acked but NO figure appeared, and the clock face stuttered during the stream "
+        "(probes/probe_capability_sweep3.py, 2026-07-21). Possibly needs a device-side music "
+        "mode this panel lacks.",
     ),
     Capability(
-        "music_sync", "stop_rhythm", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.sendStopMicRhythm (FEATURE_MATRIX.md Audio/sensor); never hardware-exercised.",
+        "music_sync", "stop_rhythm", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "BleProtocolN.sendStopMicRhythm; acked 2026-07-21, nothing to observe stopping since "
+        "send_image_rhythm never rendered (probes/probe_capability_sweep3.py).",
     ),
     # --- text ---
     Capability(
@@ -217,18 +226,21 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "common", "set_time", CapabilityStatus.VERIFIED, _S32,
-        "RTC sync; alarms armed against it fired at the intended wall-clock time 2026-07-12 "
-        "(ROADMAP.md section 3 Device and Alarms).",
+        "RTC sync; alarms armed against it fired at the intended wall-clock time 2026-07-12. "
+        "Stronger 2026-07-21: the RTC's WEEKDAY follows set_time too -- spoofing tomorrow's "
+        "date flipped a day-masked timer from firing to silent (probes/probe_timer_weekbit.py).",
     ),
     Capability(
-        "common", "set_screen_flipped", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setRotate180 (FEATURE_MATRIX.md); ROADMAP.md section 3: source-confirmed, "
-        "unverified on our panel.",
+        "common", "set_screen_flipped", CapabilityStatus.VERIFIED, _S32,
+        "Clock rendered upside down on True and righted on False "
+        "(probes/probe_capability_sweep2.py, 2026-07-20).",
     ),
     Capability(
-        "common", "freeze_screen", CapabilityStatus.SOURCE_DERIVED, None,
-        "Lab-ported, matches the app's overall pattern (FEATURE_MATRIX.md Device control); "
-        "ROADMAP.md section 3: source-confirmed only.",
+        "common", "freeze_screen", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "Acked but NO observable effect in three tests 2026-07-20/21: didn't stop a running "
+        "effect animation, didn't block graffiti draws from landing, no visual change on the "
+        "clock; sending it again toggled nothing (probes/probe_capability_sweep{1,2}.py). "
+        "Whatever setScreenFreeze controls, it is not visible on our panel.",
     ),
     Capability(
         "common", "set_speed", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -270,10 +282,10 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     # --- experimental ---
     Capability(
-        "experimental", "set_time_indicator", CapabilityStatus.SOURCE_DERIVED, None,
-        "BleProtocolN.setTimeIndicatorEnable, bytes still shipped by the current app "
-        "(FEATURE_MATRIX.md, findings section 2); original lab reported 'doesn't seem to work' "
-        "on some models; unverified on our panel.",
+        "experimental", "set_time_indicator", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "BleProtocolN.setTimeIndicatorEnable (FEATURE_MATRIX.md, findings section 2): acked on/"
+        "off with NOTHING visible on the clock face (probes/probe_capability_sweep3.py, "
+        "2026-07-21) -- matches the original lab's 'doesn't seem to work' report.",
     ),
     Capability(
         "experimental", "delete_device_data", CapabilityStatus.SOURCE_DERIVED, None,
@@ -297,8 +309,11 @@ _ENTRIES: tuple[Capability, ...] = (
         "Chunked handshake proven; GIF content fired animated with buzzer, and raw-RGB image "
         "content renders after the little-endian header fix (2026-07-12; ROADMAP.md section 3 "
         "Alarms; ALARM_BUZZER_APK_FINDINGS.md). Text content unmapped (textSolve offsets "
-        "untrustworthy in the decompile). Week bitmask: Sunday bit confirmed live, full day "
-        "mapping unverified.",
+        "untrustworthy in the decompile). Week bitmask VERIFIED 2026-07-21 via RTC spoofing "
+        "(probes/probe_timer_weekbit.py): bit(d+1) for weekday d (Monday=0), bit0=enable; "
+        "today-bit fired on the real day, went silent with the RTC spoofed to tomorrow, and "
+        "tomorrow's bit fired under the spoof -- fire -> silence -> fire, mask evaluated "
+        "against the device RTC weekday. Fire signature: buzzer first, content ~1-2s later.",
     ),
     Capability(
         "experimental", "schedule_set_theme", CapabilityStatus.VERIFIED, _S32,

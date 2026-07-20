@@ -796,6 +796,18 @@ chunked builders · full effects command · verify_password probe · week-bit +
 > no known factory-reset path. If you probe this on your own device, you
 > accept that risk; do not treat it as an ordinary M3 item.
 
+*Status 2026-07-21 — hardware verification sweep DONE (probes/probe_capability_
+sweep{1,2,3}.py, probe_timer_weekbit.py, probe_chronograph_clean.py, operator
+at the reference 32×32):* chronograph, countdown, scoreboard, eco,
+set_screen_flipped all VERIFIED; the **week bitmask day mapping is VERIFIED**
+via RTC spoofing (set_time controls the device's weekday — no waiting for real
+days). Newly KNOWN_BROKEN on this panel: freeze_screen, effect speed byte,
+effect chunked framing, time indicator, image rhythm — all acked, none with any
+observable effect (the ack-confirms-receipt-not-effect doctrine, again and
+again). *M3 remaining:* the verify_password probe (sequenced last, above),
+CONTENT_IMAGE's real format, and graffiti byte-4's full semantics beyond the
+confirmed two-back recolor.
+
 **SDK-M4 — Documentation**
 The §12 list, items 1–8. *Accept: a newcomer goes zero→image-on-panel from docs
 alone; every capability has a status tag.*
