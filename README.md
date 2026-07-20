@@ -1,5 +1,7 @@
 # pyidotmatrix
 
+[![CI](https://github.com/Madhat69/pyidotmatrix/actions/workflows/ci.yml/badge.svg)](https://github.com/Madhat69/pyidotmatrix/actions/workflows/ci.yml)
+
 Opinion-free, async-first Python SDK for iDotMatrix BLE pixel displays.
 Licensed GPL-3.0-or-later — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
@@ -15,6 +17,9 @@ This project has two equally important goals:
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full architecture review,
 capability inventory with evidence, and the path to 1.0.
+
+Reverse-engineering notes (APK decompile analysis behind the protocol
+findings above): [docs/reverse-engineering/](docs/reverse-engineering/).
 
 > **Why `pyidotmatrix` and not `idotmatrix`?** The `idotmatrix` name on PyPI
 > (and its import namespace) belongs to the incumbent library by derkalle4 —
@@ -149,8 +154,9 @@ live in `probes/` — human-run against a real panel, never in CI.
 
 Reverse engineering is a first-class contribution: hardware probe results,
 BLE packet captures, firmware/model comparisons, and protocol documentation
-are as valuable as code. Start with `probes/` and the reverse-engineering
-notes referenced throughout `docs/`.
+are as valuable as code. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to
+run the test suite, how to run hardware probes safely, and the ⚠→✅
+graduation process for experimental features.
 
 ## Credits
 
