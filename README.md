@@ -43,19 +43,30 @@ Requires Python 3.12–3.14. BLE via [bleak](https://github.com/hbldh/bleak)
 | Subsystem | Status |
 |---|---|
 | BLE transport (reconnect, acks, notifications) | ✅ hardware-proven |
-| Framebuffer (DIY full frames + entry/quit modes) | ✅ |
-| Graffiti (partial pixel updates) | ✅ |
+| Framebuffer (DIY full frames + entry/quit modes) | ✅ (device renders full frames at a hard ~1.75 fps; unacked/without-response writes honored) |
+| Graffiti (partial pixel updates + h/v mirror) | ✅ header fully mapped 2026-07-21 |
 | Images / GIF (adapt + native playback) | ✅ |
-| Native clock | ✅ |
-| Alarms (Timer slots, content + buzzer) | ✅ |
-| Text (device-rendered) | ⚠ broken on 32×32 — fix in progress |
-| Effects / color | ✅ (simplified vs vendor app) |
-| Countdown / stopwatch / scoreboard | ⚠ source-confirmed |
+| Native clock · countdown · stopwatch · scoreboard | ✅ |
+| Text (device-rendered, per-panel-size builders) | ✅ verified on 32×32 |
+| Alarms (Timer slots: GIF + PNG content, buzzer, week-day mask) | ✅ incl. week-bit mapping |
+| Eco (scheduled dim) · screen flip | ✅ |
+| Effects / color | ✅ activation; ⚠ the vendor app's speed dial works but its wire path is unmapped |
 | Weekly schedule | ⚠ partially verified |
-| Music sync / eco / experimental | ⚠/❓ |
+| Music sync | ✖ acked but no visible behavior on the reference panel |
+| freeze / set_speed / time indicator | ✖ acked, proven inert on the reference panel |
 
-✅ hardware-verified · ⚠ experimental (source-confirmed, not verified) ·
-❓ reverse engineering in progress. Full table with evidence: ROADMAP §3.
+✅ hardware-verified · ⚠ experimental / partially mapped · ✖ known-broken on
+the reference 32×32 (an ack confirms *receipt*, not *effect*). Every entry
+carries machine-readable evidence:
+
+```python
+from pyidotmatrix import capability
+capability("text.show").status        # CapabilityStatus.VERIFIED
+capability("common.set_speed").evidence  # cites the probe and date
+```
+
+Full table with evidence: [pyidotmatrix/capabilities.py](pyidotmatrix/capabilities.py)
+and ROADMAP §3.
 
 ## Layers
 
@@ -92,16 +103,19 @@ sim = SimulatorDisplay(ScreenSize.SIZE_32x32, on_frame=lambda buf: ...)  # no ha
 sharing one connection with `.display`.
 
 ```python
-from pyidotmatrix import IDotMatrixClient, ScreenSize
+from pyidotmatrix import IDotMatrixClient, ScreenSize, discover
 
-client = IDotMatrixClient(ScreenSize.SIZE_32x32)
-await client.connect()
-await client.countdown.start(25, 0)        # e.g. a Pomodoro (device runs it natively)
-await client.clock.show()
-await client.text.show("HELLO", font_path=...)
-await client.gif.upload_file("anim.gif")
-await client.display.show_frame(rgb_bytes) # rendered frames, same connection
+devices = await discover()                     # [DeviceInfo(name='IDM-...', address=..., rssi=...)]
+async with IDotMatrixClient.connect_to(devices[0], ScreenSize.SIZE_32x32) as client:
+    await client.countdown.start(25, 0)        # e.g. a Pomodoro (device runs it natively)
+    await client.clock.show()
+    await client.text.show("HELLO", font_path=...)
+    await client.gif.upload_file("anim.gif")
+    await client.display.show_frame(rgb_bytes) # rendered frames, same connection
 ```
+
+Commands are verified by default: a device rejection raises
+`CommandRejectedError` (opt out with `verify_commands=False`).
 
 Feature namespaces: `chronograph`, `countdown`, `clock`, `scoreboard`, `eco`,
 `color`, `graffiti`, `effect`, `music_sync`, `text`, `gif`, `common`, plus `display`.
@@ -116,7 +130,7 @@ Observe them passively, or await one for a specific command:
 unsubscribe = client.add_response_listener(lambda ack: print(ack.command_type, ack.accepted))
 
 # active (opt-in): send a command and wait for its ack, or None on timeout
-from idotmatrix.protocol import common
+from pyidotmatrix.protocol import common
 ack = await client.await_device_ack(common.build_set_brightness(60))
 ```
 
