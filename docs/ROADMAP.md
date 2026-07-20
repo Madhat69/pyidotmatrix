@@ -58,7 +58,7 @@ conventions above):
 | Images (adapt + show) | ✅ | SDK-side pipeline solid; no dithering/gamma yet (§6) |
 | GIF (upload + native playback) | ✅ | chunked handshake proven; 64-frame/2 s SDK-side caps |
 | Clock (native) | ✅ | 8 styles; ticks on RTC through disconnects; never flash-persists |
-| Text (native) | ⚠ **broken on 32×32** | generic packet nacked; needs per-size `sendTextTo3232` port |
+| Text (native) | ⚠ **rendering unverified** | REVISED 2026-07-20: the “NACK” was a driver-side ack misparse (StatusAck SAVED read as reject — fixed); `sendTextTo3232` ported; visual render check pending |
 | Effects / color | ✅ *(simplified)* | works; APK has a richer command (real speed/saturation) unported |
 | Countdown / stopwatch / scoreboard | ⚠ | source-confirmed, not yet hardware-verified |
 | Alarm (Timer slots) | ✅ | chunked upload + GIF/image content + buzzer proven live |
@@ -315,7 +315,7 @@ Status tags per §"Evidence conventions". Evidence: probe scripts live in
 ### Text
 | Capability | Status | Notes |
 |---|---|---|
-| Device-rendered scrolling text (9 modes, 6 color modes) | ⚠ **broken on 32×32** | device nacks `type=3 sub=0` for all modes (probe 2026-07-19). Our packet is the *generic* variant; APK uses per-size `sendTextTo832/1616/3232/1664/6464`. Fix = port `sendTextTo3232`. **SDK-blocker for the text feature.** |
+| Device-rendered scrolling text (9 modes, 6 color modes) | ⚠ **rendering unverified** | REVISED 2026-07-20: the 2026-07-19 “NACK” was our parser misreading StatusAck SAVED (3) as a boolean reject — the device SAVES text uploads from BOTH builder variants (A/B captured). Parser fixed; `sendTextTo3232` ported (sole wire diff: one row-family metadata byte). Whether saved text *renders* is the open question — visual probe pending (cf. Timer CONTENT_IMAGE: saved long before it rendered). |
 | Font rendering (host-side rasterization) | ✅ *(code path)* | 16×32 1-bit cells, caller-supplied TTF; no AA, fixed cell width |
 | Preset phrase slots (`PhraseAgreement`) | ❓ | app feature; wire format unmapped |
 
