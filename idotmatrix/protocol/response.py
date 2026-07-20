@@ -58,11 +58,21 @@ _RESPONSE_LENGTH = 5
 _STATUS_ACCEPTED = 0x01
 
 # (command_type, command_subtype) pairs that get the 3-way StatusAck treatment
-# instead of DeviceAck's boolean accept/reject. Both confirmed on hardware
+# instead of DeviceAck's boolean accept/reject. Confirmed on hardware
 # 2026-07-12: Timer's sendData/sendCloseData (0x00, 0x80) and Schedule's
 # per-theme upload (0x05, 0x80). Schedule's master switch (0x07, 0x80) is NOT
 # in this set -- see module docstring.
-_STATUS_ACK_KEYS = frozenset({(0x00, 0x80), (0x05, 0x80)})
+#
+# (0x03, 0x00) -- TEXT upload -- added 2026-07-20 after the same misparse bit a
+# third time: a real 32x32 panel replies [5,0,3,0,3] (status=3 SAVED) to BOTH
+# text builder variants (generic and sendTextTo3232; A/B captured live), which
+# DeviceAck read as accepted=False and logged as "device rejected command
+# type=3 subtype=0". That spurious rejection led to a wrong "text is broken on
+# 32x32" diagnosis on 2026-07-19. The device never rejected the upload -- it
+# SAVED it. Whether saved text then RENDERS is a separate question (visual
+# check pending; cf. Timer CONTENT_IMAGE, which also SAVED long before it
+# rendered correctly).
+_STATUS_ACK_KEYS = frozenset({(0x00, 0x80), (0x05, 0x80), (0x03, 0x00)})
 
 # Status-ack family's 3-way status vocabulary (distinct from DeviceAck's plain
 # accept/reject), hardware-confirmed for both member families.
