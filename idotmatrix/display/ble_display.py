@@ -107,6 +107,24 @@ class BleDisplay:
         """
         self._entry_clear = clear
 
+    def invalidate_diy_mode(self) -> None:
+        """Marks DIY mode as no-longer-active so the next show_frame re-enters.
+
+        For embedders whose OTHER commands on the shared transport took the
+        panel out of DIY without a disconnect -- native text/clock/effect
+        modes. This object cannot see those commands (they go through feature
+        namespaces, not this display), so the embedder must tell it.
+
+        HARDWARE EVIDENCE (2026-07-20, 32x32): after a native-text takeover
+        ended, the daemon's reclaim frame was silently swallowed -- this flag
+        still said "in DIY" so no entry command was sent, and full frames into
+        text mode are dropped (graffiti deltas painted through; only a later
+        periodic keyframe healed the panel). Calling this before the reclaim
+        forces the mode-1 entry, which is hardware-proven to take from any
+        panel state.
+        """
+        self._diy_mode_enabled = False
+
     async def _ensure_diy_mode(self) -> None:
         if not self._diy_mode_enabled:
             mode = image.ENTER_CLEAR_CUR_SHOW if self._entry_clear else image.ENTER_NO_CLEAR_CUR_SHOW

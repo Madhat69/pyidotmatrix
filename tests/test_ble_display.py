@@ -91,3 +91,20 @@ async def test_set_pixels_rejects_off_screen_coordinate():
     display, _ = _display()
     with pytest.raises(ValueError):
         await display.set_pixels((255, 0, 0), [(32, 0)])
+
+
+async def test_invalidate_diy_mode_forces_reentry_on_next_frame():
+    """A native takeover (text/clock/effect) exits DIY with NO disconnect, so
+    the embedder must invalidate to make the next frame re-enter (hardware
+    2026-07-20: without this, the reclaim frame after a text takeover was
+    silently swallowed -- flag said in-DIY, no entry sent, full frames into
+    text mode are dropped)."""
+    display, transport = _display()
+    await display.show_frame(bytes(32 * 32 * 3))
+    await display.show_frame(bytes(32 * 32 * 3))
+    assert len(transport.writes) == 1  # entered once, no re-entry while flagged in-DIY
+
+    display.invalidate_diy_mode()
+    await display.show_frame(bytes(32 * 32 * 3))
+    assert len(transport.writes) == 2  # re-entered
+    assert transport.writes[-1] == (bytes(image.build_set_diy_mode(mode=image.ENTER_CLEAR_CUR_SHOW)), True)
