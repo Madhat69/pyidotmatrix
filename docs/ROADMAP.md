@@ -20,6 +20,74 @@ research doc, or a dated hardware session.
 
 ---
 
+## Mission
+
+This project has **two equally important goals**:
+
+1. **Provide the definitive Python SDK for iDotMatrix BLE displays** — a clean,
+   typed, async-first API that makes controlling a panel feel like controlling
+   a device, not constructing packets.
+2. **Become the reference implementation and documentation of the device
+   protocol** — every verified reverse-engineering discovery lands here, every
+   unverified one is clearly marked, and the repository is the authoritative
+   record of how this hardware actually behaves.
+
+Protocol research is as valuable a contribution as code. A probe log that
+proves what a mystery byte does advances the mission exactly as much as a new
+feature.
+
+**Core design principle — protocol correctness takes precedence over
+convenience.** The SDK faithfully exposes and documents device behaviour, even
+when the firmware behaves unexpectedly. It does not hide, normalize, or
+silently compensate for protocol quirks without documenting them: an ack that
+lies is documented as an ack that lies.
+
+---
+
+## Protocol maturity at a glance
+
+One-line status per subsystem (details and evidence in §3; tags per the
+conventions above):
+
+| Subsystem | Maturity | One-liner |
+|---|---|---|
+| BLE transport | ✅ | connect/reconnect/acks/notifications; WinRT stale-session self-heal; hardware-proven under soak |
+| Protocol builders | ✅ | byte-exact, tested; a handful of unexplained magic bytes remain (§5) |
+| Framebuffer (DIY) | ✅ | full-frame + entry/quit modes hardware-mapped, incl. mode-3 failure quirk |
+| Graffiti (partial updates) | ✅ | delta path proven; "mirror" byte is a documented firmware quirk |
+| Images (adapt + show) | ✅ | SDK-side pipeline solid; no dithering/gamma yet (§6) |
+| GIF (upload + native playback) | ✅ | chunked handshake proven; 64-frame/2 s SDK-side caps |
+| Clock (native) | ✅ | 8 styles; ticks on RTC through disconnects; never flash-persists |
+| Text (native) | ⚠ **broken on 32×32** | generic packet nacked; needs per-size `sendTextTo3232` port |
+| Effects / color | ✅ *(simplified)* | works; APK has a richer command (real speed/saturation) unported |
+| Countdown / stopwatch / scoreboard | ⚠ | source-confirmed, not yet hardware-verified |
+| Alarm (Timer slots) | ✅ | chunked upload + GIF/image content + buzzer proven live |
+| Weekly schedule | ⚠ | upload + firing proven; week-bit mapping and PNG content unverified |
+| Music sync | ⚠ | kept for parity; app itself doesn't use it |
+| Eco / device settings | ⚠ | source-confirmed; screen-timeout family dead on 32×32 |
+| Experimental namespace | ❓/⚠ | verify_password, time-indicator, delete-device-data (destructive) |
+| Simulator | ✅ *(partial fidelity)* | framebuffer semantics faithful; no ack/DIY-mode modeling yet (§7) |
+
+---
+
+## Contributor philosophy
+
+**Reverse engineering is a first-class contribution.** The following are as
+valuable as production code, and the contribution docs will say so explicitly:
+
+- hardware probes (and their logs — negative results count)
+- BLE packet captures of the vendor app
+- firmware/model behaviour comparisons (16×16 / 32×32 / 64×64)
+- APK analysis of new app releases
+- protocol documentation and corrections
+- behaviour verification of ⚠-tagged features on real panels
+
+The capability table (§8) is community-maintained by construction: a
+contributor with a panel we don't have moves features from ⚠ to ✅ without
+writing a line of SDK code.
+
+---
+
 ## 1. Executive summary
 
 **Strengths (keep these):**
@@ -43,12 +111,12 @@ research doc, or a dated hardware session.
   PyPI package `idotmatrix` (derkalle4). The one moment to fix this is now (§14).
 - The device can **reject a command while the SDK reports success** — acks are
   parsed but rejection is not surfaced as an error at the API layer. The text
-  feature shipped broken on 32×32 precisely because of this (§4, §6).
+  feature shipped broken on 32×32 precisely because of this (§4, §16).
 - Repo hygiene for a public debut: no CI, no lint/type config, no examples/,
   no CONTRIBUTING/CHANGELOG, committed build artifacts, README that references
   the monorepo.
 - Four near-identical chunked-upload header builders; simulator can't exercise
-  the upload handshake at all (§6, §8).
+  the upload handshake at all (§5, §7).
 
 ---
 
@@ -172,6 +240,38 @@ failure in the first integration test instead of on a user's panel.
 Everything else (drawing helpers, capability flags, CLI) is post-1.0 and must
 not block release. Back-compat: since no public users exist yet, aliases from
 old names are unnecessary — one clean break now, then stability (§15).
+
+### 2.4 Why this shape — alternatives considered
+
+The namespace-façade design was weighed against the common alternatives:
+
+- **Flat client methods** (`client.set_brightness()`, `client.show_gif()`,
+  `client.arm_alarm()`, … ~60 methods on one class): discoverable only until it
+  isn't — autocomplete becomes a wall, related parameters drift apart, and
+  every new protocol discovery bloats the same class. Namespaces give
+  autocomplete a two-level shape (`client.<subsystem>.<verb>`) that matches how
+  users think ("I want to do something with *text*") and lets ⚠ features live
+  visibly quarantined in `.experimental` rather than interleaved with stable
+  ones. Scalability matters here: §9's missing-capability list *will* land
+  eventually, and a flat class would absorb it badly.
+- **Command-object APIs** (`client.send(SetBrightness(60))`): maximally
+  protocol-faithful and great for middleware, but hostile to discovery (you
+  must know the command class exists), verbose for the 90% case, and it
+  exports the packet vocabulary as public API — freezing internal protocol
+  naming into the compatibility contract. We keep command objects *internal*
+  (builders) and expose verbs.
+- **Protocol-centric APIs** (thin wrappers named after APK internals:
+  `client.mutil_color(...)`, `client.diy_fun(mode=3)`): perfect fidelity,
+  terrible ergonomics — the vendor's obfuscated naming becomes our UX. The
+  layered design already preserves fidelity where it belongs (protocol modules
+  keep protocol names, byte-exact tests pin them); the façade translates to
+  human vocabulary exactly once.
+
+The namespace façade is therefore not a style preference: it is the only shape
+of the three that simultaneously (a) survives protocol growth without API
+churn, (b) keeps experimental surface visibly separated (a safety property on
+hardware that acks lies), and (c) lets protocol naming stay protocol-accurate
+underneath a stable human-facing vocabulary.
 
 ---
 
@@ -350,10 +450,35 @@ scoreboard digits, GIF playback/looping, text animation modes + coloring
 **Protocol constraints:** raw RGB888 frames (no alpha on the wire), graffiti
 color-per-command batching, GIF as a genuine encoded GIF bytestream.
 
-**Gaps worth roadmapping:** optional dithering for photos; LANCZOS for GIF
-frames; brightness/gamma compensation for LED response (design-tool colors do
-not match panel output — measured on hardware); a documented "pixel-art path"
-(NEAREST + no palette loss) vs "photo path" (LANCZOS + dither).
+**Future host-side rendering investigations** — none of these exist today;
+all would be SDK-side (Pillow/NumPy) work sitting strictly *above* the protocol
+layer, which stays raw-RGB888-in-bytes-out regardless:
+
+- **Anti-aliasing**: for text, requires moving off the 1-bit device-text path
+  (firmware colorizes a binary mask — AA is structurally impossible there) to
+  SDK-rasterized text pushed as frames; for shapes, straightforward once a
+  drawing helper exists.
+- **Dithering**: optional Floyd–Steinberg (or ordered) when palettizing photos
+  — today `dither=NONE` is hardcoded; pixel art must keep it off.
+- **Gamma correction**: LEDs are not sRGB; a configurable gamma LUT before
+  upload.
+- **LED color calibration**: measured on hardware that design-tool colors shift
+  visibly (e.g. a mid-green renders cyan on the reference 32×32 panel). A
+  per-panel calibration profile (even a simple 3×1D channel LUT) is the fix;
+  needs a calibration probe methodology first — ❓ research, not implementation.
+- **High-quality text rasterization**: SDK-side text-to-frame rendering
+  (any font, AA, kerning, per-glyph color) as a *complement* to native device
+  text, not a replacement — native text animates device-side and survives
+  host sleep; SDK text is one static frame unless the host animates it.
+- **Interpolation improvements**: LANCZOS for photographic GIF frames
+  (currently NEAREST unconditionally); per-content-type filter choice.
+- **Rendering profiles**: a named `pixel_art` profile (NEAREST, no dither, no
+  gamma) vs `photo` profile (LANCZOS, dither, gamma/calibration) so callers
+  choose intent once instead of five knobs.
+
+These are investigation items, not commitments; each graduates through the
+normal ⚠→✅ process with visual verification on hardware (a preview PNG is not
+proof — the panel is).
 
 ---
 
@@ -495,15 +620,24 @@ Priority order (first four are release-gating):
 
 ## 13. License & attribution ruling
 
-**Ruling: GPL-3.0-or-later. The MIT/Apache preference is not cleanly available.**
+**Recommendation: GPL-3.0-or-later — the appropriate license given the
+currently documented lineage.**
 
-Chain of evidence: our protocol builders are documented in-source as "ported
-verbatim" from lab code whose byte layouts came from studying 8none1's work and
-the derkalle4 lineage; derkalle4's `idotmatrix` library is **GPLv3** (PyPI
+Basis: our protocol builders are documented in-source as "ported verbatim"
+from lab code whose byte layouts came from studying 8none1's work and the
+derkalle4 lineage; derkalle4's `idotmatrix` library is **GPLv3** (PyPI
 metadata, checked 2026-07-20); pyproject already declares `GPL-3.0-or-later`.
-A permissive relicense would require a per-module clean-room provenance audit
-that the "verbatim" attributions already contradict. Protocol *facts* aren't
-copyrightable, but code *expression* lineage is — and the honest reading is GPL.
+With that provenance on record, GPL is the honest and defensible choice for
+this release — a permissive license would require provenance work that hasn't
+been done. Protocol *facts* aren't copyrightable, but code *expression*
+lineage matters, and the current documentation points to GPL.
+
+This is a recommendation grounded in today's documented provenance, not an
+immutable conclusion: a future clean-room reimplementation of the derived
+expression (built strictly from the protocol documentation this repo
+maintains) could in principle support a permissive license. That effort is
+explicitly out of scope for this project's roadmap — noted only so the door
+is documented, not welded shut.
 
 Actions: LICENSE file (GPL-3.0-or-later) in-repo; README credits section naming
 the full chain (8none1 → derkalle4/python3-idotmatrix-client → markusressel/
@@ -514,14 +648,18 @@ missing lineage names (currently only 8none1 is credited anywhere).
 
 ## 14. Naming recommendation
 
-PyPI reality (checked 2026-07-20): `idotmatrix` **taken** (derkalle4, GPLv3,
+PyPI reality (verified 2026-07-20): `idotmatrix` **taken** (derkalle4, GPLv3,
 v0.0.9 Apr 2025 — the incumbent users find first); `idotmatrix-sdk` **taken**
 (unrelated, v0.1); `pyidotmatrix` **available**; `idotmatrix-ble` **available**.
 
-The sharper problem is the **import name**: we also `import idotmatrix`, which
-collides with the incumbent package on any machine that installs both. Shipping
-that collision permanently forecloses coexistence — and coexistence is likely
-(Home Assistant users often have the incumbent installed).
+The sharper problem is the **import namespace**, and it is confirmed, not
+assumed: the incumbent's own README imports `from idotmatrix import
+ConnectionManager`, and its repo's package directory is `idotmatrix/`
+(verified against the project source, 2026-07-20) — the same top-level package
+name we use. Two distributions installing the same top-level package into
+site-packages overwrite each other's files: **coexistence is genuinely
+impossible**, not merely confusing. And coexistence will be demanded — Home
+Assistant users often have the incumbent installed.
 
 **Recommendation:** distribution **`pyidotmatrix`**, import **`pyidotmatrix`**.
 One name everywhere, zero collision, discoverable (search "python idotmatrix"
@@ -550,6 +688,27 @@ land before first publish (§2.3).
   changes, never API breaks.
 
 ---
+
+## Engineering & performance goals (long-term)
+
+Goals, not implementation requirements — they steer design reviews, they don't
+gate releases:
+
+- **Minimal allocations on the hot path**: frame/delta packet construction
+  should reuse buffers where practical; a 1 fps clock should not churn the GC.
+- **Predictable memory usage**: bounded queues (the latest-wins mailbox
+  pattern), no unbounded frame backlogs — the device drains at ~0.67 fps and
+  the SDK must never buffer what the device can't consume.
+- **Async-friendly by construction**: no blocking I/O or sleeps inside the
+  event loop; anything that waits, awaits.
+- **Efficient framebuffer uploads**: exploit the measured cost model
+  (full frame ≈ 1.5 s acked; graffiti pixel ≈ 20 ms) — helpers should make the
+  cheap path (deltas) the natural path.
+- **Sustained animation support**: a consumer should be able to run GIF-rate
+  or delta-driven animation indefinitely without drift, leaks, or device-side
+  queue collapse (soak-test evidence: 24 h+ at ~1 fps, flat memory).
+- **Minimal transport overhead**: respect negotiated MTU, chunk exactly once,
+  never re-encode payloads that are already wire-shaped.
 
 ## 16. Independent review — findings not covered above (Addendum 8)
 
@@ -625,6 +784,31 @@ CHANGELOG · release process doc · announcement (the RE notes are the marketing
    16×16/64×64 coverage will come from community probes — acceptable?
 5. Should GlanceOS pin the SDK version immediately after extraction (recommended:
    yes, `>=0.x,<0.y` until 1.0)?
+
+---
+
+## Long-term vision
+
+Success looks like this:
+
+- **The SDK developers naturally discover first** when they search for a
+  Python library for iDotMatrix displays — because the docs answer their
+  question in the first minute and the capability table tells them the truth
+  about their panel.
+- **The reference implementation of the protocol** — when someone asks "what
+  does byte 23 mean," the answer is a link into this repository.
+- **The authoritative source for hardware behaviour** — probe evidence, ack
+  semantics, persistence rules, and firmware quirks documented nowhere else,
+  maintained by a community that treats a good packet capture as a first-class
+  pull request.
+- **A stable public API over evolving protocol knowledge** — discoveries keep
+  landing (experimental → verified → stable) without ever breaking the code
+  that early adopters shipped.
+
+When a future project we cannot imagine yet — a game, an art installation, a
+factory dashboard — picks this SDK without hesitation and finds that the
+hardware does exactly what the documentation said it would, the mission is
+accomplished.
 
 ---
 
