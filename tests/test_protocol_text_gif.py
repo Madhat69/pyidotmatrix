@@ -4,8 +4,13 @@ Hashes were proven byte-identical to the lab implementation before pinning.
 """
 
 import hashlib
+import io
+import sys
 import zlib
 from pathlib import Path
+
+import pytest
+from PIL import Image
 
 from pyidotmatrix.imaging import ResizeMode
 from pyidotmatrix.protocol import gif, text
@@ -16,8 +21,9 @@ FONT = FIXTURES / "Rain-DRM3.otf"
 GIF = FIXTURES / "demo.gif"
 
 # Note: the GIF hash depends on Pillow's encoder, so it is pinned per Pillow
-# version. Byte-for-byte parity with the lab was proven at the algorithm level
-# (same code + same Pillow -> identical output).
+# version AND per platform (Windows -- see the skip in its test). Byte-for-byte
+# parity with the lab was proven at the algorithm level (same code + same
+# Pillow -> identical output).
 TEXT_HI_SHA256 = "5f4215fba06e657ca70d3d2831ce2021d2175244cd0906c5e559dbbc8e2e14b5"
 GIF_PACKETS_SHA256 = "c101b700bdab4d752b6cd064f1e778b902737ed1bd8e3a92ecfb62e353f53b12"
 
@@ -96,14 +102,41 @@ def test_text_32x32_char_count_is_len_text():
 
 
 def test_gif_packets_match_golden():
+    # Windows-only: Pillow's GIF encoder is not byte-stable across platform
+    # wheels of the same release (CI 2026-07-20: all ubuntu jobs produced one
+    # identical hash that differs from this Windows-made pin, so the variance
+    # is per-platform-deterministic encoder output, not flakiness). The
+    # cross-platform tripwires are the two tests below, which check what the
+    # hash was really guarding: adaptation constraints and packet framing.
+    if sys.platform != "win32":
+        pytest.skip("GIF encoder hash pinned on Windows; not byte-stable cross-platform")
     data = gif.adapt_gif(str(GIF), 32, ResizeMode.FIT, True, (0, 0, 0), None)
     packets = gif.build_packets(data, gif.GIF_TYPE_NO_TIME_SIGNATURE, 1)
     flat = b"".join(bytes(p) for chunk in packets for p in chunk)
     assert hashlib.sha256(flat).hexdigest() == GIF_PACKETS_SHA256
 
 
+def test_adapted_gif_decodes_within_device_limits():
+    data = gif.adapt_gif(str(GIF), 32, ResizeMode.FIT, True, (0, 0, 0), None)
+    with Image.open(io.BytesIO(data)) as img:
+        assert img.format == "GIF"
+        assert img.size == (32, 32)
+        assert 1 <= getattr(img, "n_frames", 1) <= gif.MAX_FRAME_COUNT
+
+
+def test_gif_build_packets_framing_golden_on_fixed_bytes():
+    # Pinned on synthetic bytes so it holds on every platform: chunk framing
+    # (headers, CRCs, BLE splitting) must not depend on which encoder build
+    # produced the payload.
+    data = bytes(range(256)) * 40  # 10240 bytes: multi-chunk
+    packets = gif.build_packets(data, gif.GIF_TYPE_NO_TIME_SIGNATURE, 1)
+    flat = b"".join(bytes(p) for chunk in packets for p in chunk)
+    assert hashlib.sha256(flat).hexdigest() == (
+        "3922650b8af50f963a9c4fbd72f2b8b31477ce27deaa4150ed31da74df2a0fcf"
+    )
+
+
 def test_gif_rejects_empty():
-    import pytest
     with pytest.raises(ValueError):
         gif.build_packets(b"")
 
