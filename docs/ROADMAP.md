@@ -813,8 +813,14 @@ and 2 = vertical mirror, confirmed by single-pixel discriminators. An earlier
 same-night "byte4=2 recolors two commands back" reading was falsified by that
 discriminator — symmetric probe layouts had made mirroring mimic recoloring
 3/3; the correction is recorded in the probes and capability table.
-`build_set_pixels` now pins byte 3 and exposes `move_type`. *M3 remaining:*
-the verify_password probe (sequenced last, above) and byte-4 values 3/4.
+`build_set_pixels` now pins byte 3 and exposes `move_type`. *Post-addendum
+finding:* the vendor app's effect-speed dial DOES change animation speed live
+on this panel, while our effect byte-5 and `set_speed` are both proven inert —
+real speed control rides an unmapped wire path (suspect: the bespoke chunked
+effect framing, whose sub-header budget the decompile leaves ambiguous; our
+port of it is device-ignored). **Next lab step: Android HCI snoop capture of
+the app's dial traffic.** *M3 remaining:* the effect-speed wire path (HCI
+snoop), byte-4 values 3/4, and the verify_password probe (sequenced last).
 
 **SDK-M4 — Documentation**
 The §12 list, items 1–8. *Accept: a newcomer goes zero→image-on-panel from docs

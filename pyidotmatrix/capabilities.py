@@ -246,9 +246,13 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "common", "set_speed", CapabilityStatus.KNOWN_BROKEN, _S32,
-        "Acked but had NO effect on live text -- the text packet's own speed byte governs "
-        "marquee smoothness instead (text A/B 2026-07-20, ROADMAP.md section 3 Text). Effect on "
-        "other modes untested.",
+        "Acked but NO effect in two contexts: live text (A/B 2026-07-20 -- the text packet's "
+        "own speed byte governs marquee smoothness) and a running effect (5/100/50 sweep "
+        "mid-animation, probes/probe_effect_set_speed.py, 2026-07-21). The vendor app's "
+        "effect-screen speed dial DOES change animation speed live (operator-confirmed, same "
+        "panel), so real speed control rides an unmapped wire path -- HCI-snoop the app "
+        "(ROADMAP M3 remaining). Calibration: our effect commands run at roughly the app "
+        "dial's 50-60%; the app's 100% is visibly faster than anything we can send.",
     ),
     Capability(
         "common", "set_joint", CapabilityStatus.UNKNOWN, None,
