@@ -14,9 +14,9 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Optional
 
-from idotmatrix.display.ble_display import BleDisplay
-from idotmatrix.imaging import ResizeMode, adapt_image
-from idotmatrix.protocol import (
+from pyidotmatrix.display.ble_display import BleDisplay
+from pyidotmatrix.imaging import ResizeMode, adapt_image
+from pyidotmatrix.protocol import (
     chronograph,
     clock,
     common,
@@ -32,10 +32,10 @@ from idotmatrix.protocol import (
     text,
     timer,
 )
-from idotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
-from idotmatrix.screen import ScreenSize
-from idotmatrix.transport.ble import BleTransport, ConnectionCallback
-from idotmatrix.transport.status import TransportEvent, TransportSnapshot
+from pyidotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
+from pyidotmatrix.screen import ScreenSize
+from pyidotmatrix.transport.ble import BleTransport, ConnectionCallback
+from pyidotmatrix.transport.status import TransportEvent, TransportSnapshot
 
 Color = tuple[int, int, int]
 

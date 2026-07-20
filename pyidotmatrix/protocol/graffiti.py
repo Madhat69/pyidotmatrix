@@ -4,7 +4,7 @@ Graffiti writes draw over the current framebuffer without clearing it, which
 makes them the cheap path for small per-frame changes (deltas). Pure function.
 """
 
-from idotmatrix.validation import validate_rgb
+from pyidotmatrix.validation import validate_rgb
 
 # Device accepts at most this many coordinates in one command (found by testing).
 MAX_PIXELS_PER_COMMAND = 255

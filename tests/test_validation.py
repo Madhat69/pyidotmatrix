@@ -2,7 +2,7 @@
 
 import pytest
 
-from idotmatrix.protocol import clock, common, effect, fullscreen_color, graffiti, music_sync
+from pyidotmatrix.protocol import clock, common, effect, fullscreen_color, graffiti, music_sync
 
 
 @pytest.mark.parametrize("bad", [(256, 0, 0), (0, -1, 0), (0, 0, 999)])

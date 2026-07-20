@@ -4,11 +4,11 @@ import asyncio
 
 import pytest
 
-from idotmatrix import client as client_module
-from idotmatrix.client import ChunkedUploadError, IDotMatrixClient
-from idotmatrix.protocol import schedule, timer
-from idotmatrix.protocol.response import STATUS_FAILED, STATUS_NEXT_CHUNK, STATUS_SAVED, StatusAck
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix import client as client_module
+from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
+from pyidotmatrix.protocol import schedule, timer
+from pyidotmatrix.protocol.response import STATUS_FAILED, STATUS_NEXT_CHUNK, STATUS_SAVED, StatusAck
+from pyidotmatrix.screen import ScreenSize
 
 
 class FakeTransport:

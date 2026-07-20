@@ -7,7 +7,7 @@ and each header+chunk is split into BLE packets. Pure functions, no I/O.
 
 from typing import Optional
 
-from idotmatrix.protocol import bytes_
+from pyidotmatrix.protocol import bytes_
 
 # DIY mode values for the set-mode command (byte 4 of the payload), named after
 # the APK's `DiyImageFun` enum. HARDWARE-CONFIRMED 2026-07-12 on a real 32x32

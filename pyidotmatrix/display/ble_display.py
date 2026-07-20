@@ -21,10 +21,10 @@ modes unchanged; only the embedder's policy moved.
 import logging
 from typing import Optional
 
-from idotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
-from idotmatrix.protocol import common, graffiti, image
-from idotmatrix.screen import ScreenSize
-from idotmatrix.transport.ble import BleTransport
+from pyidotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
+from pyidotmatrix.protocol import common, graffiti, image
+from pyidotmatrix.screen import ScreenSize
+from pyidotmatrix.transport.ble import BleTransport
 
 logger = logging.getLogger(__name__)
 

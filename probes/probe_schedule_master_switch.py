@@ -25,9 +25,9 @@ at each VISUAL CHECK line.
 import argparse
 import asyncio
 
-from idotmatrix.client import IDotMatrixClient
-from idotmatrix.protocol import schedule
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import IDotMatrixClient
+from pyidotmatrix.protocol import schedule
+from pyidotmatrix.screen import ScreenSize
 
 _COMBINATIONS = [
     (False, False),

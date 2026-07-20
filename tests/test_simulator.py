@@ -2,9 +2,9 @@
 
 import pytest
 
-from idotmatrix.display import DisplayBackend, SimulatorDisplay
-from idotmatrix.display.ble_display import BleDisplay
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.display import DisplayBackend, SimulatorDisplay
+from pyidotmatrix.display.ble_display import BleDisplay
+from pyidotmatrix.screen import ScreenSize
 
 
 def _make_sim(**kwargs) -> SimulatorDisplay:

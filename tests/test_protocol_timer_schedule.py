@@ -3,7 +3,7 @@
 Byte layouts originally came from decompiled-APK research (see
 docs/ALARM_BUZZER_APK_FINDINGS.md in the research lab). Timer's sendData
 header endianness and ack behavior are now HARDWARE-CONFIRMED (2026-07-12, see
-idotmatrix/protocol/timer.py and protocol/response.py); Schedule's own upload
+pyidotmatrix/protocol/timer.py and protocol/response.py); Schedule's own upload
 is still untested on hardware -- its packet-length endianness below is only
 INFERRED from the Timer result.
 """
@@ -12,8 +12,8 @@ import binascii
 
 import pytest
 
-from idotmatrix.protocol import schedule, timer
-from idotmatrix.protocol.response import DeviceAck, StatusAck, TimerAck, parse_response
+from pyidotmatrix.protocol import schedule, timer
+from pyidotmatrix.protocol.response import DeviceAck, StatusAck, TimerAck, parse_response
 
 
 def _flatten(chunk_packets: list) -> bytes:
@@ -472,7 +472,7 @@ def test_timer_ack_is_a_compatibility_alias_for_status_ack():
 
 
 def test_status_ack_constants_match_doc():
-    from idotmatrix.protocol.response import (
+    from pyidotmatrix.protocol.response import (
         STATUS_FAILED,
         STATUS_NEXT_CHUNK,
         STATUS_SAVED,

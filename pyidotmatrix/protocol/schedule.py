@@ -33,8 +33,8 @@ import binascii
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from idotmatrix.protocol import bytes_
-from idotmatrix.validation import validate_byte
+from pyidotmatrix.protocol import bytes_
+from pyidotmatrix.validation import validate_byte
 
 # Per-theme content-type wire byte (header offset 10). Schedule's textSolve
 # byte layout is not trustworthy from the decompile (see build_schedule_text_packets)

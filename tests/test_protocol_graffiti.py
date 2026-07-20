@@ -2,7 +2,7 @@
 
 import pytest
 
-from idotmatrix.protocol import graffiti
+from pyidotmatrix.protocol import graffiti
 
 
 def test_single_pixel_matches_golden():

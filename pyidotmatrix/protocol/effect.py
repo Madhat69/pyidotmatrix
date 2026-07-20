@@ -3,7 +3,7 @@
 The device animates one of seven built-in effects using 2..7 colors.
 """
 
-from idotmatrix.validation import validate_rgb
+from pyidotmatrix.validation import validate_rgb
 
 MIN_COLORS = 2
 MAX_COLORS = 7

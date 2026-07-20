@@ -12,9 +12,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Optional
 
-from idotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
-from idotmatrix.screen import ScreenSize
-from idotmatrix.validation import validate_brightness
+from pyidotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
+from pyidotmatrix.screen import ScreenSize
+from pyidotmatrix.validation import validate_brightness
 
 # Measured on hardware (see research lab): a full DIY frame is processed in
 # ~1.5 s; a graffiti pixel command in ~0.02 s.

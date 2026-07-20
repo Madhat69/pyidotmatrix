@@ -37,10 +37,10 @@ from datetime import datetime, timedelta
 
 from PIL import Image
 
-from idotmatrix.client import ChunkedUploadError, IDotMatrixClient
-from idotmatrix.protocol import timer
-from idotmatrix.protocol.response import StatusAck
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
+from pyidotmatrix.protocol import timer
+from pyidotmatrix.protocol.response import StatusAck
+from pyidotmatrix.screen import ScreenSize
 
 _FIRE_IN_MINUTES = 2
 _FRAME_DURATION_MS = 500

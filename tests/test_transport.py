@@ -5,10 +5,10 @@ import asyncio
 import pytest
 from bleak.exc import BleakError
 
-from idotmatrix.protocol import common, graffiti
-from idotmatrix.transport import ble
-from idotmatrix.transport.ble import BleTransport
-from idotmatrix.transport.status import TransportEventKind
+from pyidotmatrix.protocol import common, graffiti
+from pyidotmatrix.transport import ble
+from pyidotmatrix.transport.ble import BleTransport
+from pyidotmatrix.transport.status import TransportEventKind
 
 
 class StubCharacteristic:

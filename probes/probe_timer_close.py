@@ -30,10 +30,10 @@ at each VISUAL CHECK line.
 import argparse
 import asyncio
 
-from idotmatrix.client import IDotMatrixClient
-from idotmatrix.protocol import timer
-from idotmatrix.protocol.response import DeviceAck, TimerAck
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import IDotMatrixClient
+from pyidotmatrix.protocol import timer
+from pyidotmatrix.protocol.response import DeviceAck, TimerAck
+from pyidotmatrix.screen import ScreenSize
 
 
 def _print_raw(ack) -> None:

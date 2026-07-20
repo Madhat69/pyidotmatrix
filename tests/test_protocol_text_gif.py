@@ -7,8 +7,8 @@ import hashlib
 import zlib
 from pathlib import Path
 
-from idotmatrix.imaging import ResizeMode
-from idotmatrix.protocol import gif, text
+from pyidotmatrix.imaging import ResizeMode
+from pyidotmatrix.protocol import gif, text
 
 # Test fixtures bundled with the driver's tests.
 FIXTURES = Path(__file__).parent
@@ -41,7 +41,7 @@ def _flatten(packets):
 
 def test_text_32x32_differs_from_generic_only_at_row_class_byte():
     """SOURCE-CONFIRMED from TextAgreement.sendTextTo3232 (decompiled APK,
-    com.tech.idotmatrix.core.data.TextAgreement, ~line 1076-1259) vs
+    com.tech.pyidotmatrix.core.data.TextAgreement, ~line 1076-1259) vs
     sendTextTo832 (~line 130-294). This is the money finding: the two
     senders' 14-byte metadata blocks are byte-identical except index 2 --
     sendTextTo832 (this driver's legacy build_text_packet) writes 0, while

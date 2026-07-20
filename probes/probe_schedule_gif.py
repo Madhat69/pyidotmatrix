@@ -30,10 +30,10 @@ from datetime import datetime, timedelta
 
 from PIL import Image
 
-from idotmatrix.client import ChunkedUploadError, IDotMatrixClient
-from idotmatrix.protocol import schedule
-from idotmatrix.protocol.response import DeviceAck, StatusAck
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
+from pyidotmatrix.protocol import schedule
+from pyidotmatrix.protocol.response import DeviceAck, StatusAck
+from pyidotmatrix.screen import ScreenSize
 
 _ACTIVE_FOR_MINUTES = 2
 

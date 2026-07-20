@@ -1,9 +1,6 @@
 [project]
-# NOTE (SDK-M2, docs/ROADMAP.md §14): distribution + import rename to
-# "pyidotmatrix" is planned before first PyPI publish — the name "idotmatrix"
-# is taken by the incumbent library and shares our import namespace.
-name = "idotmatrix"
-description = "Opinion-free driver for iDotMatrix BLE pixel displays."
+name = "pyidotmatrix"
+description = "Opinion-free Python SDK for iDotMatrix BLE pixel displays."
 authors = [{ name = "Madhat" }]
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -40,10 +37,10 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["idotmatrix*"]
+include = ["pyidotmatrix*"]
 
 [tool.setuptools.package-data]
-idotmatrix = ["py.typed"]
+pyidotmatrix = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

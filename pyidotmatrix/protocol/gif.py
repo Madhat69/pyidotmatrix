@@ -13,8 +13,8 @@ import io
 from PIL import GifImagePlugin
 from PIL import Image
 
-from idotmatrix.imaging import ResizeMode, palettize, resize_to_canvas
-from idotmatrix.protocol import bytes_
+from pyidotmatrix.imaging import ResizeMode, palettize, resize_to_canvas
+from pyidotmatrix.protocol import bytes_
 
 MAX_FRAME_COUNT = 64
 DEFAULT_FRAME_DURATION_MS = 200

@@ -8,7 +8,7 @@ from datetime import datetime
 
 import pytest
 
-from idotmatrix.protocol import (
+from pyidotmatrix.protocol import (
     chronograph,
     clock,
     common,

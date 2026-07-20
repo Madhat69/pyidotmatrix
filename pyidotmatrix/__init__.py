@@ -14,12 +14,12 @@ The driver builds protocol bytes and moves them to the device. It holds no
 scheduling, rendering, delta, or app logic — that belongs to callers.
 """
 
-from idotmatrix.client import IDotMatrixClient
-from idotmatrix.display import BleDisplay, DisplayBackend, SimulatorDisplay
-from idotmatrix.imaging import ResizeMode, adapt_image
-from idotmatrix.screen import ScreenSize
-from idotmatrix.transport import BleTransport, discover_devices
-from idotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
+from pyidotmatrix.client import IDotMatrixClient
+from pyidotmatrix.display import BleDisplay, DisplayBackend, SimulatorDisplay
+from pyidotmatrix.imaging import ResizeMode, adapt_image
+from pyidotmatrix.screen import ScreenSize
+from pyidotmatrix.transport import BleTransport, discover_devices
+from pyidotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
 
 __all__ = [
     "ScreenSize",

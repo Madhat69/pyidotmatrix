@@ -34,8 +34,8 @@ import binascii
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from idotmatrix.protocol import bytes_
-from idotmatrix.validation import validate_byte
+from pyidotmatrix.protocol import bytes_
+from pyidotmatrix.validation import validate_byte
 
 # Content-type wire byte (header offset 10). Named after the UI type it maps
 # from: image (UI type 0) -> 2, GIF (UI type 1) -> 1, text (UI type 2) -> 3.

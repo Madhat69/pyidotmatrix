@@ -24,9 +24,9 @@ from typing import Optional
 from bleak import AdvertisementData, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
-from idotmatrix.protocol.response import DeviceAck, StatusAck, parse_response
-from idotmatrix.transport.const import DEVICE_NAME_PREFIX, UUID_NOTIFY, UUID_WRITE
-from idotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
+from pyidotmatrix.protocol.response import DeviceAck, StatusAck, parse_response
+from pyidotmatrix.transport.const import DEVICE_NAME_PREFIX, UUID_NOTIFY, UUID_WRITE
+from pyidotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
 
 logger = logging.getLogger(__name__)
 

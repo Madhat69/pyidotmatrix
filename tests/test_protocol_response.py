@@ -4,7 +4,7 @@ Frame format confirmed on hardware: [0x05, 0x00, type, subtype, status],
 status 0x01 = accepted, 0x00 = rejected. Unrecognized commands send nothing.
 """
 
-from idotmatrix.protocol.response import parse_response
+from pyidotmatrix.protocol.response import parse_response
 
 
 def test_parses_accepted_ack():
@@ -40,7 +40,7 @@ def test_text_upload_ack_is_a_status_ack_not_a_boolean_reject():
     spurious "device rejected", which mis-drove a "text is broken on 32x32"
     diagnosis on 2026-07-19. Same trap as Schedule's per-theme ack before it.
     """
-    from idotmatrix.protocol.response import STATUS_SAVED, StatusAck
+    from pyidotmatrix.protocol.response import STATUS_SAVED, StatusAck
 
     ack = parse_response(bytes.fromhex("0500030003"))
     assert isinstance(ack, StatusAck)

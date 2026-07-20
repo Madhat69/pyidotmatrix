@@ -3,9 +3,9 @@ that was previously only exercised on hardware."""
 
 import pytest
 
-from idotmatrix.display.ble_display import BleDisplay
-from idotmatrix.protocol import image
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.display.ble_display import BleDisplay
+from pyidotmatrix.protocol import image
+from pyidotmatrix.screen import ScreenSize
 
 
 class FakeTransport:

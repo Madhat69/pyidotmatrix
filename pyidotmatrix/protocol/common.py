@@ -6,7 +6,7 @@ ported verbatim from the research lab.
 
 from datetime import datetime
 
-from idotmatrix.validation import (
+from pyidotmatrix.validation import (
     validate_brightness,
     validate_byte,
     validate_password,

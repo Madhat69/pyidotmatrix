@@ -1,6 +1,6 @@
 """Fullscreen solid-color command builder. Pure function."""
 
-from idotmatrix.validation import validate_rgb
+from pyidotmatrix.validation import validate_rgb
 
 
 def build_show_color(color: tuple[int, int, int]) -> bytearray:

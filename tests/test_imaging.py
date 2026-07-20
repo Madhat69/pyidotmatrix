@@ -2,7 +2,7 @@
 
 from PIL import Image
 
-from idotmatrix.imaging import ResizeMode, adapt_image
+from pyidotmatrix.imaging import ResizeMode, adapt_image
 
 
 def test_returns_canvas_sized_rgb_bytes():

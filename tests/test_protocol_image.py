@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from idotmatrix.protocol import image
-from idotmatrix.protocol.bytes_ import MTU_SIZE_IF_ENABLED
+from pyidotmatrix.protocol import image
+from pyidotmatrix.protocol.bytes_ import MTU_SIZE_IF_ENABLED
 
 DEMO_IMAGE = Path(__file__).parent / "demo_64.png"
 

@@ -1,4 +1,4 @@
-# idotmatrix
+# pyidotmatrix
 
 Opinion-free, async-first Python SDK for iDotMatrix BLE pixel displays.
 Licensed GPL-3.0-or-later — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
@@ -16,10 +16,10 @@ This project has two equally important goals:
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full architecture review,
 capability inventory with evidence, and the path to 1.0.
 
-> **Naming note:** a rename to `pyidotmatrix` (distribution *and* import) is
-> planned before first PyPI publish — the `idotmatrix` name is taken by the
-> incumbent library and shares this package's import namespace
-> (ROADMAP §14).
+> **Why `pyidotmatrix` and not `idotmatrix`?** The `idotmatrix` name on PyPI
+> (and its import namespace) belongs to the incumbent library by derkalle4 —
+> installing both would collide in site-packages. One name everywhere, zero
+> collision (ROADMAP §14, decided 2026-07-20).
 
 ## Install
 
@@ -73,7 +73,7 @@ brightness, power). `BleDisplay` and `SimulatorDisplay` both satisfy it, so
 callers are backend-agnostic.
 
 ```python
-from idotmatrix import BleDisplay, BleTransport, ScreenSize, SimulatorDisplay
+from pyidotmatrix import BleDisplay, BleTransport, ScreenSize, SimulatorDisplay
 
 display = BleDisplay(ScreenSize.SIZE_32x32, BleTransport(mac_address=None))
 await display.connect()
@@ -87,7 +87,7 @@ sim = SimulatorDisplay(ScreenSize.SIZE_32x32, on_frame=lambda buf: ...)  # no ha
 sharing one connection with `.display`.
 
 ```python
-from idotmatrix import IDotMatrixClient, ScreenSize
+from pyidotmatrix import IDotMatrixClient, ScreenSize
 
 client = IDotMatrixClient(ScreenSize.SIZE_32x32)
 await client.connect()

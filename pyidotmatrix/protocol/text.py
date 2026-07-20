@@ -9,7 +9,7 @@ Two builders live here:
                             subtype=0 for all text modes). Matches the
                             decompiled app's sendTextTo832 wire layout.
   build_text_packet_32x32  ported from TextAgreement.sendTextTo3232 in the
-                            decompiled APK (com.tech.idotmatrix.core.data).
+                            decompiled APK (com.tech.pyidotmatrix.core.data).
                             See its docstring for the full derivation.
 
 The APK has three more per-size senders this driver does not port:
@@ -24,7 +24,7 @@ import binascii
 
 from PIL import Image, ImageDraw, ImageFont
 
-from idotmatrix.protocol import bytes_
+from pyidotmatrix.protocol import bytes_
 
 # Display modes (how the text appears/animates).
 MODE_REPLACE = 0
@@ -101,7 +101,7 @@ def build_text_packet_32x32(
     """Builds the text command for a 32x32 panel. bg_color None means black.
 
     Ported from TextAgreement.sendTextTo3232 in the decompiled APK
-    (com.tech.idotmatrix.core.data.TextAgreement, ~line 1076). That method
+    (com.tech.pyidotmatrix.core.data.TextAgreement, ~line 1076). That method
     takes a fontSize parameter (16 or 32) that switches between two glyph-cell
     branches (getText16Width/height=16 vs getText32Width/height=32); this
     builder follows its else-branch (fontSize != 16): non-CJK characters get

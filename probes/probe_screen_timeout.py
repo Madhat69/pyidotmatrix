@@ -15,9 +15,9 @@ observe at each VISUAL CHECK line.
 import argparse
 import asyncio
 
-from idotmatrix.client import IDotMatrixClient
-from idotmatrix.protocol import common
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import IDotMatrixClient
+from pyidotmatrix.protocol import common
+from pyidotmatrix.screen import ScreenSize
 
 
 def _print_ack(ack) -> None:

@@ -3,7 +3,7 @@
 The device renders a clock face itself in one of eight styles.
 """
 
-from idotmatrix.validation import validate_rgb
+from pyidotmatrix.validation import validate_rgb
 
 # Clock face styles.
 STYLE_RGB_SWIPE_OUTLINE = 0

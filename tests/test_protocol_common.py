@@ -2,7 +2,7 @@
 
 import pytest
 
-from idotmatrix.protocol import common
+from pyidotmatrix.protocol import common
 
 
 def test_brightness_payload():

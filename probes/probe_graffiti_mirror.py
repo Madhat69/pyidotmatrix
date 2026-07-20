@@ -29,9 +29,9 @@ observe at each VISUAL CHECK line.
 import argparse
 import asyncio
 
-from idotmatrix.client import IDotMatrixClient
-from idotmatrix.protocol import graffiti
-from idotmatrix.screen import ScreenSize
+from pyidotmatrix.client import IDotMatrixClient
+from pyidotmatrix.protocol import graffiti
+from pyidotmatrix.screen import ScreenSize
 
 _HYPOTHESIS_LABELS = {
     0: "NO_EFFECT",

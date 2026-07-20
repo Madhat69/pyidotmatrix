@@ -5,7 +5,7 @@ onboard microphone, so streaming host audio is out of scope — only the mode an
 rhythm-trigger commands are provided.
 """
 
-from idotmatrix.validation import validate_byte
+from pyidotmatrix.validation import validate_byte
 
 
 def build_set_mic_type(mic_type: int) -> bytearray:
