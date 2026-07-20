@@ -82,25 +82,21 @@ def build_packets(
     if not gif_data:
         raise ValueError("gif_data cannot be empty")
 
-    chunks = bytes_.chunk_by_size(gif_data, bytes_.CHUNK_SIZE_4096)
-    return [
-        bytes_.split_into_ble_packets(
-            _build_header(chunk, gif_data, gif_type, time_sign, is_first=index == 0) + chunk,
-            mtu_enabled,
-        )
-        for index, chunk in enumerate(chunks)
-    ]
+    def header_builder(chunk: bytearray, payload: bytes, is_first: bool) -> bytes:
+        return _build_header(chunk, payload, gif_type, time_sign, is_first)
+
+    return bytes_.build_chunked_packets(gif_data, header_builder, mtu_enabled)
 
 
-def _build_header(chunk, gif_data: bytes, gif_type: int, time_sign: int, is_first: bool) -> bytes:
+def _build_header(chunk: bytearray, payload: bytes, gif_type: int, time_sign: int, is_first: bool) -> bytes:
     """The 16-byte header prefixed to each 4K chunk."""
     header = bytearray(_GIF_HEADER_SIZE)
     header[0:2] = bytes_.short_to_bytes_le(len(chunk) + _GIF_HEADER_SIZE)  # length incl. header
     header[2] = 1  # command/type
     header[3] = 0  # sub-command
     header[4] = 0 if is_first else 2  # first vs continuation
-    header[5:9] = bytes_.int_to_bytes_le(len(gif_data))  # total GIF size
-    header[9:13] = bytes_.int_to_bytes_le(binascii.crc32(gif_data) & 0xFFFFFFFF)  # CRC32
+    header[5:9] = bytes_.int_to_bytes_le(len(payload))  # total GIF size
+    header[9:13] = bytes_.int_to_bytes_le(binascii.crc32(payload) & 0xFFFFFFFF)  # CRC32
     if gif_type == GIF_TYPE_NO_TIME_SIGNATURE:
         header[13:15] = b"\x00\x00"
     else:

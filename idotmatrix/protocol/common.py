@@ -70,11 +70,18 @@ def build_set_time(when: datetime) -> bytearray:
     )
 
 
-def build_set_password(password: int) -> bytearray:
-    """Set a 6-digit password (000000..999999). Reset the device to clear it."""
+def _encode_password(password: int) -> tuple[int, int, int]:
+    """Splits a 6-digit password (000000..999999) into its 3 wire bytes,
+    shared by build_set_password and build_verify_password."""
     high = (password // 10000) % 256
     mid = (password // 100) % 100 % 256
     low = password % 100 % 256
+    return high, mid, low
+
+
+def build_set_password(password: int) -> bytearray:
+    """Set a 6-digit password (000000..999999). Reset the device to clear it."""
+    high, mid, low = _encode_password(password)
     return bytearray([8, 0, 4, 2, 1, high, mid, low])
 
 
@@ -86,9 +93,7 @@ def build_verify_password(password: int) -> bytearray:
     hardware with a device that actually has a password set.
     """
     validate_password(password)
-    high = (password // 10000) % 256
-    mid = (password // 100) % 100 % 256
-    low = password % 100 % 256
+    high, mid, low = _encode_password(password)
     return bytearray([7, 0, 5, 2, high, mid, low])
 
 
@@ -113,7 +118,7 @@ def build_set_time_indicator(enabled: bool) -> bytearray:
 
     Bytes are confirmed still shipped by the current (2026) official app, but the
     original research lab noted this command "doesn't seem to work" on some
-    firmware/models. Unverified on GlanceOS hardware.
+    firmware/models. Unverified on our reference hardware.
     """
     return bytearray([5, 0, 7, 128, 1 if enabled else 0])
 

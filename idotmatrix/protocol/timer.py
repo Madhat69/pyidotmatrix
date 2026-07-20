@@ -168,11 +168,10 @@ def build_timer_data_packets(timer: Timer, payload: bytes) -> list[list[bytearra
     if not payload:
         raise ValueError("payload cannot be empty")
 
-    chunks = bytes_.chunk_by_size(payload, bytes_.CHUNK_SIZE_4096)
-    return [
-        bytes_.split_into_ble_packets(_build_timer_data_header(chunk, payload, timer, is_first=index == 0) + chunk)
-        for index, chunk in enumerate(chunks)
-    ]
+    def header_builder(chunk: bytearray, full_payload: bytes, is_first: bool) -> bytes:
+        return _build_timer_data_header(chunk, full_payload, timer, is_first)
+
+    return bytes_.build_chunked_packets(payload, header_builder)
 
 
 def _build_timer_data_header(chunk: bytearray, payload: bytes, timer: Timer, is_first: bool) -> bytes:

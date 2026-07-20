@@ -161,13 +161,10 @@ def build_schedule_theme_packets(theme: ScheduleTheme, payload: bytes, content: 
     if content not in _CONTENT_TYPES:
         raise ValueError(f"content must be one of {_CONTENT_TYPES}, got {content}")
 
-    chunks = bytes_.chunk_by_size(payload, bytes_.CHUNK_SIZE_4096)
-    return [
-        bytes_.split_into_ble_packets(
-            _build_theme_header(chunk, payload, theme, content, is_first=index == 0) + chunk
-        )
-        for index, chunk in enumerate(chunks)
-    ]
+    def header_builder(chunk: bytearray, full_payload: bytes, is_first: bool) -> bytes:
+        return _build_theme_header(chunk, full_payload, theme, content, is_first)
+
+    return bytes_.build_chunked_packets(payload, header_builder)
 
 
 def _build_theme_header(chunk: bytearray, payload: bytes, theme: ScheduleTheme, content: int, is_first: bool) -> bytes:

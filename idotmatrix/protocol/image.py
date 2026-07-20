@@ -68,19 +68,15 @@ def build_frame_packets(rgb: bytes) -> list[list[bytearray]]:
     Returns a list of chunks, each a list of BLE packets. The transport sends
     every packet in order; only the final packet of the final chunk is acked.
     """
-    chunks = bytes_.chunk_by_size(rgb, bytes_.CHUNK_SIZE_4096)
-    return [
-        bytes_.split_into_ble_packets(_build_header(chunk, len(rgb), is_first=index == 0) + chunk)
-        for index, chunk in enumerate(chunks)
-    ]
+    return bytes_.build_chunked_packets(rgb, _build_header)
 
 
-def _build_header(chunk: bytearray | bytes, total_length: int, is_first: bool) -> bytes:
+def _build_header(chunk: bytearray, payload: bytes, is_first: bool) -> bytes:
     """The 9-byte header prefixed to each 4K chunk."""
     header = bytearray(_DIY_HEADER_SIZE)
     header[0:2] = bytes_.short_to_bytes_le(len(chunk) + _DIY_HEADER_SIZE)  # length incl. header
     header[2] = 0  # command/type
     header[3] = 0  # sub-command/subtype
     header[4] = 0 if is_first else 2  # 0 = first packet, 2 = continuation
-    header[5:9] = bytes_.int_to_bytes_le(total_length)  # total frame size
+    header[5:9] = bytes_.int_to_bytes_le(len(payload))  # total frame size
     return bytes(header)

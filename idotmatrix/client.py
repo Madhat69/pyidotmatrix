@@ -34,7 +34,7 @@ from idotmatrix.protocol import (
 )
 from idotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
 from idotmatrix.screen import ScreenSize
-from idotmatrix.transport.ble import BleTransport
+from idotmatrix.transport.ble import BleTransport, ConnectionCallback
 from idotmatrix.transport.status import TransportEvent, TransportSnapshot
 
 Color = tuple[int, int, int]
@@ -237,6 +237,20 @@ class MusicSyncFeature(_Feature):
 
 
 class TextFeature(_Feature):
+    """Device-rendered scrolling text.
+
+    Picks the wire format by screen size: 32x32 panels NACK the legacy/generic
+    builder (probe 2026-07-19) and need build_text_packet_32x32 instead -- see
+    protocol/text.py for the byte-level derivation. Other sizes -- and callers
+    that construct this namespace directly without a screen_size, as
+    glanceosd's BleTakeoverPort does -- keep using the generic builder pending
+    their own per-size ports.
+    """
+
+    def __init__(self, transport: BleTransport, screen_size: Optional[ScreenSize] = None):
+        super().__init__(transport)
+        self._screen_size = screen_size
+
     async def show(
         self,
         text_value: str,
@@ -248,11 +262,17 @@ class TextFeature(_Feature):
         color: Color = (255, 255, 255),
         bg_color: Optional[Color] = None,
     ) -> None:
-        await self._send(
-            text.build_text_packet(
+        if self._screen_size == ScreenSize.SIZE_32x32:
+            packets = text.build_text_packet_32x32(
                 text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color
             )
-        )
+            await self._send_packets(packets)
+        else:
+            await self._send(
+                text.build_text_packet(
+                    text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color
+                )
+            )
 
 
 class GifFeature(_Feature):
@@ -327,14 +347,14 @@ class ExperimentalFeature(_Feature):
     """Unverified-on-hardware and/or destructive commands.
 
     Bytes are confirmed from APK decompilation but have not been exercised
-    against real GlanceOS hardware. Prefer the stable namespaces (client.common,
+    against real reference hardware. Prefer the stable namespaces (client.common,
     etc.) unless you specifically need one of these.
     """
 
     async def set_time_indicator(self, enabled: bool) -> None:
         """EXPERIMENTAL: toggles a time indicator on the clock face.
 
-        Unverified on GlanceOS hardware — the original research lab reported this
+        Unverified on our reference hardware — the original research lab reported this
         "doesn't seem to work" on some firmware/models, though the bytes are still
         shipped by the current official app.
         """
@@ -358,7 +378,7 @@ class ExperimentalFeature(_Feature):
         Flat 5-byte command, ack shape already matches DeviceAck ([5,0,7,0x80,·]).
         Bytes are confirmed from APK decompilation but the enable/buzzer bit order
         (packed = (buzzer << 1) | enable) is derived from a decompiled bit packer,
-        not observed on a real device -- unverified on GlanceOS hardware.
+        not observed on a real device -- unverified on our reference hardware.
         """
         await self._send(schedule.build_master_switch(enable, buzzer))
 
@@ -366,7 +386,7 @@ class ExperimentalFeature(_Feature):
         """EXPERIMENTAL: disables a Timer alarm slot without deleting it.
 
         Flat 12-byte command (sendCloseData), no chunking, no payload. Unverified
-        on GlanceOS hardware, and its ack (if any) is a different, richer 3-way
+        on our reference hardware, and its ack (if any) is a different, richer 3-way
         status vocabulary than the usual DeviceAck accept/reject -- see
         protocol.response.StatusAck. For uploading an alarm's custom content, see
         timer_set below.
@@ -457,7 +477,7 @@ class IDotMatrixClient:
         self.graffiti = GraffitiFeature(self._transport)
         self.effect = EffectFeature(self._transport)
         self.music_sync = MusicSyncFeature(self._transport)
-        self.text = TextFeature(self._transport)
+        self.text = TextFeature(self._transport, screen_size)
         self.gif = GifFeature(self._transport, screen_size)
         self.common = CommonFeature(self._transport)
         self.experimental = ExperimentalFeature(self._transport)
@@ -480,7 +500,11 @@ class IDotMatrixClient:
         """Enables/disables reconnect supervision at runtime."""
         self._transport.set_auto_reconnect(enabled)
 
-    def add_listener(self, on_connected=None, on_disconnected=None) -> Callable[[], None]:
+    def add_listener(
+        self,
+        on_connected: Optional[ConnectionCallback] = None,
+        on_disconnected: Optional[ConnectionCallback] = None,
+    ) -> Callable[[], None]:
         """Registers async connection-state callbacks. Returns an unsubscribe callable."""
         return self._transport.add_listener(on_connected, on_disconnected)
 

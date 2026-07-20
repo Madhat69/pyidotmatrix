@@ -1,13 +1,17 @@
 """idotmatrix — an opinion-free driver for iDotMatrix BLE pixel displays.
 
 Public surface:
-    ScreenSize                     supported display sizes
-    DisplayBackend                 the interface every backend satisfies
-    BleDisplay / SimulatorDisplay  hardware and in-memory implementations
+    IDotMatrixClient                 full-feature client facade
+    ScreenSize                       supported display sizes
+    DisplayBackend                   the interface every backend satisfies
+    BleDisplay / SimulatorDisplay    hardware and in-memory implementations
     BleTransport / discover_devices  BLE connection primitives
+    ResizeMode / adapt_image         image adaptation helpers
+    TransportSnapshot / TransportEvent / TransportEventKind
+                                      connection observability
 
 The driver builds protocol bytes and moves them to the device. It holds no
-scheduling, rendering, delta, or app logic — that belongs to callers (glanceosd).
+scheduling, rendering, delta, or app logic — that belongs to callers.
 """
 
 from idotmatrix.client import IDotMatrixClient

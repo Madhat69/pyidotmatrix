@@ -35,6 +35,66 @@ def test_text_header_crc_matches_body():
     assert int.from_bytes(payload[9:13], "little") == zlib.crc32(body)  # body CRC
 
 
+def _flatten(packets):
+    return b"".join(bytes(p) for chunk in packets for p in chunk)
+
+
+def test_text_32x32_differs_from_generic_only_at_row_class_byte():
+    """SOURCE-CONFIRMED from TextAgreement.sendTextTo3232 (decompiled APK,
+    com.tech.idotmatrix.core.data.TextAgreement, ~line 1076-1259) vs
+    sendTextTo832 (~line 130-294). This is the money finding: the two
+    senders' 14-byte metadata blocks are byte-identical except index 2 --
+    sendTextTo832 (this driver's legacy build_text_packet) writes 0, while
+    sendTextTo3232 (and sendTextTo1616) write 1, a "row-class" flag meaning
+    "16-or-32-row glyph family" vs "8-row family". Everything else -- 16px-
+    wide/32px-tall glyph cells, the 0x05 char-separator tag, LE fields, outer
+    16-byte chunk-header layout -- was already correct in this driver's
+    existing generic builder, which is why porting sendTextTo3232 reduces to
+    flipping this single byte. The device NACKed the generic packet on a real
+    32x32 panel (probe 2026-07-19); hardware verification of this fix is
+    pending (queued right after this lands).
+    """
+    generic = bytes(text.build_text_packet("HI", str(FONT)))
+    flat = _flatten(text.build_text_packet_32x32("HI", str(FONT)))
+
+    generic_body, flat_body = generic[16:], flat[16:]
+    assert len(generic_body) == len(flat_body)
+    assert [i for i in range(len(flat_body)) if flat_body[i] != generic_body[i]] == [2]
+    assert generic_body[2] == 0
+    assert flat_body[2] == 1
+
+
+def test_text_32x32_header_crc_matches_body():
+    packets = text.build_text_packet_32x32("HI", str(FONT))
+    assert len(packets) == 1 and len(packets[0]) == 1  # short text: one chunk, one BLE packet
+    payload = bytes(packets[0][0])
+    header, body = payload[:16], payload[16:]
+    assert int.from_bytes(header[0:2], "little") == len(payload)
+    assert int.from_bytes(header[5:9], "little") == len(body)
+    assert int.from_bytes(header[9:13], "little") == zlib.crc32(body)
+    assert (header[2], header[3]) == (3, 0)  # outer type/subtype, same as build_text_packet
+    assert header[13:15] == b"\x00\x00"
+    assert header[15] == 12
+
+
+def test_text_32x32_pure_black_foreground_bumped_to_blue_one():
+    """SOURCE-CONFIRMED: every sendTextTo* variant in the decompile (e.g.
+    TextAgreement.java ~line 1202-1205) rewrites a pure-black (0,0,0)
+    foreground to (0,0,1) on the wire -- an invisible-text guard in the
+    vendor app. The guard only fires when both red and green are 0; any other
+    color, including a blue-tinted "black", passes through untouched.
+    """
+    payload = bytes(text.build_text_packet_32x32("A", str(FONT), color=(0, 0, 0))[0][0])
+    metadata = payload[16:30]
+    assert metadata[7:10] == bytes([0, 0, 1])  # fg RGB
+
+
+def test_text_32x32_char_count_is_len_text():
+    payload = bytes(text.build_text_packet_32x32("HELLO", str(FONT))[0][0])
+    metadata = payload[16:30]
+    assert int.from_bytes(metadata[0:2], "little") == len("HELLO")
+
+
 def test_gif_packets_match_golden():
     data = gif.adapt_gif(str(GIF), 32, ResizeMode.FIT, True, (0, 0, 0), None)
     packets = gif.build_packets(data, gif.GIF_TYPE_NO_TIME_SIGNATURE, 1)
