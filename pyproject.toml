@@ -1,18 +1,33 @@
 [project]
+# NOTE (SDK-M2, docs/ROADMAP.md §14): distribution + import rename to
+# "pyidotmatrix" is planned before first PyPI publish — the name "idotmatrix"
+# is taken by the incumbent library and shares our import namespace.
 name = "idotmatrix"
 description = "Opinion-free driver for iDotMatrix BLE pixel displays."
+authors = [{ name = "Madhat" }]
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 version = "0.1.0"
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
 ]
 
 dependencies = [
     "bleak>=0.22.3",
     "pillow>=11.2.1",  # text rendering and GIF adaptation are core features
 ]
+
+[project.urls]
+# Repo home TBD (ROADMAP §18); placeholder until extraction.
+Homepage = "https://github.com/Madhat69"
 
 [project.optional-dependencies]
 test = [
@@ -26,6 +41,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["idotmatrix*"]
+
+[tool.setuptools.package-data]
+idotmatrix = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

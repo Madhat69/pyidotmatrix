@@ -1,0 +1,19 @@
+idotmatrix SDK — attribution notice
+
+This SDK's protocol knowledge stands on a reverse-engineering lineage, and
+credit belongs to everyone in the chain:
+
+- 8none1 — https://github.com/8none1/idotmatrix
+  Early protocol documentation and byte layouts (device reset, text format
+  groundwork).
+- Kalle Minkner (derkalle4) — python3-idotmatrix-client and
+  python3-idotmatrix-library (GPLv3)
+  The first widely used Python implementations of the protocol.
+- markusressel — idotmatrix-api-client
+  Fork lineage this codebase was modernized from.
+- Original reverse engineering in this repository — fa03 acknowledgement
+  stream discovery, chunked-upload handshake verification, DIY-mode
+  semantics, persistence-by-mode-kind, endianness corrections, and the
+  hardware probes under probes/ (see docs/).
+
+This project is licensed under GPL-3.0-or-later; see LICENSE.

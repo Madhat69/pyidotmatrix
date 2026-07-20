@@ -1,7 +1,56 @@
 # idotmatrix
 
-Opinion-free Python driver for iDotMatrix BLE pixel displays. Part of the
-GlanceOS monorepo; usable standalone. Licensed GPL-3.0-or-later.
+Opinion-free, async-first Python SDK for iDotMatrix BLE pixel displays.
+Licensed GPL-3.0-or-later — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+This project has two equally important goals:
+
+1. **The definitive Python SDK** for iDotMatrix displays — controlling a
+   panel should feel like controlling a device, not constructing packets.
+2. **The reference implementation and documentation of the device protocol**
+   — every verified reverse-engineering discovery lands here; every
+   unverified one is clearly marked experimental. Protocol research is a
+   first-class contribution (a good hardware probe log is worth as much as a
+   feature).
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full architecture review,
+capability inventory with evidence, and the path to 1.0.
+
+> **Naming note:** a rename to `pyidotmatrix` (distribution *and* import) is
+> planned before first PyPI publish — the `idotmatrix` name is taken by the
+> incumbent library and shares this package's import namespace
+> (ROADMAP §14).
+
+## Install
+
+Not yet on PyPI. From a checkout:
+
+```
+pip install -e .          # library
+pip install -e .[test]    # + test tooling
+```
+
+Requires Python 3.12–3.14. BLE via [bleak](https://github.com/hbldh/bleak)
+(Windows/Linux/macOS).
+
+## Protocol maturity at a glance
+
+| Subsystem | Status |
+|---|---|
+| BLE transport (reconnect, acks, notifications) | ✅ hardware-proven |
+| Framebuffer (DIY full frames + entry/quit modes) | ✅ |
+| Graffiti (partial pixel updates) | ✅ |
+| Images / GIF (adapt + native playback) | ✅ |
+| Native clock | ✅ |
+| Alarms (Timer slots, content + buzzer) | ✅ |
+| Text (device-rendered) | ⚠ broken on 32×32 — fix in progress |
+| Effects / color | ✅ (simplified vs vendor app) |
+| Countdown / stopwatch / scoreboard | ⚠ source-confirmed |
+| Weekly schedule | ⚠ partially verified |
+| Music sync / eco / experimental | ⚠/❓ |
+
+✅ hardware-verified · ⚠ experimental (source-confirmed, not verified) ·
+❓ reverse engineering in progress. Full table with evidence: ROADMAP §3.
 
 ## Layers
 
@@ -10,7 +59,7 @@ protocol/   pure byte builders (no I/O), one per device feature
 transport/  BLE connection lifecycle, chunked writes, reconnect supervision
 display/    DisplayBackend interface + BleDisplay (hardware) and SimulatorDisplay
 client.py   IDotMatrixClient — full-feature facade over one connection
-imaging.py  canvas-fitting helpers (used only for GIF adaptation)
+imaging.py  canvas-fitting helpers (image adaptation)
 ```
 
 The driver moves bytes to the device. It does not schedule, render app frames,
@@ -66,8 +115,9 @@ from idotmatrix.protocol import common
 ack = await client.await_device_ack(common.build_set_brightness(60))
 ```
 
-See [../docs/ROADMAP.md](../docs/ROADMAP.md) for the protocol details and remaining
-reverse-engineering work.
+**Protocol truth worth knowing:** an ack confirms *receipt*, not *effect* —
+the device can accept a command and not act on it. The SDK documents these
+cases rather than hiding them (see ROADMAP §4).
 
 ### Lifecycle & observability
 
@@ -92,4 +142,20 @@ pip install -e .[test]
 pytest
 ```
 
-Protocol builders are covered by byte-exact golden tests.
+Protocol builders are covered by byte-exact golden tests. Hardware probes
+live in `probes/` — human-run against a real panel, never in CI.
+
+## Contributing
+
+Reverse engineering is a first-class contribution: hardware probe results,
+BLE packet captures, firmware/model comparisons, and protocol documentation
+are as valuable as code. Start with `probes/` and the reverse-engineering
+notes referenced throughout `docs/`.
+
+## Credits
+
+This SDK builds on the reverse-engineering lineage of
+[8none1](https://github.com/8none1/idotmatrix),
+[derkalle4](https://github.com/derkalle4/python3-idotmatrix-client) (GPLv3),
+and [markusressel](https://github.com/markusressel/idotmatrix-api-client) —
+see [NOTICE](NOTICE).
