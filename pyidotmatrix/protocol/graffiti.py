@@ -53,7 +53,10 @@ def build_set_pixels(
             size // 256,  # length MSB (0 or 1)
             5,            # graffiti mode
             mirror,       # mirroring mode 1-4
-            0,            # unknown, always 0
+            0,            # HARDWARE-PROBED 2026-07-20: value 2 here recolors the graffiti
+                          # command sent two commands earlier (probes/probe_graffiti_movetype*
+                          # .py, 3/3 reproduction); 0/1/3/4 draw plainly. Kept at 0 -- the
+                          # recolor quirk is opt-in via a future builder, never an accident.
             red,
             green,
             blue,

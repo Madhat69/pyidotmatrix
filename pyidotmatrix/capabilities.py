@@ -77,7 +77,20 @@ _ENTRIES: tuple[Capability, ...] = (
     Capability(
         "display", "show_frame", CapabilityStatus.VERIFIED, _S32,
         "DIY full-frame upload is GlanceOS's main render path; ~1.5 s device processing with "
-        "ack-as-flow-control (ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering).",
+        "ack-as-flow-control (ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering). "
+        "Streaming benchmark 2026-07-20 (probes/probe_streaming_benchmark.py): the device "
+        "RENDERS full frames at a hard ~1.75 fps cap regardless of send rate or write mode; "
+        "under an unacked flood it samples the latest frame, drops the rest, and its fa03 "
+        "notifies track frames processed (~1.75/s), not frames received.",
+    ),
+    Capability(
+        "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
+        "fa02 advertises write-without-response and our panel honors it: unacked frames "
+        "rendered on-screen during the 2026-07-20 streaming benchmark (operator-observed). "
+        "Firmware-variant caveat: LumiSync's RE notes report no-response writes IGNORED on "
+        "their unit, while idotmatrix-overclocked uses them successfully on a 64x64 -- treat "
+        "as per-variant. Sustained flooding eventually dropped our BLE link twice; pace near "
+        "the ~1.75 fps render cap.",
     ),
     Capability(
         "display", "set_pixels", CapabilityStatus.VERIFIED, _S32,
@@ -129,6 +142,15 @@ _ENTRIES: tuple[Capability, ...] = (
         "graffiti", "set_pixels", CapabilityStatus.VERIFIED, _S32,
         "Hardware-verified delta-render path; genuinely ack-silent, so the transport never "
         "awaits an ack for it (ROADMAP.md section 3 Display; FEATURE_MATRIX.md).",
+    ),
+    Capability(
+        "graffiti", "byte4_recolor_two_back", CapabilityStatus.VERIFIED, _S32,
+        "Header byte 4 (always 0 in our builder; LumiSync's RE doc calls it moveType): value 2 "
+        "draws its pixels AND recolors the graffiti command sent exactly TWO commands earlier "
+        "to the new color -- positional, reproduced 3/3 (probes/probe_graffiti_movetype*.py, "
+        "2026-07-20). Values 0/1/3/4 draw plainly with no side effect. A trap for callers that "
+        "set the byte blindly, and a cheap recolor primitive (retint a <=255-px group without "
+        "resending coordinates) for callers that sequence it deliberately.",
     ),
     Capability(
         "graffiti", "mirror", CapabilityStatus.UNKNOWN, _S32,

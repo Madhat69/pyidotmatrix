@@ -709,18 +709,25 @@ gate releases:
   queue collapse (soak-test evidence: 24 h+ at ~1 fps, flat memory).
 - **Minimal transport overhead**: respect negotiated MTU, chunk exactly once,
   never re-encode payloads that are already wire-shaped.
-- **Streaming mode (candidate, evidence-backed 2026-07-20)**: two independent
-  projects sustain far higher frame rates than our acked cost model by simply
-  not waiting: [IDotMatrixXLedFx](https://github.com/suchyindustries/IDotMatrixXLedFx)
-  logs 24–28 fps of DIY frame pushes to a 32×32 (same fa02 protocol, ~1–2 KB
-  PNG-sized payloads, zero ack reads), and
-  [idotmatrix-overclocked](https://github.com/pracucci/idotmatrix-overclocked)
-  runs playable Snake/Tetris on a 64×64 using write-WITHOUT-response — which
-  its docs report working there, while LumiSync's notes claim no-response
-  writes are ignored on their variant (a firmware difference; capability-table
-  material). Design implication: an opt-in unacked frame path (`verify=False`
-  streaming) could unlock real-time animation. Needs a hardware benchmark on
-  our panel before any API commitment.
+- **Streaming: BENCHMARKED 2026-07-20** (probes/probe_streaming_benchmark.py,
+  operator at a real 32×32; motivated by
+  [IDotMatrixXLedFx](https://github.com/suchyindustries/IDotMatrixXLedFx)'s
+  24–28 fps send-rate logs and
+  [idotmatrix-overclocked](https://github.com/pracucci/idotmatrix-overclocked)'s
+  playable 64×64 games). Measured: acked full frames = 1.25–1.35 fps, and the
+  bottleneck is the write-with-response round trips themselves — dropping the
+  ack *wait* alone changes nothing (1.30 fps). Write-WITHOUT-response is
+  honored by our variant (LumiSync's notes report it ignored on theirs — a
+  firmware difference) and ingests 167 fps at the radio, but **the panel
+  renders full DIY frames at a hard ~1.75 fps cap regardless of send rate**,
+  sampling the latest frame and dropping the rest; its fa03 notifies track
+  frames *processed*, not received. Sustained flooding dropped the BLE link
+  twice. Design consequence: an unacked frame path is worth ~40% render rate
+  plus non-blocking sends (~20 ms vs ~740 ms per frame), but real animation on
+  this hardware belongs to the graffiti delta path (≤255 px in ~20 ms,
+  unacked — ~50 cmd/s), not full frames. Service map from the same session:
+  our variant exposes the `ae00`/`ae01`/`ae02` UART service but neither
+  LumiSync's version-read characteristic nor the Telink `fee9` OTA service.
 
 ## 16. Independent review — findings not covered above (Addendum 8)
 
