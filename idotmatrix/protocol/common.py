@@ -39,7 +39,13 @@ def build_freeze_screen() -> bytearray:
 
 
 def build_set_speed(speed: int) -> bytearray:
-    """Set an unknown 'speed' value. Not referenced by the app; kept for parity."""
+    """Set an unknown 'speed' value. Not referenced by the app; kept for parity.
+
+    HARDWARE-TESTED 2026-07-20 (32x32): sending this mid-scroll has NO effect
+    on a live text marquee's speed/smoothness -- text animation speed is the
+    text packet's own speed byte (50 visibly choppy, 95 smoother, 100
+    smoothest). Whatever this command controls, it is not live text scroll.
+    """
     validate_byte(speed, "speed")
     return bytearray([5, 0, 3, 1, speed])
 
