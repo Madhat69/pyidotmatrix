@@ -24,7 +24,25 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install
-        run: pip install -e .[test]
+        run: pip install -e ".[test]"
 
+      # Failures are surfaced as ::error:: annotations and in the run's step
+      # summary because GitHub hides raw job logs from anonymous viewers --
+      # without this, outside contributors (and anyone triaging from the run
+      # page) can only see "exit code 1".
       - name: Test
-        run: pytest -q
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest -q --tb=short 2>&1 | tee pytest.out || {
+            status=$?
+            {
+              echo "## pytest failures (${{ matrix.os }} / py${{ matrix.python-version }})"
+              echo '```'
+              tail -n 120 pytest.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -E "^(FAILED|ERROR)" pytest.out | head -n 10 \
+              | while IFS= read -r line; do echo "::error::$line"; done
+            exit "$status"
+          }
