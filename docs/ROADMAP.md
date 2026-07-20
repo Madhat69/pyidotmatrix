@@ -770,6 +770,13 @@ chunked builders · full effects command · verify_password probe · week-bit +
 `patch()` verification · capability table implemented. *Accept: text renders on
 32×32; capability table consulted by all ⚠ paths.*
 
+> ⚠ **Maintainer ruling (2026-07-20): the `verify_password`/`set_password`
+> probe is sequenced LAST across the entire roadmap** — after every other
+> milestone's hardware work is done. A wrong guess about the password
+> protocol's semantics could lock a panel out of its own driver, and there is
+> no known factory-reset path. If you probe this on your own device, you
+> accept that risk; do not treat it as an ordinary M3 item.
+
 **SDK-M4 — Documentation**
 The §12 list, items 1–8. *Accept: a newcomer goes zero→image-on-panel from docs
 alone; every capability has a status tag.*
