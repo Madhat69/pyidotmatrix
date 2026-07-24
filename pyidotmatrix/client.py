@@ -466,10 +466,19 @@ class TextFeature(_Feature):
         color_mode: int = text.COLOR_WHITE,
         color: Color = (255, 255, 255),
         bg_color: Color | None = None,
+        glyph_height: int = 32,
     ) -> None:
+        """Shows scrolling text.
+
+        glyph_height applies to the 32x32 wire format only (32 = this driver's
+        proven 16x32 glyph cell; 16 = the 8x16 cell captured from the vendor
+        app 2026-07-25, unverified here). Other panel sizes ignore it, since
+        the generic builder has only ever had one cell size.
+        """
         if self._screen_size == ScreenSize.SIZE_32x32:
             packets = text.build_text_packet_32x32(
-                text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color
+                text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color,
+                glyph_height,
             )
             await self._send_packets(packets)
         else:

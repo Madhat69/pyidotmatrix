@@ -97,6 +97,53 @@ def test_text_32x32_pure_black_foreground_bumped_to_blue_one():
     assert metadata[7:10] == bytes([0, 0, 1])  # fg RGB
 
 
+def test_text_32x32_8x16_glyph_branch_matches_captured_structure():
+    """CAPTURE-DERIVED 2026-07-25 (vendor-app HCI capture, decoded with
+    pyidotmatrix/btsnoop.py): the app drove our panel with an 8x16 glyph cell
+    -- 16 bytes per glyph, each preceded by separator tag 0x02 (NOT the 6 this
+    driver's RE notes predicted for non-64-byte glyphs), same row-major
+    LSB-first bit order, same 16-byte header and metadata byte 2 = 1.
+
+    Metadata field values in the captured frame: char_count u16 LE, mode 0
+    (REPLACE), speed 0, color_mode 1 (RGB) followed by the RGB bytes -- all
+    caller-supplied here, so this test pins them explicitly.
+    """
+    payload = bytes(
+        text.build_text_packet_32x32(
+            "HI", str(FONT), 16, text.MODE_REPLACE, 0, text.COLOR_RGB, (127, 0, 0), None,
+            glyph_height=16,
+        )[0][0]
+    )
+    header, metadata, glyphs = payload[:16], payload[16:30], payload[30:]
+
+    assert (header[2], header[3]) == (3, 0)
+    assert int.from_bytes(header[0:2], "little") == len(payload)
+    assert int.from_bytes(header[9:13], "little") == zlib.crc32(payload[16:])
+
+    assert int.from_bytes(metadata[0:2], "little") == 2  # char count
+    assert metadata[2] == 1                              # row-class flag
+    assert (metadata[4], metadata[5], metadata[6]) == (text.MODE_REPLACE, 0, text.COLOR_RGB)
+    assert metadata[7:10] == bytes([127, 0, 0])
+
+    # Two glyph cells of 4 separator bytes + 16 packed bytes each.
+    assert len(glyphs) == 2 * (4 + 16)
+    for start in (0, 20):
+        assert glyphs[start:start + 4] == b"\x02\xff\xff\xff"
+
+
+def test_text_32x32_default_glyph_branch_still_uses_64_byte_cells_and_tag_5():
+    payload = bytes(text.build_text_packet_32x32("HI", str(FONT))[0][0])
+    glyphs = payload[30:]
+    assert len(glyphs) == 2 * (4 + 64)
+    for start in (0, 68):
+        assert glyphs[start:start + 4] == b"\x05\xff\xff\xff"
+
+
+def test_text_32x32_rejects_unknown_glyph_height():
+    with pytest.raises(ValueError):
+        text.build_text_packet_32x32("HI", str(FONT), glyph_height=24)
+
+
 def test_text_32x32_char_count_is_len_text():
     payload = bytes(text.build_text_packet_32x32("HELLO", str(FONT))[0][0])
     metadata = payload[16:30]

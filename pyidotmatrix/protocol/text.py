@@ -50,10 +50,24 @@ COLOR_RAINBOW_2 = 3
 COLOR_RAINBOW_3 = 4
 COLOR_RAINBOW_4 = 5
 
-# Each character is rendered into a fixed 16x32 1-bit bitmap.
-_CHAR_WIDTH = 16
-_CHAR_HEIGHT = 32
-_CHAR_SEPARATOR = b"\x05\xff\xff\xff"
+# Glyph cells, keyed by the vendor app's fontSize switch (sendTextTo3232 takes
+# 16 or 32 and branches on it). 32 -> a 16x32 cell packing to 64 bytes; 16 -> an
+# 8x16 cell packing to 16 bytes, the cell the app actually used in the
+# 2026-07-25 HCI capture.
+_GLYPH_CELLS = {32: (16, 32), 16: (8, 16)}
+
+# Default cell (the driver's historical one, unchanged for build_text_packet).
+_CHAR_WIDTH, _CHAR_HEIGHT = _GLYPH_CELLS[32]
+
+# Per-glyph separator: a tag byte then ff ff ff. The tag depends on the packed
+# glyph size. 64 bytes -> 5 is long-standing and matches the decompile; 16 bytes
+# -> 2 is CAPTURE-CONFIRMED (2026-07-25 vendor-app HCI capture), which also
+# falsified this driver's old "data.length == 64 -> tag 5, else tag 6" reading
+# of TextAgreement.java: 16-byte glyphs carry tag 2, not 6. 6 is kept only as
+# the fallback for cell sizes nobody has observed.
+_SEPARATOR_TAGS = {64: 5, 16: 2}
+_SEPARATOR_TAG_FALLBACK = 6
+_CHAR_SEPARATOR = bytes([_SEPARATOR_TAGS[64], 0xFF, 0xFF, 0xFF])
 
 
 def build_text_packet(
@@ -105,8 +119,15 @@ def build_text_packet_32x32(
     color_mode: int = COLOR_WHITE,
     color: tuple[int, int, int] = (255, 255, 255),
     bg_color: tuple[int, int, int] | None = None,
+    glyph_height: int = 32,
 ) -> list[list[bytearray]]:
     """Builds the text command for a 32x32 panel. bg_color None means black.
+
+    glyph_height selects the vendor app's own glyph-cell branch (its fontSize
+    switch, 16 or 32): 32 keeps this driver's historical 16x32 cell (64 bytes
+    per glyph, separator tag 5); 16 uses the 8x16 cell (16 bytes per glyph,
+    separator tag 2) that the app was captured using on 2026-07-25. Everything
+    else about the packet -- header, metadata, bit order -- is identical.
 
     Ported from TextAgreement.sendTextTo3232 in the decompiled APK
     (com.tech.pyidotmatrix.core.data.TextAgreement, ~line 1076). That method
@@ -117,13 +138,21 @@ def build_text_packet_32x32(
     isJapaneseCharacter/isKoreanCharacter all return 32px wide instead -- not
     reproduced here, this driver has no CJK font-selection logic, same scope
     as build_text_packet). A 16x32 1-bit glyph packs to exactly 64 bytes
-    (16*32/8), which is why the per-char tag is always byte 5 (data.length==64
-    -> tag 5, else tag 6, TextAgreement.java ~line 1168) -- the same 0x05
-    separator this driver already hardcodes for build_text_packet. That,
-    combined with Text1664.getTextData's bit-packing (row-major, LSB-first,
-    byte-aligned once width is a multiple of 8), means _text_to_bitmaps and
-    _pack_bitmap below are ALREADY byte-identical to the vendor's 32x32-class
-    glyph encoding -- reused unchanged.
+    (16*32/8) and carries per-char tag 5 -- the same 0x05 separator this driver
+    already hardcodes for build_text_packet. That, combined with
+    Text1664.getTextData's bit-packing (row-major, LSB-first, byte-aligned once
+    width is a multiple of 8), means _text_to_bitmaps and _pack_bitmap below
+    are ALREADY byte-identical to the vendor's 32x32-class glyph encoding --
+    reused unchanged.
+
+    CORRECTION 2026-07-25 (vendor-app HCI capture, decoded with
+    pyidotmatrix/btsnoop.py): this docstring used to read the tag rule out of
+    TextAgreement.java ~line 1168 as "data.length == 64 -> tag 5, else tag 6".
+    The else-branch value is WRONG. The app drove our panel with the 8x16 cell
+    -- 16 bytes per glyph -- and those glyphs carried tag 0x02, not 6. Bit
+    order and everything else matched byte-for-byte. Hence glyph_height and
+    _SEPARATOR_TAGS above; 6 survives only as the fallback for cell sizes
+    nobody has ever observed.
 
     THE MONEY BYTE (root cause of the 32x32 NACK): sendTextTo3232's 14-byte
     metadata sets byte index 2 to 1 (TextAgreement.java line 1195,
@@ -155,7 +184,10 @@ def build_text_packet_32x32(
     Director will probe this on a real 32x32 panel immediately after this
     lands).
     """
-    bitmaps = _text_to_bitmaps(text, font_path, font_size)
+    if glyph_height not in _GLYPH_CELLS:
+        raise ValueError(f"glyph_height must be one of {sorted(_GLYPH_CELLS)}, got {glyph_height!r}")
+
+    bitmaps = _text_to_bitmaps(text, font_path, font_size, _GLYPH_CELLS[glyph_height])
     bg_mode = 0 if bg_color is None else 1
     resolved_bg = bg_color if bg_color is not None else (0, 0, 0)
 
@@ -188,34 +220,54 @@ def _build_header_32x32(chunk: bytearray, payload: bytes, is_first: bool) -> byt
     return bytes(header)
 
 
-def _text_to_bitmaps(text: str, font_path: str, font_size: int) -> bytearray:
-    """Renders each character to a separator-prefixed 1-bit bitmap."""
+def _text_to_bitmaps(
+    text: str,
+    font_path: str,
+    font_size: int,
+    cell: tuple[int, int] = (_CHAR_WIDTH, _CHAR_HEIGHT),
+) -> bytearray:
+    """Renders each character to a separator-prefixed 1-bit bitmap.
+
+    cell is (width, height) in pixels; the separator tag follows from the
+    packed size (see _SEPARATOR_TAGS). Bit order is row-major, LSB-first,
+    byte-aligned -- identical for both cell sizes (capture-confirmed).
+    """
+    cell_width, cell_height = cell
+    separator = bytes([_separator_tag(cell_width * cell_height // 8), 0xFF, 0xFF, 0xFF])
     font = ImageFont.truetype(font_path, font_size)
     stream = bytearray()
     for char in text:
-        image = Image.new("1", (_CHAR_WIDTH, _CHAR_HEIGHT), 0)
+        image = Image.new("1", (cell_width, cell_height), 0)
         draw = ImageDraw.Draw(image)
         _, _, text_width, text_height = draw.textbbox((0, 0), char, font=font)
         draw.text(
-            ((_CHAR_WIDTH - text_width) // 2, (_CHAR_HEIGHT - text_height) // 2),
+            ((cell_width - text_width) // 2, (cell_height - text_height) // 2),
             char,
             fill=1,
             font=font,
         )
-        stream.extend(_CHAR_SEPARATOR + _pack_bitmap(image))
+        stream.extend(separator + _pack_bitmap(image, cell))
     return stream
 
 
-def _pack_bitmap(image: Image.Image) -> bytearray:
+def _separator_tag(packed_size: int) -> int:
+    """The per-glyph tag byte for a packed glyph of `packed_size` bytes."""
+    return _SEPARATOR_TAGS.get(packed_size, _SEPARATOR_TAG_FALLBACK)
+
+
+def _pack_bitmap(
+    image: Image.Image, cell: tuple[int, int] = (_CHAR_WIDTH, _CHAR_HEIGHT)
+) -> bytearray:
     """Packs a 1-bit image into bytes, 8 pixels per byte, row by row."""
+    cell_width, cell_height = cell
     bitmap = bytearray()
     byte = 0
-    for y in range(_CHAR_HEIGHT):
-        for x in range(_CHAR_WIDTH):
+    for y in range(cell_height):
+        for x in range(cell_width):
             if x % 8 == 0:
                 byte = 0
             pixel = cast(int, image.getpixel((x, y)))  # mode "1" bitmap: always an int
             byte |= (pixel & 1) << (x % 8)
-            if x % 8 == 7 or x == _CHAR_WIDTH - 1:
+            if x % 8 == 7 or x == cell_width - 1:
                 bitmap.append(byte)
     return bitmap
