@@ -18,8 +18,20 @@ This project has two equally important goals:
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full architecture review,
 capability inventory with evidence, and the path to 1.0.
 
-Reverse-engineering notes (APK decompile analysis behind the protocol
-findings above): [docs/reverse-engineering/](docs/reverse-engineering/).
+## Documentation
+
+| | |
+|---|---|
+| [Getting Started](docs/getting-started.md) | Install → discover → connect → clock/text/gif/full frame, ten lines. |
+| [Feature Guide](docs/features.md) | Every namespace, with usage examples and hardware-verification status. |
+| [Hardware Compatibility](docs/hardware-compatibility.md) | The full capability table, and how to extend it with your own panel. |
+| [Protocol Notes](docs/protocol-notes.md) | Acks vs. effect, chunking, persistence, endianness, streaming/performance — the SDK's moat. |
+| [Architecture](docs/architecture.md) | The layer diagram and why the driver is opinion-free. |
+| [API Reference](docs/api-reference.md) | Exact public signatures. |
+| [Firmware Notes](docs/firmware-notes.md) | What's known to vary across panel sizes/firmware. |
+| [Reverse-engineering notes](docs/reverse-engineering/) | APK decompile analysis behind the protocol findings above. |
+
+Full doc index: [docs/README.md](docs/README.md).
 
 > **Why `pyidotmatrix` and not `idotmatrix`?** The `idotmatrix` name on PyPI
 > (and its import namespace) belongs to the incumbent library by derkalle4 —
@@ -119,6 +131,9 @@ Commands are verified by default: a device rejection raises
 
 Feature namespaces: `chronograph`, `countdown`, `clock`, `scoreboard`, `eco`,
 `color`, `graffiti`, `effect`, `music_sync`, `text`, `gif`, `common`, plus `display`.
+Alarms and weekly schedules live under `experimental` (bytes confirmed,
+hardware-verified for the core paths, but not yet promoted out of that
+namespace) — see the [Feature Guide](docs/features.md#experimental--unverified-andor-destructive).
 
 ### Device acknowledgements
 
@@ -136,7 +151,8 @@ ack = await client.await_device_ack(common.build_set_brightness(60))
 
 **Protocol truth worth knowing:** an ack confirms *receipt*, not *effect* —
 the device can accept a command and not act on it. The SDK documents these
-cases rather than hiding them (see ROADMAP §4).
+cases rather than hiding them (see [Protocol Notes](docs/protocol-notes.md)
+and ROADMAP §4).
 
 ### Lifecycle & observability
 
@@ -153,6 +169,9 @@ isolated — it cannot break connection handling.
 **Low-MTU panels:** the transport trusts the characteristic's reported write size.
 Some iDotMatrix panels on BlueZ under-report it (~20 bytes); pass
 `BleTransport(..., write_size_override=514)` for full-speed frames on those.
+Streaming/animation performance (the ~1.75 fps DIY-frame render cap, why
+deltas beat full frames for sustained animation): see
+[Protocol Notes § Streaming & performance](docs/protocol-notes.md#streaming--performance).
 
 ## Tests
 
