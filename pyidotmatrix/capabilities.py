@@ -219,13 +219,16 @@ _ENTRIES: tuple[Capability, ...] = (
         "Chunked GIF upload with native playback, optimize=True required; time_sign/ConvertTime "
         "semantics matched (FEATURE_MATRIX.md Display/rendering; ROADMAP.md section 3 Images). "
         "Ack semantics 2026-07-24 (probes/probe_gif_crc_cache.py): replies are StatusAck family "
-        "(1,0) -- NEXT_CHUNK between chunks, terminal 0 = stored fresh (SUCCESS here, unlike "
-        "Timer/Schedule), terminal 3 = byte-identical payload already stored (device CRC dedup). "
-        "No wall-time saving at 2 chunks, but early-exit IS possible: status=3 arrives from "
-        "the first chunk of a multi-chunk re-upload (2026-07-24, probes/probe_gif_crc_cache2.py). "
-        "A dedup fast path must wait, though -- a partial single-chunk send glitched the render "
-        "pipeline once (transient artifacts/stuck pixels, attribution pending "
-        "probes/probe_gif_chunk1_isolation.py).",
+        "(1,0) -- NEXT_CHUNK (status=1) between chunks. Early-exit on re-upload of the CURRENT "
+        "gif is real: status=3 arrives from chunk 1 of a byte-identical re-upload "
+        "(2026-07-24, probes/probe_gif_crc_cache2.py). Refined 2026-07-25 "
+        "(probes/probe_gif_chunk1_isolation.py): recognition is SINGLE-SLOT -- the device knows "
+        "only the currently stored gif's CRC, not a library of past uploads. Unrecognized "
+        "single-chunk sends are visually inert and safely abandoned (device waits for chunk 2). "
+        "Terminal-status semantics (0 vs 3 after a FRESH store) are UNRESOLVED -- two cold "
+        "uploads ended 0 and 3 in near-identical scenarios; pending probes/probe_gif_stored_chunk1.py. "
+        "The transient render glitch (artifacts/stuck pixels) is now correlated with, not proven "
+        "caused by, the recognized-chunk-1 case.",
     ),
     # --- common (device control) ---
     Capability(

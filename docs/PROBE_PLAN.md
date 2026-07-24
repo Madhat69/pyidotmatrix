@@ -73,6 +73,21 @@ a transient render glitch (stutter, CRT-like artifacts, bottom-row pixels stuck
 orange-ish) once; attribution is pending `probe_gif_chunk1_isolation.py`, which
 disambiguates playback-switch from glitch before any dedup fast path ships.
 
+**Progress (2026-07-25):** `probe_gif_chunk1_isolation.py` ran. Recognition is
+SINGLE-SLOT — chunk 1 of a *previously* stored gif (seed-7) returned status=1,
+not 3, because a fresh seed-100 upload had displaced it; the device tracks only
+the currently stored gif's CRC, not a library (multi-entry cache theory killed).
+Lone unrecognized chunks (stored-but-displaced seed-7, never-seen seed-101) are
+visually inert and safely abandoned — both reproduced clean, which narrows the
+render-glitch suspect to the one unreproduced case: chunk 1 of the *currently*
+stored gif (status=3, a possible messy playback-switch — one sample, not a
+finding). Terminal-status semantics reopened: a cold seed-102 upload ended
+terminal 3 where the prior night's cold seed-100 ended terminal 0, so the
+"terminal 0 = fresh / 3 = duplicate" mapping is suspect. P2d
+(`probe_gif_stored_chunk1.py`) is the closing probe: it fires the recognized
+chunk 1 to catch the glitch, then samples three fresh-upload terminals
+(seeds 103/104/105) for a distribution before any terminal-status claim.
+
 ## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7
 
 On a NON-black background (push a dark-blue frame first — a black background
