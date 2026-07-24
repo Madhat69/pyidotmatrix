@@ -43,7 +43,48 @@ Phases (each self-contained; a failure in one is caught and the run continues):
 
 Cleanup: clock restored.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25, reference 32x32 panel, operator-narrated: white -> black ->
+white -> magenta -> black -> 1h countdown -> clock -> scoreboard 999 -> black):
+
+1. BRIGHTNESS ladder via RAW frames ([5,0,4,128,v]), bypassing the SDK's 5..100
+   validation: v = 0, 1, 4, 101, 255 ALL NACKED (DeviceAck accepted=False,
+   [05 00 04 80 00]); the white backdrop never changed brightness for any of
+   them. Restored to 60 via the normal API, acked accepted=True. The firmware's
+   accepted brightness range is exactly 5..100 -- the SDK's own 5..100
+   validation matches firmware precisely, and out-of-range values are
+   rejected, never clamped. This also closes the PROBE_PLAN P7 "brightness
+   floor" question (1..4 nack; the device does not clamp and does not turn
+   the panel off).
+
+2. FULLSCREEN COLOR extremes via the normal API, all acked [05 00 02 02 01]:
+   (1,1,1) rendered as BLACK -- below the LED turn-on threshold, indistinguishable
+   from off; (254,254,254) indistinguishable from full white; (255,0,255)
+   saturated magenta as expected; (0,0,0) plain black (not a powered-off
+   panel).
+
+3. COUNTDOWN 60:00 via RAW frame ([7,0,8,128,1,60,0]), bypassing the SDK's
+   minutes<=59 validation: NOT nacked -- the device ACCEPTED it and then
+   ABORTED the running countdown, falling back to the clock (operator saw the
+   1h countdown replaced by the clock). An out-of-range countdown is
+   accepted-then-cleared, neither clamped to 59:59 nor rejected.
+
+4. SCOREBOARD 1000 via RAW frame ([8,0,10,128,232,3,0,0]), bypassing the
+   builder's 999 clamp: SILENTLY IGNORED -- no ack captured and the panel kept
+   displaying the previous 999. No 16-bit wrap to 000, no nack.
+
+5. GRAFFITI 256-pixel batch via RAW frame (size header (8,2) = 520 bytes, one
+   over MAX_PIXELS_PER_COMMAND=255): CRASHED THE DEVICE'S BLE STACK. The write
+   failed mid-transfer ("Could not write value ... Unreachable"), the
+   transport's reconnect could not find the device at all
+   (BleakDeviceNotFoundError -- the panel STOPPED ADVERTISING), the display
+   went black, and a physical power-cycle was required. The clock-restore
+   cleanup could not run. The SDK's 255-pixel-per-command limit is not
+   cosmetic -- exceeding it by one pixel is a hard device kill, not a nack.
+   Never send >255 pixels in one graffiti command; callers must batch.
+
+capabilities.py and docs/PROBE_PLAN.md still need these findings recorded --
+deferred here to avoid a concurrent-edit collision with another in-flight
+change to those two files.
 """
 
 import asyncio
