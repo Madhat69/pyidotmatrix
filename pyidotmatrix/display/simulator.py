@@ -9,11 +9,14 @@ than a pixel update), so pacing logic can be exercised without hardware.
 """
 
 import asyncio
+import logging
 from collections.abc import Callable
 
 from pyidotmatrix.display.backend import Color, ConnectionCallback, Coordinate, validate_coordinates
 from pyidotmatrix.screen import ScreenSize
 from pyidotmatrix.validation import validate_brightness
+
+logger = logging.getLogger(__name__)
 
 # Measured on hardware (see research lab): a full DIY frame is processed in
 # ~1.5 s; a graffiti pixel command in ~0.02 s.
@@ -111,5 +114,12 @@ class SimulatorDisplay:
             self._on_frame(self.framebuffer)
 
     async def _notify(self, callbacks: list[ConnectionCallback]) -> None:
-        for callback in callbacks:
-            await callback()
+        """Invokes each callback, isolating a raiser from the rest -- matches
+        BleTransport._notify_connection's semantics (item 11, code review):
+        one broken listener must not stop a connect()/disconnect() from
+        notifying the others."""
+        for callback in list(callbacks):
+            try:
+                await callback()
+            except Exception as ex:
+                logger.warning("connection listener raised: %s", ex)
