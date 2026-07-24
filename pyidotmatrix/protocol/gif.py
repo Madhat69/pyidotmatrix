@@ -38,38 +38,46 @@ def adapt_gif(
 ) -> bytes:
     """Loads a GIF, fits each frame to the canvas, caps the frame count, and
     re-encodes it to GIF bytes ready for build_packets."""
+    # GifImagePlugin.LOADING_STRATEGY is a process-wide Pillow global (Pillow has
+    # no per-Image.open equivalent), so mutating it here would otherwise leak
+    # into every other GIF this process opens, including ones opened by
+    # unrelated code sharing the interpreter. Save/restore in finally scopes the
+    # override to this call (item 6, code review).
+    previous_loading_strategy = GifImagePlugin.LOADING_STRATEGY
     GifImagePlugin.LOADING_STRATEGY = GifImagePlugin.LoadingStrategy.RGB_AFTER_DIFFERENT_PALETTE_ONLY
+    try:
+        with Image.open(file_path) as source:
+            frames = []
+            try:
+                while True:
+                    frame = source.copy()
+                    if frame.size != (canvas_size, canvas_size):
+                        frame = resize_to_canvas(
+                            frame, canvas_size, resize_mode, Image.Resampling.NEAREST, background_color, mode="RGBA"
+                        )
+                    if do_palettize:
+                        frame = palettize(frame)
+                    frames.append(frame.copy())
+                    source.seek(source.tell() + 1)
+            except EOFError:
+                pass
 
-    with Image.open(file_path) as source:
-        frames = []
-        try:
-            while True:
-                frame = source.copy()
-                if frame.size != (canvas_size, canvas_size):
-                    frame = resize_to_canvas(
-                        frame, canvas_size, resize_mode, Image.Resampling.NEAREST, background_color, mode="RGBA"
-                    )
-                if do_palettize:
-                    frame = palettize(frame)
-                frames.append(frame.copy())
-                source.seek(source.tell() + 1)
-        except EOFError:
-            pass
+            frames, frame_duration_ms = _limit_frames(source, frames, duration_per_frame_ms)
 
-        frames, frame_duration_ms = _limit_frames(source, frames, duration_per_frame_ms)
-
-        buffer = io.BytesIO()
-        frames[0].save(
-            buffer,
-            format="GIF",
-            save_all=True,
-            optimize=True,  # required: disabling it breaks the transfer
-            append_images=frames[1:],
-            loop=0,
-            duration=frame_duration_ms,
-            disposal=2,
-        )
-        return buffer.getvalue()
+            buffer = io.BytesIO()
+            frames[0].save(
+                buffer,
+                format="GIF",
+                save_all=True,
+                optimize=True,  # required: disabling it breaks the transfer
+                append_images=frames[1:],
+                loop=0,
+                duration=frame_duration_ms,
+                disposal=2,
+            )
+            return buffer.getvalue()
+    finally:
+        GifImagePlugin.LOADING_STRATEGY = previous_loading_strategy
 
 
 def build_packets(

@@ -10,7 +10,7 @@ import zlib
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import GifImagePlugin, Image
 
 from pyidotmatrix.imaging import ResizeMode
 from pyidotmatrix.protocol import gif, text
@@ -141,6 +141,23 @@ def test_gif_build_packets_framing_golden_on_fixed_bytes():
 def test_gif_rejects_empty():
     with pytest.raises(ValueError):
         gif.build_packets(b"")
+
+
+def test_adapt_gif_restores_loading_strategy_global(monkeypatch):
+    # adapt_gif mutates Pillow's process-wide GifImagePlugin.LOADING_STRATEGY
+    # to decode correctly, but must restore it afterward -- otherwise the
+    # override leaks into every other GIF this process opens (item 6, code
+    # review). Set a sentinel beforehand and confirm it's back after the call,
+    # including when adapt_gif raises partway through.
+    sentinel = GifImagePlugin.LoadingStrategy.RGB_ALWAYS
+    monkeypatch.setattr(GifImagePlugin, "LOADING_STRATEGY", sentinel)
+
+    gif.adapt_gif(str(GIF), 32, ResizeMode.FIT, True, (0, 0, 0), None)
+    assert GifImagePlugin.LOADING_STRATEGY is sentinel
+
+    with pytest.raises(FileNotFoundError):
+        gif.adapt_gif("this-path-does-not-exist.gif", 32, ResizeMode.FIT, True, (0, 0, 0), None)
+    assert GifImagePlugin.LOADING_STRATEGY is sentinel
 
 
 def _frames(count):
