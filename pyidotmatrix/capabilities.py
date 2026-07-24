@@ -203,7 +203,11 @@ _ENTRIES: tuple[Capability, ...] = (
         "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
         "MutilColorAgreement.getSendData() bespoke [chunkLen+1, chunkIndex] 96/18-byte framing "
         "(APK_SECOND_PASS.md Q5(a)): both mtu variants ACKED but NO effect appeared on panel "
-        "(probes/probe_capability_sweep3.py, 2026-07-21). The flat show() is the working path.",
+        "(probes/probe_capability_sweep3.py, 2026-07-21). The flat show() is the working path. "
+        "CONFIRMED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the app itself "
+        "sends effects FLAT -- the captured frames start [1c 00 03 02 ...], a 28-byte complete "
+        "command, never the [chunkLen+1, chunkIndex] sub-framing. Nothing on the wire justifies "
+        "keeping the chunked variant beyond other-firmware parity.",
     ),
     Capability(
         "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, _S32,

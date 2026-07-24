@@ -15,7 +15,66 @@ narrates — lessons of 2026-07-21).
 
 ---
 
-## P1 — HCI snoop session: the app's actual bytes  ⭐ next session
+## P1 — HCI snoop session: the app's actual bytes  ✅ CAPTURED + PARSED 2026-07-25
+
+**Done.** The capture was taken against our 32×32 panel, decoded with the
+bundled `pyidotmatrix-btsnoop` CLI (`pyidotmatrix/btsnoop.py`), and every
+finding below is now in `capabilities.py` and the builders.
+
+**What it settled.** The effect speed mystery has an answer: the app **never
+sends `common.set_speed`** — not once, speed dial included — so that command is
+dead code in the vendor ecosystem. Effect speed is byte 5 of the standard effect
+command, and the dial re-sends the *whole* command on gesture release
+(`[1c 00 03 02 style speed count + count*RGB]`, style 0, 7 colors, speed 0x5a
+then 0x64, acked `[05 00 03 02 01]`). The music screen turned out to be
+phone-side: the app streams `[21 00 01 02 00]` + 16 level bytes to fa02 at
+~10 Hz, unacked, levels observed 0x00–0x0d, 8 bands mirrored into a palindrome —
+now `build_rhythm_levels`. Three of our frames were wrong and are fixed:
+`set_mic_type` is 6 bytes (`[06 00 0b 80 01 64]`, we sent 5), the GIF header's
+`time_sign` is little-endian with the app's default key emitting 5 (we wrote
+big-endian 10), and the text path has a second glyph cell — 8×16, 16 bytes per
+glyph, separator tag **0x02**, falsifying our "64 → tag 5, else tag 6" note. Our
+16-byte text header and metadata byte 2 = 1 were confirmed byte-exact, as were
+the eco/power frames, the brightness dial (our frame at ~12 ms spacing; ~17%
+nacks under load are load-shedding the app ignores), and the clock flags
+(0x80 = show_date, 0x40 = hour24, low 3 bits = style). Smaller finds: the DIY
+frame path accepts an RGBA **PNG** payload under our exact 9-byte header
+(acked `[05 00 00 00 01]`); the paint eraser is just `#000000` with `move=0`,
+and only single-pixel 10-byte commands ever appeared; the connect handshake is
+merely CCCD subscribe + `set_time` + clock style; a device ID string
+`"TR2306R007-15"` is readable at ATT handle 0x0007; and `set_time` drew a
+9-byte reply `[09 00 01 80 04 0f 01 03 00]` that `parse_response` ignores
+(len == 5 requirement deliberately unchanged).
+
+**Not settled by the capture:** it contained **no true duplicate GIF upload**,
+so the dedup / single-slot-CRC evidence from P2 remains ours alone — P18 still
+has a job.
+
+### P1-follow-up (a) — effect byte-5 retest with the captured frame  ⭐ next session
+
+Replay the byte-identical captured effect command at speed 5 vs 100 (style 0,
+the same 7 colors, `[1c 00 03 02 …]`), each as a complete command exactly as the
+app re-sends it — not a mid-animation speed tweak, which is what our earlier
+probes did. *Target: `effect.speed`, held at KNOWN_BROKEN pending exactly this
+test. If the rate changes, the field works and our old probe methodology (not
+the byte) was the bug.*
+
+Cost: ~5 min. Unblocks the last speed-related unknown.
+
+### P1-follow-up (b) — live test of the rhythm-levels stream
+
+Stream `music_sync.send_rhythm_levels` at ~10 Hz with an obvious pattern (a
+single band walking across the 16 values, then a full-scale ramp), first bare
+and then after `set_mic_type(1, 100)`, watching whether anything renders and
+whether the clock face stutters as it did under `send_image_rhythm`. *Target:
+the new SOURCE_DERIVED `music_sync.rhythm_levels` entry — capture-exact bytes
+this SDK has never put on a wire. Note the stream is unacked, so silence proves
+nothing; this is a visual test.*
+
+Cost: ~10 min. Unblocks the music-sync namespace, KNOWN_BROKEN since 2026-07-21.
+
+<details>
+<summary>Original P1 plan (kept for method reference)</summary>
 
 **Why first:** one phone capture resolves several mysteries at once, including
 the only capability where the vendor app beats us on our own panel.
@@ -53,6 +112,8 @@ Scripted capture list (5–10 s each, in this order):
 
 Cost: ~20 min phone work + desk parsing. Unblocks: effect speed,
 `show_chunked`, possibly music sync + graffiti move semantics + init quirks.
+
+</details>
 
 ## P2 — GIF CRC cache (overclocked's claim)
 
@@ -349,14 +410,17 @@ screen power state.
 Cost: ~10 min. Brightness is a universal user-facing feature; its cross-mode
 semantics should be documented rather than inferred.
 
-## P18 — Add recovery and lifecycle actions to the P1 HCI capture
+## P18 — Add recovery and lifecycle actions to the HCI capture
 
-During the planned app capture also record: reconnect after intentional app
-disconnect, Bluetooth toggle/resume, explicit DIY enter → frame → exit, repeated
-identical GIF upload, and any alarm/schedule disable action offered by the app.
+Still open after P1: that session captured commands, not lifecycle. A second
+capture should record reconnect after intentional app disconnect, Bluetooth
+toggle/resume, explicit DIY enter → frame → exit, a **repeated identical GIF
+upload** (P1 contained no true duplicate, so our dedup findings are still
+unconfirmed against the app), and any alarm/schedule disable action the app
+offers.
 
-Cost: negligible once P1 is running. Broadens the capture from command-byte
-discovery into initialization, persistence, transfer, and recovery evidence.
+Cost: negligible on a second capture run. Broadens the evidence from
+command-byte discovery into initialization, persistence, transfer, and recovery.
 
 
 
