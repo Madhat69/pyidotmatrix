@@ -11,7 +11,9 @@ the device's flow-control signal, so no inter-command sleeps are needed.
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum, auto
 from os import PathLike
 from types import TracebackType
 from typing import Any
@@ -38,7 +40,13 @@ from pyidotmatrix.protocol import (
     text,
     timer,
 )
-from pyidotmatrix.protocol.response import STATUS_NEXT_CHUNK, STATUS_SAVED, DeviceAck, StatusAck
+from pyidotmatrix.protocol.response import (
+    STATUS_FAILED,
+    STATUS_NEXT_CHUNK,
+    STATUS_SAVED,
+    DeviceAck,
+    StatusAck,
+)
 from pyidotmatrix.screen import ScreenSize
 from pyidotmatrix.transport.ble import _GRAFFITI_TYPE_BYTE, BleTransport, ConnectionCallback, DeviceInfo
 from pyidotmatrix.transport.status import TransportEvent, TransportSnapshot
@@ -58,16 +66,47 @@ _CHUNK_ACK_TIMEOUT_SECONDS = 5.0
 ChunkedUploadError = UploadError
 
 
-async def _send_chunked_upload(
+# GIF upload's StatusAck key (protocol/gif.py header bytes 2-3): the (0x01,
+# 0x00) family joined _STATUS_ACK_KEYS 2026-07-25 once GIF was shown to speak
+# the same 1/0/3 vocabulary as Timer/Schedule (protocol/response.py).
+_GIF_ACK_TYPE = 0x01
+_GIF_ACK_SUBTYPE = 0x00
+
+
+class _UploadOutcome(Enum):
+    """How one pass of the chunked-upload handshake ended. Distinct from the
+    wire status codes: a pass consumes a whole *sequence* of StatusAcks and
+    reports its terminal state, which each caller then interprets (fatal for
+    Timer/Schedule, retryable for GIF)."""
+
+    SAVED = auto()         # a STATUS_SAVED (3) arrived -> success
+    FAILED = auto()        # a STATUS_FAILED (0) arrived -> the transfer is doomed
+    TIMEOUT = auto()       # no ack within _CHUNK_ACK_TIMEOUT_SECONDS
+    NO_TERMINAL = auto()   # every chunk sent, only NEXT_CHUNK (1) ever seen, no SAVED
+    UNRECOGNIZED = auto()  # a status this driver doesn't know (not 0/1/3)
+
+
+@dataclass(frozen=True)
+class _UploadPass:
+    """The result of one pass of _run_upload_pass."""
+
+    outcome: _UploadOutcome
+    ack: StatusAck | None      # the terminal StatusAck (FAILED/UNRECOGNIZED/SAVED); None for TIMEOUT/NO_TERMINAL
+    chunk_index: int           # zero-based index of the chunk the pass stopped on
+    chunk_count: int           # how many outer chunks this pass would send
+
+
+async def _run_upload_pass(
     transport: BleTransport,
     chunks: list[list[bytearray]],
     ack_type: int,
     ack_subtype: int,
-    label: str,
-) -> None:
-    """Drives the hardware-proven chunked-upload handshake (Timer sendData,
-    Schedule per-theme upload): send one outer chunk, wait for its StatusAck,
-    repeat.
+    max_chunks: int | None = None,
+) -> _UploadPass:
+    """One pass of the hardware-proven chunked-upload handshake (Timer sendData,
+    Schedule per-theme upload, GIF upload): send one outer chunk, wait for its
+    StatusAck, repeat. Returns how the pass ended without raising for any device
+    outcome -- callers decide whether a non-SAVED end is fatal or retryable.
 
     Uses a temporary response listener feeding an asyncio.Queue rather than
     transport.await_device_ack. await_device_ack correlates by (type, subtype)
@@ -82,20 +121,18 @@ async def _send_chunked_upload(
     chunk needs. The listener is unsubscribed in `finally` so it never leaks
     past this call.
 
-    NEXT_CHUNK -> send the next outer chunk. SAVED -> return (tolerates a
-    single-chunk upload skipping NEXT_CHUNK and going straight to SAVED,
-    hardware-confirmed 2026-07-12). FAILED, or any status this driver doesn't
-    recognize -> raise UploadError carrying the raw ack. Timeout waiting for an
-    ack -> raise UploadError. Sending every chunk without ever seeing a
-    terminal SAVED (e.g. the device only ever answers NEXT_CHUNK) -> raise
-    UploadError -- a transfer that never confirms SAVED must not read as a
-    silent success (code review item 4: the previous "anything but FAILED
-    means continue" logic let exactly this happen).
+    SAVED tolerates a single-chunk upload skipping NEXT_CHUNK and going straight
+    to SAVED (hardware-confirmed 2026-07-12), and -- for GIF -- a mid-transfer
+    SAVED that is the single-slot CRC recognition of the already-stored gif
+    (2026-07-25); the caller stops sending on it either way. Duplicate StatusAck
+    frames (hardware sends them -- the same status observed twice for one chunk)
+    are drained from the queue before each send so a repeat never causes a
+    double-send or an off-by-one.
 
-    Duplicate StatusAck frames (hardware sends them -- the same status
-    observed twice for one chunk) are tolerated by draining any ack still
-    sitting in the queue from the previous chunk before sending the next one.
+    max_chunks caps how many outer chunks are sent (GifFeature.activate_stored
+    sends only the first, then reads the one ack); None sends them all.
     """
+    to_send = chunks if max_chunks is None else chunks[:max_chunks]
     acks: asyncio.Queue = asyncio.Queue()
 
     def _on_ack(ack: DeviceAck | StatusAck) -> None:
@@ -104,32 +141,94 @@ async def _send_chunked_upload(
 
     unsubscribe = transport.add_response_listener(_on_ack)
     try:
-        for index, chunk in enumerate(chunks):
+        for index, chunk in enumerate(to_send):
             _drain_stale_acks(acks)  # discard a duplicate left over from the previous chunk
             await transport.write_packets([chunk], response=True)
             try:
                 ack = await asyncio.wait_for(acks.get(), _CHUNK_ACK_TIMEOUT_SECONDS)
-            except TimeoutError as ex:
-                raise UploadError(
-                    f"{label} upload: no ack within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
-                    f"chunk {index + 1}/{len(chunks)}"
-                ) from ex
+            except TimeoutError:
+                return _UploadPass(_UploadOutcome.TIMEOUT, None, index, len(to_send))
 
             if ack.status == STATUS_SAVED:
-                return  # early SAVED is expected for single-chunk uploads; tolerate it any time
+                return _UploadPass(_UploadOutcome.SAVED, ack, index, len(to_send))
             if ack.status == STATUS_NEXT_CHUNK:
                 continue  # proceed to the next chunk
-            # STATUS_FAILED or any status this driver doesn't recognize: never
-            # treated as "keep going" -- raise, carrying the raw ack.
-            raise UploadError(
-                f"{label} upload rejected (status={ack.status}) at chunk {index + 1}/{len(chunks)}",
-                raw=ack.raw,
-            )
+            if ack.status == STATUS_FAILED:
+                return _UploadPass(_UploadOutcome.FAILED, ack, index, len(to_send))
+            return _UploadPass(_UploadOutcome.UNRECOGNIZED, ack, index, len(to_send))
         # Every chunk was sent and every ack was NEXT_CHUNK, but no terminal
         # SAVED ever arrived -- the transfer did not confirm success.
-        raise UploadError(f"{label} upload: sent all {len(chunks)} chunk(s) but never received a SAVED ack")
+        return _UploadPass(_UploadOutcome.NO_TERMINAL, None, len(to_send) - 1, len(to_send))
     finally:
         unsubscribe()
+
+
+async def _send_chunked_upload(
+    transport: BleTransport,
+    chunks: list[list[bytearray]],
+    ack_type: int,
+    ack_subtype: int,
+    label: str,
+) -> None:
+    """Timer/Schedule upload: one pass of _run_upload_pass, where any non-SAVED
+    end is fatal.
+
+    NEXT_CHUNK -> next chunk; SAVED -> success. FAILED, or any status this driver
+    doesn't recognize -> raise UploadError carrying the raw ack. Timeout -> raise.
+    Every chunk sent without a terminal SAVED -> raise: a transfer that never
+    confirms SAVED must not read as a silent success (code review item 4: the
+    previous "anything but FAILED means continue" logic let exactly this happen).
+    """
+    result = await _run_upload_pass(transport, chunks, ack_type, ack_subtype)
+    if result.outcome is _UploadOutcome.SAVED:
+        return
+    if result.outcome is _UploadOutcome.TIMEOUT:
+        raise UploadError(
+            f"{label} upload: no ack within {_CHUNK_ACK_TIMEOUT_SECONDS}s after "
+            f"chunk {result.chunk_index + 1}/{result.chunk_count}"
+        )
+    if result.outcome is _UploadOutcome.NO_TERMINAL:
+        raise UploadError(f"{label} upload: sent all {result.chunk_count} chunk(s) but never received a SAVED ack")
+    # FAILED or UNRECOGNIZED: never treated as "keep going" -- raise with the raw ack.
+    assert result.ack is not None  # FAILED/UNRECOGNIZED always carry the terminal ack
+    raise UploadError(
+        f"{label} upload rejected (status={result.ack.status}) at chunk "
+        f"{result.chunk_index + 1}/{result.chunk_count}",
+        raw=result.ack.raw,
+    )
+
+
+async def _send_gif_upload(transport: BleTransport, chunks: list[list[bytearray]]) -> None:
+    """Status-aware GIF upload, paced on the (0x01, 0x00) StatusAck handshake.
+
+    Replaces the old blind back-to-back send, which suffered a chunk-2 RACE:
+    firing every chunk without waiting let chunk 2 land while the device was
+    still digesting chunk 1's header, and that chunk was silently rejected --
+    all failures ever observed (seeds 104/red/blue, 2026-07-25) died at the
+    chunk-2 position (+1.6-2.0s), with later chunks still acking 1 but no
+    terminal 3 and nothing saved. ~50% silent-failure rate on the reference
+    panel (probes/probe_gif_color_reliability.py). Pacing on the handshake, as
+    the vendor app does, removes the race.
+
+    Per chunk: NEXT_CHUNK (1) -> send the next; SAVED (3) -> success now (a
+    terminal save on the last chunk, or -- mid-transfer -- single-slot CRC
+    recognition of the currently stored gif, which stops the send early: the
+    ~8.7s -> ~1.3s dedup fast path). FAILED (0) or a timeout -> the transfer is
+    doomed; restart the WHOLE upload from chunk 1 exactly once (a fresh is_first
+    header resets the device's receive state -- evidenced by clean uploads after
+    abandoned transfers). If the retry also fails to reach SAVED -> raise
+    UploadError carrying the last raw ack (None for a timeout).
+    """
+    last_ack: StatusAck | None = None
+    for _attempt in range(2):  # initial pass + one whole-upload retry from chunk 1
+        result = await _run_upload_pass(transport, chunks, _GIF_ACK_TYPE, _GIF_ACK_SUBTYPE)
+        if result.outcome is _UploadOutcome.SAVED:
+            return
+        last_ack = result.ack  # FAILED/UNRECOGNIZED carry the ack; TIMEOUT/NO_TERMINAL are None
+    raise UploadError(
+        "gif upload failed: transfer did not reach SAVED after one whole-upload retry",
+        raw=last_ack.raw if last_ack is not None else None,
+    )
 
 
 def _drain_stale_acks(acks: "asyncio.Queue") -> None:
@@ -369,6 +468,19 @@ class TextFeature(_Feature):
 
 
 class GifFeature(_Feature):
+    """Animated GIF upload with native device playback.
+
+    Methods:
+      upload_file / upload_bytes   status-aware chunked upload (paced on the
+                                   (0x01, 0x00) StatusAck handshake -- see
+                                   _send_gif_upload; raises UploadError if the
+                                   transfer never confirms SAVED even after its
+                                   one whole-upload retry).
+      activate_stored              instant (~1s) switch to a gif the device
+                                   already holds, via single-slot CRC
+                                   recognition -- no re-upload.
+    """
+
     def __init__(self, transport: BleTransport, screen_size: ScreenSize):
         super().__init__(transport)
         self._canvas_size = screen_size.width  # square canvas
@@ -384,11 +496,34 @@ class GifFeature(_Feature):
         gif_data = gif.adapt_gif(
             file_path, self._canvas_size, resize_mode, do_palettize, background_color, duration_per_frame_ms
         )
-        await self._send_packets(gif.build_packets(gif_data))
+        await _send_gif_upload(self._transport, gif.build_packets(gif_data))
 
     async def upload_bytes(self, gif_data: bytes) -> None:
         """Uploads already-adapted GIF bytes without re-processing."""
-        await self._send_packets(gif.build_packets(gif_data))
+        await _send_gif_upload(self._transport, gif.build_packets(gif_data))
+
+    async def activate_stored(self, gif_data: bytes) -> bool:
+        """Instantly switches playback to gif_data IF the device already holds
+        exactly these bytes, without re-uploading -- returns True on success.
+
+        Sends ONLY the first outer chunk and reads its one StatusAck. The device
+        keeps a single-slot CRC of the currently stored gif; when chunk 1's CRC
+        matches, it replies SAVED (3) and switches playback to the stored gif in
+        ~1s (hardware-verified 2026-07-25, probes/probe_gif_stored_chunk1.py
+        phase 1: clock -> stored noise, no artifacts) -> True. A NEXT_CHUNK (1)
+        means these are NOT the stored bytes; the dangling one-chunk transfer is
+        left unsent-past and is inert (hardware-verified safely abandoned) ->
+        False. FAILED (0) or a timeout -> False.
+
+        Single-slot semantics: only the *currently* stored gif is recognized --
+        a gif stored earlier but since displaced returns NEXT_CHUNK, not SAVED.
+        To guarantee a switch when recognition fails, fall back to upload_bytes.
+        """
+        chunks = gif.build_packets(gif_data)
+        result = await _run_upload_pass(
+            self._transport, chunks, _GIF_ACK_TYPE, _GIF_ACK_SUBTYPE, max_chunks=1
+        )
+        return result.outcome is _UploadOutcome.SAVED
 
 
 class CommonFeature(_Feature):

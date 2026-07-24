@@ -7,7 +7,7 @@ import pytest
 from pyidotmatrix import client as client_module
 from pyidotmatrix.client import ChunkedUploadError, IDotMatrixClient
 from pyidotmatrix.exceptions import CommandRejectedError
-from pyidotmatrix.protocol import graffiti, schedule, timer
+from pyidotmatrix.protocol import gif, graffiti, schedule, timer
 from pyidotmatrix.protocol.response import (
     STATUS_FAILED,
     STATUS_NEXT_CHUNK,
@@ -414,6 +414,151 @@ async def test_schedule_set_theme_timeout_raises(monkeypatch):
     client, _ = _client()
     with pytest.raises(ChunkedUploadError):
         await client.experimental.schedule_set_theme(_theme_obj(), b"a" * 5, schedule.CONTENT_GIF)
+
+
+# --- gif upload: status-aware paced handshake (chunk-2 race remedy) ----------
+#
+# Same fake/scripted-transport pattern as the timer/schedule handshake tests
+# above. The GIF ack key is (0x01, 0x00); the sender restarts the WHOLE upload
+# once on a doomed (0) or timed-out pass, and short-circuits on any SAVED (3)
+# -- terminal on the last chunk, or single-slot CRC recognition mid-transfer.
+
+
+def _gif_ack(status: int) -> StatusAck:
+    return _status_ack(0x01, 0x00, status)
+
+
+async def test_gif_upload_happy_path_next_chunk_then_saved():
+    client, transport = _client()
+    payload = b"g" * 8200  # three outer chunks
+    n = len(gif.build_packets(payload))
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    for _ in range(n - 1):
+        await _yield_control()
+        _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    await task
+
+    assert len(transport.packet_writes) == n
+
+
+async def test_gif_upload_dedup_short_circuits_on_first_saved():
+    """A mid-transfer SAVED is single-slot CRC recognition of the already-stored
+    gif: the sender stops immediately and the remaining chunks are NOT sent (the
+    ~8.7s -> ~1.3s re-upload fast path)."""
+    client, transport = _client()
+    payload = b"g" * 8200  # would be three chunks if fully sent
+    assert len(gif.build_packets(payload)) >= 2
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))  # recognized on chunk 1
+    await task
+
+    assert len(transport.packet_writes) == 1  # remaining chunks never sent
+
+
+async def test_gif_upload_doomed_mid_stream_restarts_whole_upload_and_succeeds():
+    client, transport = _client()
+    payload = b"g" * 8200  # three chunks
+    n = len(gif.build_packets(payload))
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    # First pass: chunk 1 acks NEXT_CHUNK, chunk 2 acks FAILED (chunk-2 race) -> doomed.
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_FAILED))
+    # Retry: whole upload from chunk 1, all NEXT_CHUNK then a terminal SAVED.
+    for _ in range(n - 1):
+        await _yield_control()
+        _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    await task
+
+    # First pass sent 2 chunks (stopped at the 0); the retry sent all n from chunk 1.
+    assert len(transport.packet_writes) == 2 + n
+
+
+async def test_gif_upload_doomed_twice_raises_with_raw_ack():
+    client, transport = _client()
+    payload = b"g" * 8200
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_FAILED))  # first pass doomed at chunk 1
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_FAILED))  # retry doomed too
+    with pytest.raises(ChunkedUploadError) as excinfo:
+        await task
+
+    assert excinfo.value.raw == _gif_ack(STATUS_FAILED).raw  # carries the last raw ack
+
+
+async def test_gif_upload_timeout_retries_then_raises(monkeypatch):
+    monkeypatch.setattr(client_module, "_CHUNK_ACK_TIMEOUT_SECONDS", 0.05)
+    client, transport = _client()
+    with pytest.raises(ChunkedUploadError):
+        await client.gif.upload_bytes(b"g" * 8200)
+
+    # Two whole passes were attempted (initial + one retry); each times out on
+    # chunk 1, so exactly one write per pass.
+    assert len(transport.packet_writes) == 2
+
+
+async def test_gif_upload_tolerates_duplicate_next_chunk():
+    client, transport = _client()
+    payload = b"g" * 4200  # two outer chunks
+    assert len(gif.build_packets(payload)) == 2
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    await _yield_control()  # chunk 1 written, waiting for its ack
+    _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))
+    _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))  # duplicate for chunk 1
+    await _yield_control()  # duplicate drained; chunk 2 written; waiting again
+
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    await task
+
+    assert len(transport.packet_writes) == 2  # duplicate did not cause a phantom third write
+
+
+async def test_gif_activate_stored_true_on_saved():
+    client, transport = _client()
+    payload = b"g" * 8200  # multi-chunk, but activate_stored sends only chunk 1
+    task = asyncio.create_task(client.gif.activate_stored(payload))
+
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))  # CRC recognition of the stored gif
+    result = await task
+
+    assert result is True
+    assert len(transport.packet_writes) == 1  # only the first outer chunk was sent
+
+
+async def test_gif_activate_stored_false_when_not_the_stored_gif():
+    client, transport = _client()
+    payload = b"g" * 8200
+    task = asyncio.create_task(client.gif.activate_stored(payload))
+
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))  # not the stored gif
+    result = await task
+
+    assert result is False
+    assert len(transport.packet_writes) == 1  # dangling one-chunk transfer left abandoned
+
+
+async def test_gif_activate_stored_false_on_timeout(monkeypatch):
+    monkeypatch.setattr(client_module, "_CHUNK_ACK_TIMEOUT_SECONDS", 0.05)
+    client, transport = _client()
+    result = await client.gif.activate_stored(b"g" * 8200)  # no ack ever pushed
+
+    assert result is False
+    assert len(transport.packet_writes) == 1
 
 
 # --- reject-raises-by-default: _send awaits the device ack (M2) --------------
