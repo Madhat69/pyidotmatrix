@@ -11,17 +11,20 @@ a fixed duration, optionally with the buzzer.
 CONFIRMED: content must be an encoded file (e.g. a real GIF bytestream) with
 CONTENT_GIF for the device to actually render it at fire time.
 
-CONTENT_IMAGE content format is CONFIRMED-FROM-SOURCE (docs/APK_SECOND_PASS.md,
-Q2, AddTimerDialog.java:718 + BGRUtils.bitmap2RGB): raw, uncompressed RGB, no
-header -- exactly width*height*3 bytes, row-major, [R,G,B] per pixel. This is
-byte-identical to what the app's own image-alarm path sends. Our one hardware
-test of this path (2026-07-12) used a payload whose duration header was
-accidentally big-endian (a bug in that test, fixed since -- see
-_build_timer_data_header's little-endian header), so the content was accepted
-and saved (TimerAck status=3 SAVED) but is UNVERIFIED-PENDING-RETEST for
-rendering -- do not treat that result as CONTENT_IMAGE being broken; retest
-with a correct little-endian header and a payload sized exactly
-panel_w * panel_h * 3 before drawing any conclusion about whether it renders.
+CONTENT_IMAGE content format is HARDWARE-CONFIRMED 2026-07-21
+(probes/probe_content_image_and_recolor.py): an encoded PNG bytestream, the
+same encoding the caller would produce for a still image -- NOT raw,
+uncompressed RGB as originally read from AddTimerDialog.java:718 +
+BGRUtils.bitmap2RGB (docs/APK_SECOND_PASS.md, Q2). That earlier reading
+described the pre-encoding pixel source inside the app, not the wire payload
+this driver's callers must send. Our first hardware test of this path
+(2026-07-12) sent raw width*height*3 RGB with a payload whose duration header
+was also accidentally big-endian (a bug in that test, fixed since -- see
+_build_timer_data_header's little-endian header); that raw-RGB payload was
+accepted and saved (TimerAck status=3 SAVED) but never rendered at fire time.
+A PNG payload with the corrected little-endian header fired and RENDERED
+correctly -- see client.py's ExperimentalFeature.timer_set docstring for the
+caller-facing contract.
 
 CONFIRMED: at fire time the panel shows the clock for a few seconds before
 the alarm's content appears -- expected, not a bug.

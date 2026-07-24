@@ -4,13 +4,17 @@ them in the device's text packet. Needs Pillow and a font path (caller-provided)
 Ported verbatim from the research lab; byte layout from 8none1's work.
 
 Two builders live here:
-  build_text_packet        the legacy/generic sender -- REJECTED by 32x32
-                            firmware (probe 2026-07-19: device NACKs type=3
-                            subtype=0 for all text modes). Matches the
-                            decompiled app's sendTextTo832 wire layout.
+  build_text_packet        the legacy/generic sender -- ACCEPTED and SAVED by
+                            32x32 firmware but renders TRUNCATED ("HELLO" ->
+                            "HEL", A/B 2026-07-20); the earlier 2026-07-19
+                            "device NACKs it" reading was a StatusAck SAVED
+                            misparse (protocol/response.py), not an actual
+                            rejection. Matches the decompiled app's
+                            sendTextTo832 wire layout.
   build_text_packet_32x32  ported from TextAgreement.sendTextTo3232 in the
                             decompiled APK (com.tech.pyidotmatrix.core.data).
-                            See its docstring for the full derivation.
+                            Renders fully (not truncated) on 32x32 -- see its
+                            docstring for the full derivation.
 
 The APK has three more per-size senders this driver does not port:
 sendTextTo1616, sendTextTo1664, sendTextTo6464 -- each targets a different
@@ -64,13 +68,16 @@ def build_text_packet(
 ) -> bytearray:
     """Builds the full text command. bg_color None means a black background.
 
-    LEGACY/GENERIC -- REJECTED by 32x32 firmware (probe 2026-07-19: the device
-    NACKs type=3 subtype=0 for all text modes). This builder matches the
-    decompiled app's sendTextTo832 wire layout (metadata byte index 2 = 0,
-    the "8-row LED family" flag). For a 32x32 panel use
-    build_text_packet_32x32 instead, whose docstring documents exactly what
-    differs. Kept as-is -- it may still be correct for other panel sizes this
-    driver hasn't probed.
+    LEGACY/GENERIC -- ACCEPTED and SAVED by 32x32 firmware (StatusAck SAVED on
+    type=3 subtype=0), but renders TRUNCATED there: "HELLO" comes out "HEL"
+    (A/B 2026-07-20, see capabilities.py's text.show_generic_builder entry).
+    The earlier 2026-07-19 "device NACKs it" reading was a StatusAck SAVED
+    misparse (protocol/response.py), not an actual rejection. This builder
+    matches the decompiled app's sendTextTo832 wire layout (metadata byte
+    index 2 = 0, the "8-row LED family" flag). For a 32x32 panel use
+    build_text_packet_32x32 instead, which renders fully -- whose docstring
+    documents exactly what differs. Kept as-is -- it may still be correct for
+    other panel sizes this driver hasn't probed.
     """
     bitmaps = _text_to_bitmaps(text, font_path, font_size)
     bg_mode = 0 if bg_color is None else 1
