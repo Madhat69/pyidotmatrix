@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from bleak import AdvertisementData, BleakClient, BleakScanner
 from bleak.exc import BleakError
 
+from pyidotmatrix.exceptions import ConnectionLostError
 from pyidotmatrix.protocol.response import DeviceAck, StatusAck, parse_response
 from pyidotmatrix.transport.const import DEVICE_NAME_PREFIX, UUID_NOTIFY, UUID_WRITE
 from pyidotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
@@ -37,6 +38,17 @@ _MAX_WRITE_WITH_RESPONSE = 512
 # We no longer override automatically (that breaks genuinely low-MTU devices); we
 # trust the reported size and hint the caller toward write_size_override.
 _LIKELY_UNDERREPORT_SIZE = 20
+
+# write_size_override sanity bounds. Floor: BLE's default ATT_MTU (23) minus the
+# 3-byte ATT header leaves 20 usable payload bytes -- nothing smaller is a valid
+# write size on any link. Ceiling: 517 is BLE's spec-maximum ATT_MTU, so 514
+# (517 - 3) is the largest payload any real link can produce -- this is also the
+# documented BlueZ-underreport escape-hatch value above, so the ceiling must
+# clear it. A value outside this range is not a plausible write size; passing
+# one silently (e.g. a negative override making the chunking loop's range()
+# empty) drops every write with no error.
+_MIN_WRITE_SIZE_OVERRIDE = 20
+_MAX_WRITE_SIZE_OVERRIDE = 517
 
 _RECONNECT_INTERVAL_SECONDS = 5
 # M2 hardware hardening (DAEMON_PLAN.md's risk flag): adapter death (USB
@@ -106,8 +118,19 @@ class BleTransport:
             auto_reconnect: if True, transparently reconnect after an unexpected drop.
             write_size_override: force the no-response write size instead of trusting
                 the characteristic. Escape hatch for BlueZ panels that under-report
-                (set to 514); leave None to use the reported size.
+                (set to 514); leave None to use the reported size. Must be an int in
+                [20, 517] (BLE's practical write-size range) -- raises ValueError
+                otherwise, since e.g. a negative value silently empties the
+                chunking loop and drops every write with no error.
         """
+        if write_size_override is not None and not (
+            isinstance(write_size_override, int)
+            and _MIN_WRITE_SIZE_OVERRIDE <= write_size_override <= _MAX_WRITE_SIZE_OVERRIDE
+        ):
+            raise ValueError(
+                f"write_size_override must be an int {_MIN_WRITE_SIZE_OVERRIDE}.."
+                f"{_MAX_WRITE_SIZE_OVERRIDE}, got {write_size_override!r}"
+            )
         self._mac_address = mac_address
         self._auto_reconnect = auto_reconnect      # configured intent
         self._reconnect_armed = False              # armed on connect, disarmed on explicit disconnect
@@ -116,6 +139,13 @@ class BleTransport:
         self._connect_lock = asyncio.Lock()        # per-instance: multiple devices don't serialize
         self._write_size: int | None = None     # negotiated no-response size, cached per connection
         self._reconnect_task: asyncio.Task | None = None
+        # Serializes write()/write_packets() so one logical command's full
+        # multi-packet send can't be interleaved with another writer's packets
+        # on the wire (item 3, code review). Not held across connect()/
+        # _reconnect_for_readiness() -- those take only _connect_lock, so a
+        # write-triggered reconnect never tries to reacquire this lock and
+        # can't deadlock against it (asyncio.Lock is not reentrant).
+        self._write_lock = asyncio.Lock()
 
         self._on_connected: list[ConnectionCallback] = []
         self._on_disconnected: list[ConnectionCallback] = []
@@ -229,12 +259,19 @@ class BleTransport:
 
     async def write(self, data: bytes | bytearray, response: bool = False) -> None:
         """Writes a single command, chunked to the write size. GATT-acks the last
-        chunk if response=True."""
+        chunk if response=True.
+
+        Holds _write_lock for the full send so this command's chunks can't be
+        interleaved on the wire with another concurrent write()/write_packets()
+        call (item 3, code review) -- without it, two logical commands writing
+        at once could produce a byte stream the device reassembles as neither.
+        """
         await self._ensure_connected()
         chunk_size = await self._resolve_write_size(response)
-        for start in range(0, len(data), chunk_size):
-            is_last = start + chunk_size >= len(data)
-            await self._write_raw(data[start:start + chunk_size], response=response and is_last)
+        async with self._write_lock:
+            for start in range(0, len(data), chunk_size):
+                is_last = start + chunk_size >= len(data)
+                await self._write_raw(data[start:start + chunk_size], response=response and is_last)
 
     async def write_packets(self, packets: list[list[bytearray]], response: bool = False) -> None:
         """Writes a multi-chunk frame. Only the very last write is GATT-acked.
@@ -244,30 +281,47 @@ class BleTransport:
         protocol's default size; if this connection negotiated a smaller write size,
         packets are re-split here — the device reassembles by the length header in
         each chunk, so BLE write boundaries don't matter to it.
+
+        Holds _write_lock for the full send, same atomicity guarantee as write()
+        (item 3, code review).
         """
         if not packets:
             return
         await self._ensure_connected()
         write_size = await self._resolve_write_size(response=False)
-        for chunk_index, chunk in enumerate(packets):
-            is_last_chunk = chunk_index == len(packets) - 1
-            for packet_index, packet in enumerate(chunk):
-                is_last_packet = packet_index == len(chunk) - 1
-                for start in range(0, len(packet), write_size):
-                    piece = packet[start:start + write_size]
-                    is_final = response and is_last_chunk and is_last_packet and start + write_size >= len(packet)
-                    await self._write_raw(piece, response=is_final)
+        async with self._write_lock:
+            for chunk_index, chunk in enumerate(packets):
+                is_last_chunk = chunk_index == len(packets) - 1
+                for packet_index, packet in enumerate(chunk):
+                    is_last_packet = packet_index == len(chunk) - 1
+                    for start in range(0, len(packet), write_size):
+                        piece = packet[start:start + write_size]
+                        is_final = (
+                            response and is_last_chunk and is_last_packet and start + write_size >= len(packet)
+                        )
+                        await self._write_raw(piece, response=is_final)
 
     async def await_device_ack(
         self, command: bytes | bytearray, timeout: float = _DEFAULT_ACK_TIMEOUT
-    ) -> DeviceAck | None:
+    ) -> DeviceAck | StatusAck | None:
         """Sends a command and waits for the device's fa03 ack for it.
 
-        Returns the DeviceAck, or None if none arrived within timeout (the device
-        stays silent for unrecognized commands). Correlated by the command's
-        type/subtype bytes. Raises ValueError for graffiti (never acked) or if a
-        wait is already pending for the same command type/subtype — the facade does
-        not serialize, so two same-typed waits could not be told apart.
+        Returns None if no ack arrived within timeout (the device stays silent
+        for unrecognized commands). Otherwise returns whichever ack shape the
+        command's (type, subtype) resolves to on the wire (see
+        protocol/response.py's parse_response): a plain DeviceAck (boolean
+        accepted/rejected) for ordinary commands, or a StatusAck (the 3-way
+        NEXT_CHUNK/SAVED/FAILED vocabulary) for the status-ack family --
+        currently Timer sendData/sendCloseData, Schedule's per-theme upload, and
+        text upload (the exact (type, subtype) keys in
+        protocol.response._STATUS_ACK_KEYS). Most one-shot config commands (the
+        common callers of this method) only ever produce DeviceAck; StatusAck
+        shows up here only if a caller manually awaits one of the chunked-upload
+        commands instead of going through the client's _send_chunked_upload
+        handshake. Correlated by the command's type/subtype bytes. Raises
+        ValueError for graffiti (never acked) or if a wait is already pending
+        for the same command type/subtype — the facade does not serialize, so
+        two same-typed waits could not be told apart.
 
         CAVEAT (docs/APK_SECOND_PASS.md, Q4): this (type, subtype) correlation is
         stronger than the vendor app's own (a single mutable "last writer wins"
@@ -355,14 +409,16 @@ class BleTransport:
         disconnect the stale client, reconnect via connect(), which builds a
         fresh BleakClient) and retry this exact chunk once. If the device is
         genuinely gone (powered off, adapter vanished), _reconnect_for_readiness's
-        own connect() call raises and that propagates here unretried -- the
-        caller sees the failure, and the next write attempt's _ensure_connected
-        (is_connected freshly False) will try connect() again on its own, so no
-        separate recovery path is needed here for that case. If reconnect
-        succeeds but the retried write also fails, that failure is raised
-        without a second retry (only one self-heal attempt per write) --
-        callers (Presenter et al.) are expected to survive that, log it, and
-        let the next attempt try again.
+        own connect() call raises -- reconnection is exhausted at that point, so
+        we raise ConnectionLostError chained from the underlying bleak error
+        instead of letting it escape raw (item 7, code review); the caller does
+        not get a second recovery path here, but the next write attempt's
+        _ensure_connected (is_connected freshly False) will try connect() again
+        on its own. If reconnect succeeds but the retried write also fails, that
+        is also reconnection-exhausted (only one self-heal attempt per write) and
+        raises the same ConnectionLostError, chained from that second failure --
+        callers (Presenter et al.) are expected to catch it, log it, and let the
+        next attempt try again.
         """
         assert self._client is not None  # callers hold a connected transport (_ensure_connected)
         try:
@@ -371,13 +427,20 @@ class BleTransport:
             self._record_failure(f"write failed: {ex}")
             self._emit_event(TransportEventKind.WRITE_FAILED, str(ex))
             if not _retry_on_failure:
-                raise
+                raise ConnectionLostError(
+                    f"write to {self._mac_address} failed after a reconnect-and-retry: {ex}"
+                ) from ex
             logger.warning(
                 "write to %s failed on a client that looked write-ready (%s); "
                 "forcing a clean reconnect and retrying once",
                 self._mac_address, ex,
             )
-            await self._reconnect_for_readiness()
+            try:
+                await self._reconnect_for_readiness()
+            except Exception as reconnect_ex:
+                raise ConnectionLostError(
+                    f"write to {self._mac_address} failed and reconnect could not recover: {reconnect_ex}"
+                ) from reconnect_ex
             await self._write_raw(data, response=response, _retry_on_failure=False)
 
     async def _resolve_write_size(self, response: bool) -> int:

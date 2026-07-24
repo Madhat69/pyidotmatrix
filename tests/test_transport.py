@@ -6,7 +6,9 @@ import pytest
 from bleak import AdvertisementData
 from bleak.exc import BleakError
 
+from pyidotmatrix.exceptions import ConnectionLostError
 from pyidotmatrix.protocol import common, graffiti
+from pyidotmatrix.protocol.response import STATUS_SAVED, StatusAck
 from pyidotmatrix.transport import ble
 from pyidotmatrix.transport.ble import BleTransport, DeviceInfo, discover
 from pyidotmatrix.transport.status import TransportEventKind
@@ -91,6 +93,15 @@ class StubBleakClient:
             raise BleakError("simulated write failure (stale connected client)")
         if self.fail_writes:
             raise RuntimeError("simulated write failure")
+        # A real GATT write always has to cross into the OS/radio stack, which
+        # is a genuine suspension point. Yielding here (rather than completing
+        # synchronously) lets two concurrently-running write()/write_packets()
+        # calls actually interleave at the event-loop level if nothing is
+        # serializing them -- needed for test_concurrent_write_packets_do_not_
+        # interleave (item 3, code review) to be a meaningful test rather than
+        # one where cooperative scheduling happens to run one call to
+        # completion before the other starts regardless of any lock.
+        await asyncio.sleep(0)
         self.writes.append((bytes(data), response))
 
 
@@ -137,6 +148,77 @@ async def test_default_trusts_reported_size(transport):
     await transport.connect()
     await transport.write_packets([[bytearray(509)]], response=False)
     assert transport._client.writes == [(bytes(bytearray(509)), False)]
+
+
+# --- write_size_override validation (item 2, code review) -----------------
+#
+# An unvalidated write_size_override let a negative value make the chunking
+# loop's range() empty -- write()/write_packets() would then silently send
+# nothing at all, with no error. Construction must reject anything outside a
+# plausible BLE write-size range instead.
+
+@pytest.mark.parametrize("bad_value", [-1, -514, 0, 19, 518, 10_000])
+def test_write_size_override_rejects_out_of_range(bad_value):
+    with pytest.raises(ValueError):
+        BleTransport(mac_address="00:11:22:33:44:55", write_size_override=bad_value)
+
+
+@pytest.mark.parametrize("good_value", [20, 514, 517])
+def test_write_size_override_accepts_boundary_values(good_value):
+    # Must not raise, including at the documented BlueZ-underreport escape
+    # hatch (514) and both ends of the accepted range.
+    BleTransport(mac_address="00:11:22:33:44:55", write_size_override=good_value)
+
+
+def test_write_size_override_none_is_always_allowed():
+    BleTransport(mac_address="00:11:22:33:44:55", write_size_override=None)
+
+
+# --- write atomicity under concurrency (item 3, code review) ---------------
+#
+# Without serialization, two concurrent write_packets() calls could interleave
+# their chunks on the wire -- the device would reassemble neither command
+# correctly. StubBleakClient.write_gatt_char yields control on every write
+# (see its comment above), so without a lock the two calls below would race
+# and their bytes would land mixed together.
+
+async def test_concurrent_write_packets_do_not_interleave(transport):
+    await transport.connect()
+    # Each element of the single outer chunk is already one BLE-sized packet,
+    # so each produces its own _write_raw call -- three interleaving
+    # opportunities per command, tagged by first byte so order is checkable.
+    packets_a = [[bytearray([0xAA, i]) for i in range(3)]]
+    packets_b = [[bytearray([0xBB, i]) for i in range(3)]]
+
+    await asyncio.gather(
+        transport.write_packets(packets_a, response=False),
+        transport.write_packets(packets_b, response=False),
+    )
+
+    tags = [data[0] for data, _ in transport._client.writes]
+    assert len(tags) == 6
+    # One command's three writes must land as a contiguous block -- not mixed
+    # with the other's -- regardless of which call happened to go first.
+    assert tags == [0xAA, 0xAA, 0xAA, 0xBB, 0xBB, 0xBB] or tags == [0xBB, 0xBB, 0xBB, 0xAA, 0xAA, 0xAA]
+
+
+async def test_concurrent_write_and_write_packets_do_not_interleave(transport):
+    await transport.connect()
+    # write() chunks a flat command by write size; force a tiny effective
+    # chunk size via write_size_override so a modest payload still splits into
+    # multiple _write_raw calls, same interleaving opportunity as above.
+    transport._write_size_override = 20
+    flat_command = bytes([0xCC]) * 60  # -> 3 chunks at 20 bytes each
+    packets_d = [[bytearray([0xDD, i]) for i in range(3)]]
+
+    await asyncio.gather(
+        transport.write(flat_command, response=False),
+        transport.write_packets(packets_d, response=False),
+    )
+
+    tags = [data[0] for data, _ in transport._client.writes]
+    assert len(tags) == 6
+    assert tags == [0xCC, 0xCC, 0xCC, 0xDD, 0xDD, 0xDD] or tags == [0xDD, 0xDD, 0xDD, 0xCC, 0xCC, 0xCC]
 
 
 # --- reconnect lifecycle --------------------------------------------------
@@ -341,17 +423,40 @@ async def test_write_reconnects_and_retries_once_after_a_stale_client_write_fail
 async def test_write_raises_when_the_retry_also_fails(transport):
     """Models a genuinely-gone device (not just a stale session): even the
     fresh post-reconnect client can't write, so the caller must still see
-    the failure -- only one self-heal attempt is made, not an unbounded loop."""
+    the failure -- only one self-heal attempt is made, not an unbounded loop.
+
+    Reconnection is exhausted at that point (item 7, code review): the caller
+    sees a driver-level ConnectionLostError, chained from the underlying
+    bleak error, instead of a raw BleakError escaping the transport.
+    """
     await transport.connect()
     StubBleakClient.write_failures_remaining = 999  # persists across the rebuilt client too
     events = []
     transport.add_event_listener(events.append)
 
-    with pytest.raises(BleakError):
+    with pytest.raises(ConnectionLostError) as excinfo:
         await asyncio.wait_for(transport.write(common.build_set_brightness(50)), timeout=1)
+    assert isinstance(excinfo.value.__cause__, BleakError)  # original error preserved via chaining
 
     write_failed_events = [e for e in events if e.kind == TransportEventKind.WRITE_FAILED]
     assert len(write_failed_events) == 2  # the original attempt and the one retry, both recorded
+
+
+async def test_write_raises_connection_lost_when_reconnect_itself_fails(monkeypatch):
+    """A different exhaustion path from the test above: the write fails, and
+    the self-heal reconnect's own connect() call also fails (device genuinely
+    gone). That must also surface as ConnectionLostError, not a raw BleakError
+    from connect().
+    """
+    _install(monkeypatch)
+    transport = BleTransport(mac_address="00:11:22:33:44:55")
+    await transport.connect()
+    StubBleakClient.write_failures_remaining = 1  # the first write attempt fails...
+    StubBleakClient.connect_failures_remaining = 99  # ...and every reconnect attempt fails too
+
+    with pytest.raises(ConnectionLostError) as excinfo:
+        await asyncio.wait_for(transport.write(common.build_set_brightness(50)), timeout=1)
+    assert isinstance(excinfo.value.__cause__, BleakError)
 
 
 # --- discovery ------------------------------------------------------------
@@ -418,6 +523,21 @@ async def test_await_device_ack_rejects_graffiti(transport):
     command = graffiti.build_set_pixels((1, 2, 3), [(0, 0)])
     with pytest.raises(ValueError):
         await transport.await_device_ack(command)
+
+
+async def test_await_device_ack_returns_status_ack_for_status_family_commands(transport):
+    """await_device_ack resolves to a StatusAck (not DeviceAck) for the
+    chunked-upload status-ack family -- e.g. Timer sendData's (0x00, 0x80) key
+    (item 10, code review: the prior `DeviceAck | None` return annotation was
+    untruthful about this case)."""
+    await transport.connect()
+    command = bytearray([4, 0, 0x00, 0x80])  # Timer sendData's (type, subtype) key
+    task = asyncio.create_task(transport.await_device_ack(command, timeout=1))
+    await asyncio.sleep(0)
+    transport._client.notify_cb(None, bytearray.fromhex("0500008003"))  # (0,0x80) status=3 SAVED
+    ack = await task
+    assert isinstance(ack, StatusAck)
+    assert ack.status == STATUS_SAVED
 
 
 async def test_await_device_ack_rejects_duplicate_wait(transport):
