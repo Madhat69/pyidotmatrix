@@ -108,14 +108,29 @@ def _build_header(chunk: bytearray, payload: bytes, gif_type: int, time_sign: in
     if gif_type == GIF_TYPE_NO_TIME_SIGNATURE:
         header[13:15] = b"\x00\x00"
     else:
-        header[13:15] = _convert_time_sign(time_sign).to_bytes(2, "big")
+        # LITTLE-endian, like every other multi-byte field in this header
+        # (2026-07-25 capture, see _convert_time_sign). This was big-endian
+        # until the capture showed 05 00 on the wire.
+        header[13:15] = bytes_.short_to_bytes_le(_convert_time_sign(time_sign))
     header[15] = gif_type & 0xFF
     return bytes(header)
 
 
 def _convert_time_sign(key: int) -> int:
-    """Maps the app's time-sign key to the device's expected value."""
-    return {1: 10, 2: 30, 3: 60, 4: 300}.get(key, 5)
+    """Maps the app's time-sign key to the device's expected value.
+
+    CORRECTED 2026-07-25 from the vendor-app HCI capture (btsnoop decode, see
+    pyidotmatrix/btsnoop.py): the app's time-signature GIF header carried
+    bytes 05 00 at header[13:15] -- value 5, little-endian. Our port emitted
+    00 0a for the default key=1, wrong in both value and byte order.
+
+    Only key=1 -> 5 is capture-confirmed. The pre-capture mapping's value set
+    (10/30/60/300, plausibly seconds) is preserved but shifted one key up, the
+    smallest correction that satisfies the wire and keeps every known value
+    reachable -- consistent with an off-by-one between the app's key index and
+    ours. Keys 2..5 remain UNVERIFIED; the capture exercised only the default.
+    """
+    return {1: 5, 2: 10, 3: 30, 4: 60, 5: 300}.get(key, 5)
 
 
 def _limit_frames(

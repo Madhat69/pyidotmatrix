@@ -138,6 +138,34 @@ def test_gif_build_packets_framing_golden_on_fixed_bytes():
     )
 
 
+def test_gif_time_sign_field_is_little_endian_five_for_the_default_key():
+    """GOLDEN CORRECTION 2026-07-25 (vendor-app HCI capture, decoded with
+    pyidotmatrix/btsnoop.py): the app's time-signature GIF header carries
+    05 00 at header[13:15]. This builder wrote 00 0a for the default key=1 --
+    wrong value AND wrong byte order (big-endian, unlike every other
+    multi-byte field in the same header). The no-time-signature branch still
+    writes 00 00, which is why the two hash goldens above are unaffected.
+    """
+    packets = gif.build_packets(b"\x01\x02\x03", gif.GIF_TYPE_DIY_ANIMATION, 1)
+    header = bytes(packets[0][0])[:16]
+    assert header[13:15] == b"\x05\x00"
+    assert header[15] == gif.GIF_TYPE_DIY_ANIMATION
+    # The rest of the header keeps its LE reading of the same bytes.
+    assert int.from_bytes(header[13:15], "little") == 5
+
+
+def test_gif_time_sign_keys_are_all_little_endian():
+    for key, expected in ((1, 5), (2, 10), (3, 30), (4, 60), (5, 300), (99, 5)):
+        packets = gif.build_packets(b"\x01\x02\x03", gif.GIF_TYPE_DIY_ANIMATION, key)
+        header = bytes(packets[0][0])[:16]
+        assert int.from_bytes(header[13:15], "little") == expected, key
+
+
+def test_gif_no_time_signature_branch_unchanged():
+    packets = gif.build_packets(b"\x01\x02\x03", gif.GIF_TYPE_NO_TIME_SIGNATURE, 1)
+    assert bytes(packets[0][0])[13:15] == b"\x00\x00"
+
+
 def test_gif_rejects_empty():
     with pytest.raises(ValueError):
         gif.build_packets(b"")
