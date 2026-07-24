@@ -104,6 +104,21 @@ P2e (`probe_gif_color_reliability.py`) uploads per-channel tinted gifs (RED/
 GREEN/BLUE/YELLOW) so a doomed upload leaves the PREVIOUS color playing on the
 panel, making silent failures directly observable.
 
+**P2 CLOSED (2026-07-25):** `probe_gif_color_reliability.py` ran the four tinted
+cold uploads (RED/GREEN/BLUE/YELLOW). The panel matched every ack terminal: RED
+and BLUE hit a mid-stream status=0 at the chunk-2 position (+1.6-1.7s) with no
+terminal 3 and NEVER PLAYED (the prior color stayed up -- a silent failure,
+seen); GREEN and YELLOW ended terminal 3 (+8.9s) and PLAYED. The silent-failure
+model is now VISUALLY PROVEN, and the CHUNK-2 RACE is identified: every failure
+ever observed (seed 104, RED, BLUE) died at the chunk-2 position, our blind
+sender firing chunk 2 before the device finished digesting chunk 1's header
+(~50% failure this session). The SDK rewrite committed alongside this result is
+the remedy -- `client.py`'s `_send_gif_upload` paces on the StatusAck handshake
+(send a chunk, await its ack, restart the whole upload once on a doomed/timed-out
+pass), the vendor app's own approach. The instant-switch primitive from P2d is
+exposed as `gif.activate_stored()`: one recognized chunk 1 switches playback in
+~1s. No further P2 GIF probes planned.
+
 ## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7
 
 On a NON-black background (push a dark-blue frame first — a black background

@@ -24,7 +24,40 @@ Four cold full uploads in order RED(201), GREEN(202), BLUE(203), YELLOW(204):
 Summary: per-color terminal distribution.
 Cleanup: clock.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25, reference 32x32 panel, operator-narrated):
+
+Four cold ~44.8KB / 11-chunk uploads of the tinted-noise fixtures, in order
+RED -> GREEN -> BLUE -> YELLOW. The panel color is now the visual ground truth
+against each ack terminal, and it matched the trace every time -- the
+SILENT-FAILURE MODEL IS VISUALLY PROVEN.
+
+  - RED (seed 201): status=1, then status=0 at +1.62s (chunk-2 position), then
+    nine more status=1, and NO terminal 3 EVER. Operator: RED NEVER PLAYED --
+    the clock/prior content stayed up. A doomed transfer, seen.
+  - GREEN (seed 202): eleven acks -- ten status=1 + terminal status=3 at
+    +8.96s. Operator: GREEN PLAYED. A clean save, seen.
+  - BLUE (seed 203): status=0 at +1.73s (chunk-2 position AGAIN), no terminal 3.
+    Operator: GREEN KEPT PLAYING -- it "got stuck" briefly during blue's doomed
+    traffic, then resumed; BLUE NEVER APPEARED. A doomed transfer that visibly
+    left the previously stored color on the panel.
+  - YELLOW (seed 204): clean, terminal status=3 at +8.91s. Operator: switched
+    directly GREEN -> YELLOW (no red, since red never stored), YELLOW PLAYED,
+    clock restored on cleanup.
+
+Operator sequence, end to end: no red -> green -> stuck-during-blue -> straight
+to yellow. Terminal 3 <=> the new color plays; a mid-stream 0 with no terminal 3
+<=> the PREVIOUS color keeps playing (the silent failure, now made visible).
+
+CHUNK-2 RACE (the mechanism, now cornered): every failure ever observed -- seed
+104 (probe_gif_stored_chunk1.py, same day), RED, and BLUE -- died at exactly the
+CHUNK-2 position, +1.6-2.0s. Our blind sender fires all chunks back-to-back; if
+chunk 2 lands while the device is still digesting chunk 1's header it is
+rejected and the transfer is silently doomed (later chunks still ack 1; no
+terminal 3; nothing saved). Failure odds were roughly a coin flip this session
+(2 of 4). The vendor app avoids this by pacing on the status handshake -- which
+is exactly the SDK remedy shipped alongside this result: GifFeature.upload_file/
+upload_bytes now send one chunk, await its StatusAck, and restart the whole
+upload once on a doomed/timed-out pass (pyidotmatrix/client.py _send_gif_upload).
 """
 
 import asyncio

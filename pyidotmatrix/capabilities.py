@@ -224,9 +224,15 @@ _ENTRIES: tuple[Capability, ...] = (
         "semantics are no longer 'unresolved' (the earlier terminal-0-means-fresh-store reading "
         "was a misread of silent failures). Recognition is SINGLE-SLOT (device knows only the "
         "currently stored gif's CRC): chunk 1 of the stored gif SWITCHES PLAYBACK in ~1s with no "
-        "artifacts (2026-07-25) -- a verified instant-takeover primitive. But a mid-stream 0 = "
-        "silent transfer failure (~1 in 4 observed: later chunks keep acking 1, no terminal 3, "
-        "nothing saved), so the current blind sender is unreliable pending a status-aware upload.",
+        "artifacts (2026-07-25) -- a verified instant-takeover primitive, exposed as "
+        "gif.activate_stored(). CHUNK-2 RACE proven visually 2026-07-25 "
+        "(probes/probe_gif_color_reliability.py, tinted RED/GREEN/BLUE/YELLOW fixtures): ALL "
+        "failures ever observed died at the chunk-2 position (+1.6-2.0s) -- RED and BLUE were "
+        "silently doomed and left the previously stored color playing, while GREEN and YELLOW "
+        "saved (terminal 3). Blind back-to-back sending hit ~50% silent failure on this panel "
+        "(2 of 4). The SDK now PACES on the status handshake as of 2026-07-25 "
+        "(client.py _send_gif_upload): send a chunk, await its StatusAck, restart the whole "
+        "upload once on a doomed/timed-out pass -- the vendor app's own remedy for the race.",
     ),
     # --- common (device control) ---
     Capability(
