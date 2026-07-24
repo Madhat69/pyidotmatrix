@@ -437,7 +437,7 @@ def _reset(p: bytes) -> str | None:
 
 
 def _effect(p: bytes) -> str | None:
-    # effect.build_show -> [6+n, 0, 3, 2, style, speed, count] + n*RGB
+    # effect.build_show -> [7+3n, 0, 3, 2, style, speed, count] + n*RGB
     if len(p) < 7:
         return None
     count = p[6]

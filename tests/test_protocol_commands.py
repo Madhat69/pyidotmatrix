@@ -53,23 +53,38 @@ def test_fullscreen_color():
     assert fullscreen_color.build_show_color((1, 2, 3)) == bytearray([7, 0, 2, 2, 1, 2, 3])
 
 
-def test_effect_length_fields_count_colors():
+def test_effect_length_byte_is_the_total_frame_length():
+    # Bytes 0-1 count the WHOLE frame (7 header + 3 per color); only byte 6
+    # counts colors. The lab-era builder wrote 6 + colorCount into byte 0.
     payload = effect.build_show(1, [(255, 0, 0), (0, 255, 0), (0, 0, 255)])
-    assert payload[0] == 6 + 3  # colors, not components
+    assert payload[0] == 7 + 3 * 3 == len(payload)
+    assert payload[1] == 0  # length MSB, 0 across the legal 2..7 color range
     assert payload[6] == 3
     assert payload[7:] == bytearray([255, 0, 0, 0, 255, 0, 0, 0, 255])
 
 
-def test_effect_default_speed_is_byte_identical_to_legacy():
-    # The lab-era builder hardcoded speed=90; the default must not change the wire bytes.
+def test_effect_matches_the_captured_vendor_frame_byte_for_byte():
+    # The 2026-07-25 vendor-app HCI capture, speed dial at 0x64 (probe group A
+    # replayed exactly these bytes and the panel ran smooth/slow/smooth).
+    colors = [(0x7F, 0, 0), (0x7F, 0x51, 0), (0x7F, 0x7F, 0), (0, 0x7F, 0),
+              (0, 0, 0x7F), (0x7F, 0, 0x7F), (0x7F, 0x7F, 0x7F)]
+    payload = effect.build_show(0, colors, speed=0x64)
+    assert payload == bytearray.fromhex(
+        "1c 00 03 02 00 64 07 7f0000 7f5100 7f7f00 007f00 00007f 7f007f 7f7f7f".replace(" ", "")
+    )
+
+
+def test_effect_default_speed_stays_90():
+    # The lab-era builder hardcoded speed=90; exposing it must not move byte 5.
+    # Byte 0 DID change on 2026-07-25 (8 -> 13): it is the total frame length.
     payload = effect.build_show(1, [(255, 0, 0), (0, 255, 0)])
-    assert payload == bytearray([8, 0, 3, 2, 1, 90, 2, 255, 0, 0, 0, 255, 0])
+    assert payload == bytearray([13, 0, 3, 2, 1, 90, 2, 255, 0, 0, 0, 255, 0])
 
 
 def test_effect_speed_is_byte_offset_5():
     # APK_SECOND_PASS.md Q5(a): header [len, 0, 3, 2, style, speed, colorCount].
     payload = effect.build_show(4, [(1, 2, 3), (4, 5, 6)], speed=200)
-    assert payload[:7] == bytearray([8, 0, 3, 2, 4, 200, 2])
+    assert payload[:7] == bytearray([13, 0, 3, 2, 4, 200, 2])
     assert payload[7:] == bytearray([1, 2, 3, 4, 5, 6])
 
 
