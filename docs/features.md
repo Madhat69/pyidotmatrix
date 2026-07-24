@@ -228,12 +228,18 @@ bespoke chunked effect framing — is acked but produced no visible effect;
 
 **Status:** ⚠ `set_mic_type`/`stop_rhythm` source-derived and acked with no
 observable effect in isolation; ✖ `send_image_rhythm` known-broken (acked,
-no figure appeared, stuttered the clock face). The vendor app itself doesn't
-reference this feature — kept for protocol parity, not recommended for new
-code.
+no figure appeared, stuttered the clock face).
+
+The 2026-07-25 vendor-app HCI capture showed how the app's music screen really
+works: the **phone** does the FFT and streams 16 level bytes to the panel at
+~10 Hz — `send_rhythm_levels`. That path is capture-exact but has never been
+run against our own panel, so it is ⚠ untested here. The stream is unacked;
+pace it yourself (~10 frames/second is what the app does).
 
 ```python
-await client.music_sync.set_mic_type(0)
+await client.music_sync.set_mic_type(1)        # 6-byte frame, value defaults to 100
+await client.music_sync.send_rhythm_levels([0, 3, 7, 13, 10, 5, 2, 1,
+                                            1, 2, 5, 10, 13, 7, 3, 0])
 await client.music_sync.send_image_rhythm(5)   # known not to work — see above
 await client.music_sync.stop_rhythm()
 ```

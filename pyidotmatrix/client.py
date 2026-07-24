@@ -10,7 +10,7 @@ the device's flow-control signal, so no inter-command sleeps are needed.
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
@@ -418,8 +418,21 @@ class EffectFeature(_Feature):
 
 
 class MusicSyncFeature(_Feature):
-    async def set_mic_type(self, mic_type: int) -> None:
-        await self._send(music_sync.build_set_mic_type(mic_type))
+    async def set_mic_type(self, mic_type: int, value: int = 100) -> None:
+        await self._send(music_sync.build_set_mic_type(mic_type, value))
+
+    async def send_rhythm_levels(self, levels: Sequence[int]) -> None:
+        """Streams one frame of 16 spectrum levels to the music screen.
+
+        Fire-and-forget by design (verify=False, like graffiti): the device
+        sends no ack for these frames, so opening an ack wait would just burn
+        the transport's timeout on every frame of a ~10 Hz stream. Callers pace
+        the stream themselves -- the vendor app sends ~10 frames/second
+        (2026-07-25 HCI capture; see protocol.music_sync.build_rhythm_levels).
+
+        ⚠ Capture-derived, never exercised on our hardware.
+        """
+        await self._send(music_sync.build_rhythm_levels(levels), verify=False)
 
     async def send_image_rhythm(self, value: int) -> None:
         await self._send(music_sync.build_send_image_rhythm(value))

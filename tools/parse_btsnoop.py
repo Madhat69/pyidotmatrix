@@ -527,8 +527,13 @@ def _scoreboard(p: bytes) -> str | None:
 
 
 def _mic_type(p: bytes) -> str | None:
-    # music_sync.build_set_mic_type -> [6, 0, 11, 128, mic_type]
-    return f"mic_type={p[4]}" if len(p) == 5 else None
+    # music_sync.build_set_mic_type -> [6, 0, 11, 128, mic_type, value].
+    # The 6-byte form is what the vendor app sends (capture 2026-07-25); the
+    # 5-byte form is what this SDK emitted before that capture corrected it, so
+    # older captures of our own traffic still decode.
+    if len(p) == 6:
+        return f"mic_type={p[4]} value={p[5]}"
+    return f"mic_type={p[4]} (5-byte legacy form)" if len(p) == 5 else None
 
 
 def _joint(p: bytes) -> str | None:
@@ -549,6 +554,15 @@ def _rhythm(p: bytes) -> str | None:
     if len(p) != 6:
         return None
     return "stop_rhythm" if p[5] == 0 else f"image_rhythm value={p[4]}"
+
+
+def _rhythm_levels(p: bytes) -> str | None:
+    # music_sync.build_rhythm_levels -> [0x21, 0, 1, 2, 0] + 16 level bytes.
+    # Byte 0 is a constant 0x21, not this 21-byte frame's length.
+    if len(p) != 21 or p[0] != 0x21 or p[4] != 0x00:
+        return None
+    levels = " ".join(f"{level:02x}" for level in p[5:])
+    return f"rhythm_levels [{levels}]"
 
 
 def _verify_password(p: bytes) -> str | None:
@@ -667,6 +681,7 @@ _HANDLERS: dict[tuple[int, int], Handler] = {
     (0x00, 0x02): _rhythm,
     (0x00, 0x80): _timer_chunk,
     (0x01, 0x00): _gif_chunk,
+    (0x01, 0x02): _rhythm_levels,
     (0x01, 0x80): _set_time,
     (0x02, 0x01): _delete_device_data,
     (0x02, 0x02): _fullscreen_color,

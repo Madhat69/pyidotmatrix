@@ -110,6 +110,24 @@ async def test_graffiti_set_pixels_accepts_in_bounds_coordinates():
     assert len(transport.writes) == 1
 
 
+async def test_send_rhythm_levels_is_fire_and_forget():
+    """The music-screen level stream is UNACKED on the wire (2026-07-25 vendor-app
+    capture), so it must never open an ack wait -- same discipline as graffiti."""
+    client, transport = _client()
+    transport.next_ack = DeviceAck(1, 2, accepted=False, raw=b"")  # would raise if awaited
+    await client.music_sync.send_rhythm_levels([1] * 16)
+    assert transport.ack_waits == []
+    (data, _response), = transport.writes
+    assert data[:5] == bytes([0x21, 0x00, 0x01, 0x02, 0x00])
+    assert len(data) == 21
+
+
+async def test_set_mic_type_sends_the_six_byte_frame():
+    client, transport = _client()
+    await client.music_sync.set_mic_type(1)
+    assert transport.writes == [(bytes([0x06, 0x00, 0x0B, 0x80, 0x01, 0x64]), True)]
+
+
 async def test_effect_show_passes_speed_through():
     client, transport = _client()
     await client.effect.show(1, [(255, 0, 0), (0, 255, 0)], speed=120)

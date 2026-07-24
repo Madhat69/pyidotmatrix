@@ -16,6 +16,9 @@ MAX_PASSWORD = 999999
 MIN_SCREEN_TIMEOUT = 0
 MAX_SCREEN_TIMEOUT = 254  # 255 is reserved as the read-back sentinel
 
+MIN_PERCENT = 0
+MAX_PERCENT = 100
+
 
 def validate_rgb(color: tuple[int, int, int]) -> None:
     if len(color) != 3 or not all(isinstance(c, int) and 0 <= c <= 255 for c in color):
@@ -32,6 +35,12 @@ def validate_brightness(percent: int) -> None:
         raise ValueError(
             f"brightness must be {MIN_BRIGHTNESS_PERCENT}..{MAX_BRIGHTNESS_PERCENT}, got {percent}"
         )
+
+
+def validate_percent(value: int, name: str = "value") -> None:
+    """0..100 percent-style field (distinct from validate_brightness's 5..100 floor)."""
+    if not (isinstance(value, int) and MIN_PERCENT <= value <= MAX_PERCENT):
+        raise ValueError(f"{name} must be an int {MIN_PERCENT}..{MAX_PERCENT}, got {value!r}")
 
 
 def validate_password(password: int) -> None:

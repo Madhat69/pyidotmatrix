@@ -105,9 +105,57 @@ def test_effect_chunked_18_byte_framing_reassembles_to_flat():
 
 
 def test_music_sync():
-    assert music_sync.build_set_mic_type(2) == bytearray([6, 0, 11, 128, 2])
+    assert music_sync.build_set_mic_type(2) == bytearray([6, 0, 11, 128, 2, 100])
     assert music_sync.build_send_image_rhythm(5) == bytearray([6, 0, 0, 2, 5, 1])
     assert music_sync.build_stop_rhythm() == bytearray([6, 0, 0, 2, 0, 0])
+
+
+def test_set_mic_type_matches_captured_frame():
+    """GOLDEN CORRECTION 2026-07-25 (vendor-app HCI capture, decoded with
+    pyidotmatrix/btsnoop.py): the app sends SIX bytes, [06 00 0b 80 01 64] --
+    mic_type=1 with a trailing value=100. This builder previously emitted five
+    bytes while its own length byte declared six.
+    """
+    assert music_sync.build_set_mic_type(1, 100) == bytearray([0x06, 0x00, 0x0B, 0x80, 0x01, 0x64])
+    assert len(music_sync.build_set_mic_type(1)) == music_sync.build_set_mic_type(1)[0]
+
+
+@pytest.mark.parametrize("value", [-1, 101, 255])
+def test_set_mic_type_value_out_of_range_rejected(value):
+    with pytest.raises(ValueError):
+        music_sync.build_set_mic_type(1, value)
+
+
+def test_rhythm_levels_matches_captured_frame():
+    """Capture-exact 2026-07-25: a constant [21 00 01 02 00] prefix followed by
+    16 level bytes. Byte 0 is 0x21 = 33, NOT the 21-byte frame length.
+    """
+    levels = [0x00, 0x03, 0x07, 0x0D, 0x0A, 0x05, 0x02, 0x01,
+              0x01, 0x02, 0x05, 0x0A, 0x0D, 0x07, 0x03, 0x00]
+    frame = music_sync.build_rhythm_levels(levels)
+    assert frame == bytearray([0x21, 0x00, 0x01, 0x02, 0x00, *levels])
+    assert len(frame) == 21
+    assert frame[0] != len(frame)  # the prefix byte is not a length field
+
+
+def test_rhythm_levels_accepts_the_apps_mirrored_palindrome():
+    # The app mirrors 8 FFT bands into a 16-value palindrome; nothing on the
+    # wire requires it, but the shape must build cleanly.
+    bands = [0, 1, 2, 3, 4, 5, 6, 7]
+    frame = music_sync.build_rhythm_levels([*bands, *reversed(bands)])
+    assert list(frame[5:]) == [0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0]
+
+
+@pytest.mark.parametrize("levels", [[], [1] * 15, [1] * 17])
+def test_rhythm_levels_rejects_wrong_length(levels):
+    with pytest.raises(ValueError):
+        music_sync.build_rhythm_levels(levels)
+
+
+@pytest.mark.parametrize("bad", [-1, 256])
+def test_rhythm_levels_rejects_out_of_range_level(bad):
+    with pytest.raises(ValueError):
+        music_sync.build_rhythm_levels([bad] + [0] * 15)
 
 
 def test_common_time_and_flip():

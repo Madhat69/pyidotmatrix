@@ -209,11 +209,21 @@ class TestClassifyWrite:
             (bytes([5, 0, 9, 128, 2]), "chronograph mode=2"),
             (bytes([6, 0, 0, 2, 0, 0]), "stop_rhythm"),
             (bytes([6, 0, 0, 2, 7, 1]), "image_rhythm value=7"),
+            # Captured 2026-07-25: the app's 6-byte mic-type frame.
+            (bytes([6, 0, 0x0B, 0x80, 1, 100]), "mic_type=1 value=100"),
         ],
     )
     def test_fixed_commands(self, payload: bytes, expected: str) -> None:
         annotation, _shape = pb.classify_write(payload)
         assert annotation == expected
+
+    def test_rhythm_levels_stream_frame(self) -> None:
+        """The music-screen stream captured 2026-07-25: a constant [21 00 01 02 00]
+        prefix plus 16 level bytes (byte 0 is 0x21, not the 21-byte length)."""
+        levels = bytes(range(16))
+        annotation, shape = pb.classify_write(bytes([0x21, 0, 1, 2, 0]) + levels)
+        assert annotation == "rhythm_levels [00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f]"
+        assert shape == "rhythm_levels"
 
     def test_set_time(self) -> None:
         annotation, _ = pb.classify_write(bytes([11, 0, 1, 128, 26, 7, 25, 6, 13, 45, 9]))
@@ -348,14 +358,15 @@ class TestProtocolReassembler:
         assert third == "brightness=10"
 
     def test_short_frame_with_oversized_length_field_is_not_a_fragment(self) -> None:
-        """The music-sync family is 21 bytes but declares 0x21 = 33. Treating
-        that as a fragment made every second frame vanish into a continuation.
+        """The music-sync rhythm-levels frame is 21 bytes but declares 0x21 = 33.
+        Treating that as a fragment made every second frame vanish into a
+        continuation -- and the app streams these at ~10 Hz.
         """
         stream = pb.ProtocolReassembler()
         frame = bytes([0x21, 0x00, 0x01, 0x02, 0x00]) + bytes(16)
         for _ in range(3):
             annotation, shape = stream.annotate(frame)
-            assert shape == "UNKNOWN type=0x01 sub=0x02"
+            assert shape == "rhythm_levels"
             assert "frag" not in annotation
             assert "cont" not in annotation
 
