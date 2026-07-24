@@ -57,7 +57,16 @@ def build_set_joint(mode: int) -> bytearray:
 
 
 def build_set_time(when: datetime) -> bytearray:
-    """Set the device clock. Accurate to the second."""
+    """Set the device clock. Accurate to the second.
+
+    tz-aware datetimes are converted with .astimezone() (no argument, so it
+    resolves to the system's local timezone) before encoding, since the wire
+    format carries no tz-offset field -- the device only ever gets device-local
+    wall-clock fields. Naive datetimes are assumed to already be device-local
+    wall time and are encoded unchanged.
+    """
+    if when.tzinfo is not None:
+        when = when.astimezone()
     if not (1 <= when.month <= 12):
         raise ValueError("month must be 1..12")
     if not (1 <= when.day <= 31):
@@ -87,6 +96,7 @@ def _encode_password(password: int) -> tuple[int, int, int]:
 
 def build_set_password(password: int) -> bytearray:
     """Set a 6-digit password (000000..999999). Reset the device to clear it."""
+    validate_password(password)
     high, mid, low = _encode_password(password)
     return bytearray([8, 0, 4, 2, 1, high, mid, low])
 
