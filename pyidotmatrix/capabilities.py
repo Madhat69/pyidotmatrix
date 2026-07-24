@@ -187,17 +187,20 @@ _ENTRIES: tuple[Capability, ...] = (
         "MutilColorAgreement.java:42-72 (APK_SECOND_PASS.md Q5(a)).",
     ),
     Capability(
-        "effect", "speed", CapabilityStatus.KNOWN_BROKEN, _S32,
-        "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)), and every "
-        "value is accepted -- but 1 vs 255 produced NO observable animation-rate difference on "
-        "styles 2 and 4 (probes/probe_effect_speed{,2}.py, 2026-07-21). MECHANISM CONFIRMED "
-        "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): byte 5 IS how the app "
-        "changes effect speed -- on gesture release it re-sends the WHOLE effect command "
-        "[1c 00 03 02 style speed count + count*RGB] with a new byte 5 (0x5a then 0x64, style=0, "
-        "7 colors), and never touches common.set_speed. So the field and the delivery shape are "
-        "both app-confirmed; what remains unexplained is why OUR sends of the same field showed "
-        "no rate change. Status stays KNOWN_BROKEN until the hardware retest passes: PROBE_PLAN "
-        "P1-follow-up (a) replays the byte-identical captured frame at speed 5 vs 100.",
+        "effect", "speed", CapabilityStatus.VERIFIED, _S32,
+        "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)). MECHANISM "
+        "CONFIRMED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): byte 5 IS how "
+        "the app changes effect speed -- on gesture release it re-sends the WHOLE effect command "
+        "[1c 00 03 02 style speed count + count*RGB] with a new byte 5, and never touches "
+        "common.set_speed. HARDWARE-VERIFIED the same day (probes/probe_p1_followups.py group A, "
+        "reference 32x32, operator-narrated): the app-exact frame at speed 100 / 5 / 100 ran "
+        "SMOOTH / visibly SLOW / SMOOTH again, acked [05 00 03 02 01]. This overturns the "
+        "2026-07-21 'no observable rate difference' reading (probes/probe_effect_speed{,2}.py, "
+        "styles 2 and 4). Those probes went through our builder, which wrote a malformed length "
+        "byte (6 + colorCount = 13 where the app sends 0x1c = the total frame length) -- the "
+        "leading explanation for the device rendering the effect while apparently never reading "
+        "the speed field. Builder fixed 2026-07-25; the length byte is NOT yet isolated as the "
+        "cause (probe style/colors/method also differed) -- PROBE_PLAN P1-(c) runs the A/B.",
     ),
     Capability(
         "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -207,7 +210,12 @@ _ENTRIES: tuple[Capability, ...] = (
         "CONFIRMED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the app itself "
         "sends effects FLAT -- the captured frames start [1c 00 03 02 ...], a 28-byte complete "
         "command, never the [chunkLen+1, chunkIndex] sub-framing. Nothing on the wire justifies "
-        "keeping the chunked variant beyond other-firmware parity.",
+        "keeping the chunked variant beyond other-firmware parity. CANDIDATE EXPLANATION FOR THE "
+        "INERT RESULT, found 2026-07-25: the flat command this builder slices carried the same "
+        "malformed length byte effect.show did (6 + colorCount, not the total frame length), so "
+        "the 2026-07-21 test re-assembled a malformed command on the device side. That byte is "
+        "now fixed; the sub-header's own chunkLen+1 was CONFIRMED-FROM-SOURCE and is unchanged. "
+        "Stays KNOWN_BROKEN -- the chunked path has not been re-sent to hardware since the fix.",
     ),
     Capability(
         "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, _S32,
@@ -216,8 +224,15 @@ _ENTRIES: tuple[Capability, ...] = (
         "CORRECTED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the frame is SIX "
         "bytes, [06 00 0b 80 mic_type value], observed [06 00 0b 80 01 64]. Our builder emitted "
         "five while declaring six, so every set_mic_type this SDK ever sent -- including the "
-        "2026-07-21 hardware run -- was truncated. Re-probe on hardware before trusting the "
-        "'acked, no visible change' reading above.",
+        "2026-07-21 hardware run -- was truncated, which voids the 'acked, no visible change' "
+        "reading above. THE CORRECTED FRAME IS DEVICE-ACCEPTED, 2026-07-25 "
+        "(probes/probe_p1_followups.py B2, reference 32x32): [06 00 0b 80 01 64] drew a POSITIVE "
+        "ack (DeviceAck type=11 sub=128 accepted=True) where the old truncated frame could not "
+        "have been well-formed, and it visibly SELECTS A DIFFERENT VISUALIZATION -- the identical "
+        "rhythm-level stream renders one animation when sent cold and another after this frame "
+        "(operator: 'mic mode animation appeared then again music mode. Both have separate "
+        "animation'). Held at SOURCE_DERIVED rather than VERIFIED because what each mic_type "
+        "VALUE selects is still unobserved: only type 1 has ever been sent.",
     ),
     Capability(
         "music_sync", "send_image_rhythm", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -226,16 +241,26 @@ _ENTRIES: tuple[Capability, ...] = (
         "(probes/probe_capability_sweep3.py, 2026-07-21). REAL MECHANISM FOUND 2026-07-25 "
         "(vendor-app HCI capture, tools/parse_btsnoop.py): the app never sends this command for "
         "its music screen -- it streams rhythm LEVELS instead (see music_sync.rhythm_levels). "
-        "This entry stays KNOWN_BROKEN: the command is still inert on our panel.",
+        "This entry stays KNOWN_BROKEN: the command is still inert on our panel, and as of "
+        "2026-07-25 the alternative is no longer hypothetical -- the rhythm-levels stream is "
+        "hardware-verified to render (probes/probe_p1_followups.py group B), so this command has "
+        "a working replacement and no remaining reason to be used.",
     ),
     Capability(
-        "music_sync", "rhythm_levels", CapabilityStatus.SOURCE_DERIVED, None,
+        "music_sync", "rhythm_levels", CapabilityStatus.VERIFIED, _S32,
         "protocol.music_sync.build_rhythm_levels, added 2026-07-25 from the vendor-app HCI "
         "capture (tools/parse_btsnoop.py): the PHONE does the FFT and streams [21 00 01 02 00] + "
         "16 level bytes to fa02 at ~10 Hz, unacked (byte 0 is a constant 0x21, not the 21-byte "
-        "length). Observed levels 0x00-0x0d; the app mirrors 8 bands into a palindrome. Byte "
-        "layout is capture-exact, but this SDK has NEVER streamed it to a panel -- live test is "
-        "PROBE_PLAN P1-follow-up (b).",
+        "length). Observed levels 0x00-0x0d; the app mirrors 8 bands into a palindrome. "
+        "HARDWARE-VERIFIED the same day (probes/probe_p1_followups.py group B, reference 32x32, "
+        "operator-narrated): streamed from this SDK at a measured 10.0 Hz, 120 frames per phase. "
+        "Cold from the clock with no mode entry it RENDERS ('music mode appeared but choppy'); "
+        "after music_sync.set_mic_type's corrected frame the same stream renders a DIFFERENT "
+        "animation ('mic mode animation appeared then again music mode. Both have separate "
+        "animation'); a single static frame with all 16 levels at 0x0d rendered too ('mic mode "
+        "again but really fast'). Silence proves nothing here -- the stream is unacked, so this "
+        "is a visual result. STILL OPEN: the per-band -> pixel mapping (how many columns, which "
+        "geometry, what 'full' means) was not readable from these phases.",
     ),
     Capability(
         "music_sync", "stop_rhythm", CapabilityStatus.SOURCE_DERIVED, _S32,
@@ -334,10 +359,13 @@ _ENTRIES: tuple[Capability, ...] = (
         "(ROADMAP M3 remaining). Calibration: our effect commands run at roughly the app "
         "dial's 50-60%; the app's 100% is visibly faster than anything we can send. RESOLVED "
         "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the app NEVER sends this "
-        "frame -- not once across the whole scripted capture, speed dial included. It is dead "
-        "code in the vendor ecosystem. The speed dial re-sends the complete effect command with "
-        "a new byte 5 instead (see effect.speed). Our byte layout is fine; there is simply "
-        "nothing on the other end listening.",
+        "frame -- not once across the whole scripted capture, speed dial included, so the vendor "
+        "app never emits it at all. It is dead code in the vendor ecosystem. The speed dial "
+        "re-sends the complete effect command with a new byte 5 instead, and that path is now "
+        "hardware-verified on our own panel (effect.speed, VERIFIED 2026-07-25, "
+        "probes/probe_p1_followups.py group A). Our byte layout is fine; there is simply nothing "
+        "on the other end listening. Stays KNOWN_BROKEN: use effect byte 5 for effect speed and "
+        "the text packet's own speed byte for marquee speed -- this command has no known use.",
     ),
     Capability(
         "common", "set_joint", CapabilityStatus.UNKNOWN, None,

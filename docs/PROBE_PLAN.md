@@ -50,28 +50,66 @@ merely CCCD subscribe + `set_time` + clock style; a device ID string
 so the dedup / single-slot-CRC evidence from P2 remains ours alone — P18 still
 has a job.
 
-### P1-follow-up (a) — effect byte-5 retest with the captured frame  ⭐ next session
+### P1-follow-up (a) — effect byte-5 retest with the captured frame  ✅ DONE 2026-07-25
 
-Replay the byte-identical captured effect command at speed 5 vs 100 (style 0,
-the same 7 colors, `[1c 00 03 02 …]`), each as a complete command exactly as the
-app re-sends it — not a mid-animation speed tweak, which is what our earlier
-probes did. *Target: `effect.speed`, held at KNOWN_BROKEN pending exactly this
-test. If the rate changes, the field works and our old probe methodology (not
-the byte) was the bug.*
+Replayed the byte-identical captured effect command at speed 100 / 5 / 100
+(style 0, the same 7 colors, `[1c 00 03 02 00 SPEED 07]`), each a complete
+command as the app re-sends it — `probes/probe_p1_followups.py` group A.
 
-Cost: ~5 min. Unblocks the last speed-related unknown.
+**PASSED: effect speed control works.** Smooth → visibly slow → smooth again,
+each send acked `[05 00 03 02 01]`. `effect.speed` moves **KNOWN_BROKEN →
+VERIFIED**. The old probe methodology, not the byte, was the bug — and the
+prime suspect within that methodology is our builder's malformed length byte
+(`6 + colorCount` = 13 where the app sends `0x1c` = 28 = the true total frame
+length), now fixed in `protocol/effect.py`. Not yet isolated → P1-(c).
 
-### P1-follow-up (b) — live test of the rhythm-levels stream
+### P1-follow-up (b) — live test of the rhythm-levels stream  ✅ DONE 2026-07-25
 
-Stream `music_sync.send_rhythm_levels` at ~10 Hz with an obvious pattern (a
-single band walking across the 16 values, then a full-scale ramp), first bare
-and then after `set_mic_type(1, 100)`, watching whether anything renders and
-whether the clock face stutters as it did under `send_image_rhythm`. *Target:
-the new SOURCE_DERIVED `music_sync.rhythm_levels` entry — capture-exact bytes
-this SDK has never put on a wire. Note the stream is unacked, so silence proves
-nothing; this is a visual test.*
+Streamed `[21 00 01 02 00]` + 16 mirrored level bytes at a measured 10.0 Hz,
+120 frames per phase, bare and then after the corrected 6-byte mic-type frame —
+`probes/probe_p1_followups.py` group B.
 
-Cost: ~10 min. Unblocks the music-sync namespace, KNOWN_BROKEN since 2026-07-21.
+**PASSED: the stream renders.** Cold from the clock, with no mode entry at all:
+"music mode appeared but choppy". The mic-type frame `[06 00 0b 80 01 64]`
+acked **positive** (type=11 sub=128 accepted) and the identical stream then drew
+a *different* animation — "both have separate animation" — so it selects a
+visualization rather than gating the stream. A static all-`0x0d` frame rendered
+too. `music_sync.rhythm_levels` moves **SOURCE_DERIVED → VERIFIED**;
+`send_image_rhythm` stays KNOWN_BROKEN, now with a working replacement.
+
+*Footnote from the session:* a phantom animation appeared after the probe
+disconnected, attributed (unconfirmed) to the operator's phone app
+auto-reconnecting once we released the link.
+
+### P1-(c) — effect length-byte isolation A/B  ⭐ next session
+
+`probes/probe_effect_length_byte.py`. Follow-up (a) proved byte 5 works but
+changed several things at once versus the 2026-07-21 probes. This one changes
+**exactly one byte**: two hand-built frames identical in every position except
+byte 0 — the old malformed `0x0d` and the correct `0x1c` — sent at SPEED=5 and
+SPEED=100 in four phases (old@100, old@5, correct@100, correct@5) via
+`client.effect._send(..., verify=False)`, deliberately bypassing the now-fixed
+builder.
+
+*Reads out:* if **old@5 does not slow** while correct@5 does, the length byte
+was the culprit and the whole 2026-07-21 "speed is inert" record is explained.
+If old@5 *does* slow, the length byte was never the issue and the difference
+lies in style/palette or the mid-animation delivery those probes used — which
+would reopen the question of what made them inert.
+
+Cost: ~5 min. Closes the last loose end on `effect.speed`'s history and gives
+`effect.show_chunked` its retest rationale.
+
+### P1-(d) — music-sync per-band pixel mapping  (open)
+
+Follow-up (b) proved the stream renders but left the mapping unread: how the 16
+level bytes become pixels (columns? rows? how many? what does "full" reach?),
+and whether the two visualizations map them differently. Needs single-band
+frames walked across all 16 positions, held long enough to photograph, in both
+visualization modes. *Target: promote `music_sync.rhythm_levels` from "renders"
+to "understood", which is what a usable spectrum API needs.*
+
+Cost: ~15 min.
 
 <details>
 <summary>Original P1 plan (kept for method reference)</summary>

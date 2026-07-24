@@ -60,7 +60,54 @@ Phases: A1 speed=100 / A2 speed=5 / A3 speed=100 / clock / B1 cold stream /
 B2 mic frame + stream / B3 static full-blast / cleanup. Each phase is wrapped
 so one failure does not end the run.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25, reference 32x32 panel, operator-narrated):
+
+BOTH follow-ups PASSED. The effect-speed paradox that stood since 2026-07-21 is
+resolved, and the rhythm-level stream renders.
+
+GROUP A -- EFFECT SPEED CONTROL WORKS. The byte-identical vendor frame
+[1c 00 03 02 00 SPEED 07] + the 7 captured colors, varying only byte 5:
+
+  - A1 (SPEED=100): rainbow effect running, SMOOTH/fast. No ack captured this
+    phase (the listener had not seen traffic yet).
+  - A2 (SPEED=5): visibly SLOW. Acked [05 00 03 02 01].
+  - A3 (SPEED=100): SMOOTH again. Acked [05 00 03 02 01].
+
+Byte 5 is the real mechanism and the device honours it when the command arrives
+as a complete, well-formed frame. PRIME SUSPECT for why three earlier probes saw
+nothing: protocol/effect.py's build_show wrote length byte = 6 + len(colors) =
+13 for 7 colors where the vendor frame carries 0x1c = 28 = the TRUE total frame
+length (7 header + 3*len(colors)). The device still rendered the effect from our
+malformed frame but apparently never read the speed field. Builder fixed the
+same night. NOT YET ISOLATED -- style, palette and methodology also differed
+from those probes, so probes/probe_effect_length_byte.py (PROBE_PLAN P1-(c))
+runs the one-variable A/B.
+
+GROUP B -- THE RHYTHM STREAM RENDERS, and there are TWO visualizations.
+[21 00 01 02 00] + 16 level bytes, streamed at a measured 10.0 Hz, 120 frames
+per phase, unacked as predicted. Operator's exact words:
+
+  - B1 (COLD stream, straight from the clock, no mode entry): "music mode
+    appeared but choppy" -- IT RENDERS. First time these bytes ever left this
+    SDK. No mode-entry frame is required.
+  - B2 (mic-type frame, then the identical stream): the corrected 6-byte frame
+    [06 00 0b 80 01 64] ACKED POSITIVE (DeviceAck type=11 sub=128
+    accepted=True) -- our old 5-byte version could not have been well-formed --
+    and then "mic mode animation appeared then again music mode. Both have
+    separate animation". So the mic-type frame SELECTS A DIFFERENT
+    visualization; it is not a gate on the stream.
+  - B3 (one static frame, all 16 levels = 0x0d): "mic mode again but really
+    fast".
+
+STILL OPEN: the per-band -> pixel mapping. Neither the animated sweep nor the
+static full-blast frame let the operator count columns or fix the geometry, so
+how the 16 levels map to pixels remains unmapped -- material for a dedicated
+music-sync probe.
+
+FOOTNOTE: a phantom animation appeared on the panel AFTER this probe
+disconnected and restored the clock. Attributed -- UNCONFIRMED -- to the
+operator's phone app auto-reconnecting the moment we released the link, not to
+any command this probe sent.
 """
 
 import asyncio
