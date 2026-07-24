@@ -217,7 +217,11 @@ _ENTRIES: tuple[Capability, ...] = (
     Capability(
         "gif", "upload_file", CapabilityStatus.VERIFIED, _S32,
         "Chunked GIF upload with native playback, optimize=True required; time_sign/ConvertTime "
-        "semantics matched (FEATURE_MATRIX.md Display/rendering; ROADMAP.md section 3 Images).",
+        "semantics matched (FEATURE_MATRIX.md Display/rendering; ROADMAP.md section 3 Images). "
+        "Ack semantics 2026-07-24 (probes/probe_gif_crc_cache.py): replies are StatusAck family "
+        "(1,0) -- NEXT_CHUNK between chunks, terminal 0 = stored fresh (SUCCESS here, unlike "
+        "Timer/Schedule), terminal 3 = byte-identical payload already stored (device CRC dedup). "
+        "No wall-time saving at 2 chunks; early-exit on multi-chunk re-uploads unprobed.",
     ),
     # --- common (device control) ---
     Capability(

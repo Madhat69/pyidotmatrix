@@ -72,7 +72,17 @@ _STATUS_ACCEPTED = 0x01
 # SAVED it. Whether saved text then RENDERS is a separate question (visual
 # check pending; cf. Timer CONTENT_IMAGE, which also SAVED long before it
 # rendered correctly).
-_STATUS_ACK_KEYS = frozenset({(0x00, 0x80), (0x05, 0x80), (0x03, 0x00)})
+#
+# (0x01, 0x00) -- GIF upload -- added 2026-07-24 after the misparse bit a
+# FOURTH time, live during probes/probe_gif_crc_cache.py: status 1 NEXT_CHUNK
+# between outer chunks, then a terminal status. CAUTION, family-specific
+# meaning: for GIF a terminal 0 accompanied a SUCCESSFUL fresh store (the GIF
+# played on the panel), unlike Timer/Schedule where 0 = FAILED; terminal 3
+# means the device already holds these exact bytes (CRC dedup -- observed on a
+# byte-identical re-upload while fresh payloads got 0). The DeviceAck misparse
+# had logged a spurious "device rejected command type=1 subtype=0" for every
+# successful GIF upload.
+_STATUS_ACK_KEYS = frozenset({(0x00, 0x80), (0x05, 0x80), (0x03, 0x00), (0x01, 0x00)})
 
 # Status-ack family's 3-way status vocabulary (distinct from DeviceAck's plain
 # accept/reject), hardware-confirmed for both member families.

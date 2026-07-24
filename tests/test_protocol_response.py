@@ -47,3 +47,23 @@ def test_text_upload_ack_is_a_status_ack_not_a_boolean_reject():
     assert ack.command_type == 0x03
     assert ack.command_subtype == 0x00
     assert ack.status == STATUS_SAVED
+
+
+def test_gif_upload_ack_is_a_status_ack_with_its_own_vocabulary():
+    """(0x01, 0x00) -- GIF upload -- joined the status-ack family 2026-07-24.
+
+    Live capture (probes/probe_gif_crc_cache.py): status 1 NEXT_CHUNK between
+    outer chunks; terminal 0 on a fresh store (SUCCESS for this family -- the
+    GIF played -- unlike Timer/Schedule where 0 = FAILED); terminal 3 when the
+    payload's CRC matches already-stored bytes (device-side dedup). The old
+    DeviceAck classification logged a spurious "device rejected command type=1
+    subtype=0" for every successful GIF upload.
+    """
+    from pyidotmatrix.protocol.response import STATUS_NEXT_CHUNK, STATUS_SAVED, StatusAck
+
+    for status_byte, expected in ((0x01, STATUS_NEXT_CHUNK), (0x00, 0x00), (0x03, STATUS_SAVED)):
+        ack = parse_response(bytes([0x05, 0x00, 0x01, 0x00, status_byte]))
+        assert isinstance(ack, StatusAck)
+        assert ack.command_type == 0x01
+        assert ack.command_subtype == 0x00
+        assert ack.status == expected
