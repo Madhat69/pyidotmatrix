@@ -143,6 +143,11 @@ Record:
 Cost: ~5 min. Unblocks a documented geometry/orientation guarantee and catches
 the most user-visible wrong-`ScreenSize` failure mode.
 
+**DONE 2026-07-24** (probes/probe_p8_geometry.py, two runs): clean sweep —
+row-major, top-left origin, RGB order; graffiti shares the frame coordinate
+space exactly; flip is a 180° rotation applied at render to frames, graffiti,
+and native modes alike (commands stay in canonical unflipped space).
+
 ## P9 — BLE packet-boundary and write-mode matrix
 
 The transport deliberately re-splits protocol packets to the negotiated GATT

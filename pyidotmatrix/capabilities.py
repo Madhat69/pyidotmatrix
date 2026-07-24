@@ -81,7 +81,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "Streaming benchmark 2026-07-20 (probes/probe_streaming_benchmark.py): the device "
         "RENDERS full frames at a hard ~1.75 fps cap regardless of send rate or write mode; "
         "under an unacked flood it samples the latest frame, drops the rest, and its fa03 "
-        "notifies track frames processed (~1.75/s), not frames received.",
+        "notifies track frames processed (~1.75/s), not frames received. Geometry contract "
+        "verified 2026-07-24 (probes/probe_p8_geometry.py, two runs): the buffer is row-major "
+        "from a top-left origin in RGB channel order, and graffiti pixel commands share this "
+        "exact coordinate space (asymmetric corner + canary landmarks all landed as painted).",
     ),
     Capability(
         "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
@@ -235,7 +238,10 @@ _ENTRIES: tuple[Capability, ...] = (
     Capability(
         "common", "set_screen_flipped", CapabilityStatus.VERIFIED, _S32,
         "Clock rendered upside down on True and righted on False "
-        "(probes/probe_capability_sweep2.py, 2026-07-20).",
+        "(probes/probe_capability_sweep2.py, 2026-07-20). Full semantics 2026-07-24 "
+        "(probes/probe_p8_geometry.py): flip is a 180-degree ROTATION applied at render time "
+        "to everything -- DIY frames, graffiti, and native modes alike; command coordinates "
+        "always stay in canonical unflipped space.",
     ),
     Capability(
         "common", "freeze_screen", CapabilityStatus.KNOWN_BROKEN, _S32,
