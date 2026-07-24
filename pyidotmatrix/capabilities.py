@@ -218,7 +218,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "Stays KNOWN_BROKEN -- the chunked path has not been re-sent to hardware since the fix.",
     ),
     Capability(
-        "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "music_sync", "set_mic_type", CapabilityStatus.VERIFIED, _S32,
         "BleProtocolN.setMicType; acked on hardware 2026-07-21 with no visible change of its "
         "own (probes/probe_capability_sweep3.py) -- effect unobservable in isolation. FRAME "
         "CORRECTED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the frame is SIX "
@@ -231,8 +231,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "have been well-formed, and it visibly SELECTS A DIFFERENT VISUALIZATION -- the identical "
         "rhythm-level stream renders one animation when sent cold and another after this frame "
         "(operator: 'mic mode animation appeared then again music mode. Both have separate "
-        "animation'). Held at SOURCE_DERIVED rather than VERIFIED because what each mic_type "
-        "VALUE selects is still unobserved: only type 1 has ever been sent.",
+        "animation'). CAVEAT ON THE SCOPE OF THIS VERIFICATION: only mic_type 1 with value 100 "
+        "has ever been sent, so the entry certifies that the corrected SIX-BYTE FRAME reaches the "
+        "device and changes what it renders -- what any OTHER mic_type value selects is entirely "
+        "unobserved, and no value has been mapped to a named microphone/source setting.",
     ),
     Capability(
         "music_sync", "send_image_rhythm", CapabilityStatus.KNOWN_BROKEN, _S32,

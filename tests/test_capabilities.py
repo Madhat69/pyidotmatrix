@@ -96,9 +96,9 @@ def test_capture_findings_2026_07_25():
 
 
 def test_hardware_results_2026_07_25():
-    """probes/probe_p1_followups.py: the retests both passed on the reference
-    32x32, so effect.speed and music_sync.rhythm_levels are hardware claims now.
-    The commands they displaced do NOT move.
+    """probes/probe_p1_followups.py: the retests passed on the reference 32x32,
+    so effect.speed, music_sync.rhythm_levels and music_sync.set_mic_type are
+    hardware claims now. The commands they displaced do NOT move.
     """
     effect_speed = capability("effect.speed")
     assert effect_speed.status is CapabilityStatus.VERIFIED
@@ -114,9 +114,12 @@ def test_hardware_results_2026_07_25():
     assert capability("music_sync.send_image_rhythm").status is CapabilityStatus.KNOWN_BROKEN
     assert capability("effect.show_chunked").status is CapabilityStatus.KNOWN_BROKEN
 
-    # Accepted with a positive ack, but which mic_type value does what is still
-    # unobserved, so it does not clear the VERIFIED bar.
-    assert capability("music_sync.set_mic_type").status is CapabilityStatus.SOURCE_DERIVED
+    # The corrected 6-byte frame was accepted with a positive ack AND changed
+    # what the panel renders -- a hardware observation, so VERIFIED. The
+    # evidence must keep saying how narrow it is: one mic_type value, ever.
+    mic_type = capability("music_sync.set_mic_type")
+    assert mic_type.status is CapabilityStatus.VERIFIED
+    assert "CAVEAT ON THE SCOPE OF THIS VERIFICATION" in mic_type.evidence
 
 
 def test_table_is_read_only():

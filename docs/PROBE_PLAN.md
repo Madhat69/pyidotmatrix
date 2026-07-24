@@ -74,8 +74,11 @@ Streamed `[21 00 01 02 00]` + 16 mirrored level bytes at a measured 10.0 Hz,
 acked **positive** (type=11 sub=128 accepted) and the identical stream then drew
 a *different* animation — "both have separate animation" — so it selects a
 visualization rather than gating the stream. A static all-`0x0d` frame rendered
-too. `music_sync.rhythm_levels` moves **SOURCE_DERIVED → VERIFIED**;
-`send_image_rhythm` stays KNOWN_BROKEN, now with a working replacement.
+too. `music_sync.rhythm_levels` and `music_sync.set_mic_type` both move
+**SOURCE_DERIVED → VERIFIED** — set_mic_type's verification covers the corrected
+six-byte frame only, since mic_type 1 is the sole value ever sent and what the
+others select is unobserved. `send_image_rhythm` stays KNOWN_BROKEN, now with a
+working replacement.
 
 *Footnote from the session:* a phantom animation appeared after the probe
 disconnected, attributed (unconfirmed) to the operator's phone app
