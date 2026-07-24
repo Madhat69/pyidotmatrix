@@ -33,6 +33,8 @@ capability inventory with evidence, and the path to 1.0.
 
 Full doc index: [docs/README.md](docs/README.md).
 
+Runnable examples: [examples/](examples/) — discovery, images, animation, graffiti, GIFs, native widgets, the simulator, and the capability table, as standalone scripts.
+
 > **Why `pyidotmatrix` and not `idotmatrix`?** The `idotmatrix` name on PyPI
 > (and its import namespace) belongs to the incumbent library by derkalle4 —
 > installing both would collide in site-packages. One name everywhere, zero
