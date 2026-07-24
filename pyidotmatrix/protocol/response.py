@@ -74,14 +74,19 @@ _STATUS_ACCEPTED = 0x01
 # rendered correctly).
 #
 # (0x01, 0x00) -- GIF upload -- added 2026-07-24 after the misparse bit a
-# FOURTH time, live during probes/probe_gif_crc_cache.py: status 1 NEXT_CHUNK
-# between outer chunks, then a terminal status. CAUTION, family-specific
-# meaning: for GIF a terminal 0 accompanied a SUCCESSFUL fresh store (the GIF
-# played on the panel), unlike Timer/Schedule where 0 = FAILED; terminal 3
-# means the device already holds these exact bytes (CRC dedup -- observed on a
-# byte-identical re-upload while fresh payloads got 0). The DeviceAck misparse
-# had logged a spurious "device rejected command type=1 subtype=0" for every
-# successful GIF upload.
+# FOURTH time, live during probes/probe_gif_crc_cache.py. REVISED 2026-07-25
+# (probes/probe_gif_stored_chunk1.py): GIF speaks the SAME 3-way vocabulary as
+# Timer/Schedule -- 1 = NEXT_CHUNK between outer chunks, 3 = SAVED (terminal
+# success), 0 = FAILED. The earlier "for GIF a terminal 0 = successful fresh
+# store, unlike Timer/Schedule" claim was WRONG: those 0-ending uploads were
+# silent failures (identical-looking noise fixtures masked them). GIF's only
+# family-specific behaviors are (a) status=3 arriving from chunk 1 onward when
+# re-uploading the currently stored gif -- single-slot CRC recognition, which
+# also switches playback in ~1s -- and (b) a mid-stream status=0 meaning that
+# chunk was rejected and the whole transfer is silently doomed (later chunks
+# still ack 1, but no terminal 3 ever lands and nothing is saved). The DeviceAck
+# misparse had logged a spurious "device rejected command type=1 subtype=0" for
+# every successful GIF upload.
 _STATUS_ACK_KEYS = frozenset({(0x00, 0x80), (0x05, 0x80), (0x03, 0x00), (0x01, 0x00)})
 
 # Status-ack family's 3-way status vocabulary (distinct from DeviceAck's plain

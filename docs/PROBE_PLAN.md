@@ -88,6 +88,22 @@ terminal 3 where the prior night's cold seed-100 ended terminal 0, so the
 chunk 1 to catch the glitch, then samples three fresh-upload terminals
 (seeds 103/104/105) for a distribution before any terminal-status claim.
 
+**Progress (2026-07-25, P2d done):** `probe_gif_stored_chunk1.py` ran. Phase 1:
+chunk 1 of the stored seed-102 gif returned status=3 at +1.10s and the panel
+switched clock -> noise cleanly, no artifacts -- INSTANT PLAYBACK SWITCH
+confirmed as a real primitive, and the transient render glitch did NOT reproduce
+(downgraded to an unexplained one-off, kept on record). Phase 2 (three cold
+uploads): seeds 103 and 105 ended terminal 3; seed 104 hit a mid-stream status=0
+at the chunk-2 position, then kept acking 1 with NO terminal 3 -- a SILENT
+FAILURE. Status model v2: GIF's vocabulary is the SAME as Timer/Schedule
+(1=NEXT_CHUNK, 3=SAVED, 0=FAILED); the "terminal 0 = fresh store" reading was
+wrong, and the 2026-07-24 0-endings were silent failures masked by
+identical-looking noise fixtures (~1 in 4 observed). Remaining P2 question =
+VISUAL confirmation of the silent-failure model with distinguishable fixtures:
+P2e (`probe_gif_color_reliability.py`) uploads per-channel tinted gifs (RED/
+GREEN/BLUE/YELLOW) so a doomed upload leaves the PREVIOUS color playing on the
+panel, making silent failures directly observable.
+
 ## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7
 
 On a NON-black background (push a dark-blue frame first — a black background

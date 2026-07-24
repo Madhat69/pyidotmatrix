@@ -52,12 +52,14 @@ def test_text_upload_ack_is_a_status_ack_not_a_boolean_reject():
 def test_gif_upload_ack_is_a_status_ack_with_its_own_vocabulary():
     """(0x01, 0x00) -- GIF upload -- joined the status-ack family 2026-07-24.
 
-    Live capture (probes/probe_gif_crc_cache.py): status 1 NEXT_CHUNK between
-    outer chunks; terminal 0 on a fresh store (SUCCESS for this family -- the
-    GIF played -- unlike Timer/Schedule where 0 = FAILED); terminal 3 when the
-    payload's CRC matches already-stored bytes (device-side dedup). The old
-    DeviceAck classification logged a spurious "device rejected command type=1
-    subtype=0" for every successful GIF upload.
+    Revised 2026-07-25 (probes/probe_gif_stored_chunk1.py): GIF speaks the SAME
+    3-way vocabulary as Timer/Schedule -- 1 = NEXT_CHUNK between outer chunks,
+    3 = SAVED (terminal success, also sent from chunk 1 when re-uploading the
+    currently stored gif via single-slot CRC recognition), 0 = FAILED (a
+    mid-stream 0 rejects that chunk and silently dooms the transfer). The
+    earlier "terminal 0 = successful fresh store" reading was wrong -- those
+    were silent failures. The old DeviceAck classification logged a spurious
+    "device rejected command type=1 subtype=0" for every successful GIF upload.
     """
     from pyidotmatrix.protocol.response import STATUS_NEXT_CHUNK, STATUS_SAVED, StatusAck
 

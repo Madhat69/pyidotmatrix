@@ -26,7 +26,39 @@ PHASE 2: cold full uploads of seeds 103, 104, 105 -- each with a 3s ack-tail
          then a distribution summary of the three terminals.
 Cleanup: clock.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25, reference 32x32 panel, operator-narrated):
+
+PHASE 1 (chunk 1 only of the currently stored seed-102 gif, clock showing): a
+single ack status=3 at +1.10s, and the panel VISIBLY SWITCHED from clock to the
+noise animation -- no artifacts, no stutter. INSTANT PLAYBACK SWITCH CONFIRMED:
+one recognized chunk (~1s) is enough to activate the currently stored gif. The
+prior day's transient render glitch did NOT reproduce in its exact trigger
+condition -- downgrade it to an unexplained one-off (kept on record, not a
+finding).
+
+PHASE 2 (three cold full uploads, ~44.8KB / 11 chunks each, 3s ack tails):
+  - seed 103: ten status=1, terminal status=3 at +8.22s.
+  - seed 104: status=1, then status=0 at +2.00s (chunk-2 position), then nine
+    more status=1, and NO terminal 3 EVER.
+  - seed 105: ten status=1, terminal status=3 at +8.75s.
+  Operator: playback "got stuck in the middle and resumed"; the phases were
+  indistinguishable because all fixtures are identical-looking noise (design
+  flaw -- P2e uses per-channel tinted fixtures to fix this).
+
+REVISED STATUS MODEL (v2) -- supersedes the v1 comments committed 2026-07-24.
+For GIF (0x01, 0x00) the vocabulary matches Timer/Schedule after all:
+  1 = chunk accepted, send the next;
+  3 = SAVED (terminal success; ALSO sent from chunk 1 onward when re-uploading
+      the CURRENTLY stored gif -- single-slot CRC recognition, which also
+      switches playback per phase 1);
+  0 = chunk REJECTED and the transfer is doomed -- the device keeps acking 1 for
+      later chunks but never emits a terminal 3, and nothing is saved.
+Reinterpreting past data under v2: the 2026-07-24 small-fixture uploads that
+"ended 0" were SILENT FAILURES (the operator couldn't tell -- every fixture was
+identical noise and the previously stored gif kept playing). Observed
+silent-failure rate across sessions ~1 in 4, so our blind GIF sender (no status
+handling) is genuinely unreliable -- a status-aware upload is a pending SDK work
+item.
 """
 
 import asyncio
