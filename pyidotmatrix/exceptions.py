@@ -16,10 +16,13 @@ class IDotMatrixError(Exception):
 class ConnectionLostError(IDotMatrixError):
     """The transport lost the connection to the device.
 
-    Not raised yet: today disconnects and failed writes still surface as bleak
-    errors. Mapping them to this type is the remaining SDK-M2 exception work;
-    the class ships now so callers can write the except clause against the
-    stable name.
+    Raised by BleTransport._write_raw (transport/ble.py) when a write fails and
+    the transport's one-shot self-heal (a forced reconnect-and-retry) is
+    exhausted -- either the reconnect itself fails, or it succeeds but the
+    retried write fails too. In both cases this is raised chained (`raise ...
+    from e`) from the underlying bleak exception, so callers get a stable
+    driver-level type instead of a raw bleak error, while `__cause__` still
+    carries the original for diagnostics.
     """
 
 
@@ -42,5 +45,15 @@ class CommandRejectedError(IDotMatrixError):
 
 
 class UploadError(IDotMatrixError):
-    """A chunked upload failed: the device reported StatusAck FAILED, no ack
-    arrived within the timeout, or the connection dropped mid-upload."""
+    """A chunked upload failed: the device reported StatusAck FAILED (or any
+    status this driver doesn't recognize), no ack arrived within the timeout,
+    or every chunk sent without ever seeing a terminal SAVED status.
+
+    `raw` carries the failing StatusAck's raw bytes when one was received
+    (FAILED or unrecognized status); it is None when the failure had no ack to
+    point to (a timeout, or exhausting all chunks without a SAVED).
+    """
+
+    def __init__(self, message: str, raw: bytes | None = None):
+        super().__init__(message)
+        self.raw = raw
