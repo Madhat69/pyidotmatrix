@@ -221,7 +221,11 @@ _ENTRIES: tuple[Capability, ...] = (
         "Ack semantics 2026-07-24 (probes/probe_gif_crc_cache.py): replies are StatusAck family "
         "(1,0) -- NEXT_CHUNK between chunks, terminal 0 = stored fresh (SUCCESS here, unlike "
         "Timer/Schedule), terminal 3 = byte-identical payload already stored (device CRC dedup). "
-        "No wall-time saving at 2 chunks; early-exit on multi-chunk re-uploads unprobed.",
+        "No wall-time saving at 2 chunks, but early-exit IS possible: status=3 arrives from "
+        "the first chunk of a multi-chunk re-upload (2026-07-24, probes/probe_gif_crc_cache2.py). "
+        "A dedup fast path must wait, though -- a partial single-chunk send glitched the render "
+        "pipeline once (transient artifacts/stuck pixels, attribution pending "
+        "probes/probe_gif_chunk1_isolation.py).",
     ),
     # --- common (device control) ---
     Capability(

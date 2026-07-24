@@ -63,6 +63,16 @@ cache keyed by CRC32) — directly powers GlanceOS M7 Stage 3's GIF takeovers
 and belongs in the SDK docs as a performance note.
 Cost: ~2 min. Probe: extend probes/ with `probe_gif_crc_cache.py`.
 
+**Progress (2026-07-24):** CRC dedup confirmed — status=3 arrives from chunk 1
+of a byte-identical multi-chunk re-upload (`probe_gif_crc_cache2.py`), so
+early-exit is viable: a sender that stops on the first status=3 cuts an ~8.7s
+re-upload to ~1.3s. Also caught an SDK misparse: GIF replies are StatusAck
+family, and (1,0) had to join `_STATUS_ACK_KEYS` — the fourth misparse fixed in
+this class (after timer/schedule/text). One caveat: single-chunk sends produced
+a transient render glitch (stutter, CRT-like artifacts, bottom-row pixels stuck
+orange-ish) once; attribution is pending `probe_gif_chunk1_isolation.py`, which
+disambiguates playback-switch from glitch before any dedup fast path ships.
+
 ## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7
 
 On a NON-black background (push a dark-blue frame first — a black background
@@ -175,6 +185,13 @@ requires reset or DIY re-entry, and the fa03 handshake after retry.
 
 Cost: ~15 min. Defines what `UploadError` means and whether automatic retry can
 ever be safe. Publication-critical for native uploads.
+
+**Progress (2026-07-24):** case (b) first-chunk-abandon is already covered at
+the protocol level by `probe_gif_crc_cache3.py` phase 2 — chunk 1 of a
+never-uploaded GIF returns status=1 (device waits for chunk 2), and a later full
+upload was unaffected. So at minimum a first-chunk abandon does not corrupt
+subsequent uploads; the render-glitch attribution and packet-level case (a) are
+still open (`probe_gif_chunk1_isolation.py`).
 
 ## P11 — Persistence and reset matrix
 
