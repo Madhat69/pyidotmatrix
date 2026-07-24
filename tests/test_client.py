@@ -94,6 +94,22 @@ async def test_graffiti_move_type_passes_through():
     assert data[3] == 1  # byte 3 pinned: the only value the device draws for
 
 
+async def test_graffiti_set_pixels_rejects_off_screen_coordinates():
+    """The client knows its ScreenSize; graffiti.set_pixels must validate
+    against it before anything goes on the wire (item 9, code review) --
+    previously it emitted coordinates with no size awareness of its own."""
+    client, transport = _client()  # ScreenSize.SIZE_32x32 -- valid range is 0..31
+    with pytest.raises(ValueError):
+        await client.graffiti.set_pixels((0, 255, 0), [(32, 0)])  # x == width, out of range
+    assert transport.writes == []  # rejected before any write
+
+
+async def test_graffiti_set_pixels_accepts_in_bounds_coordinates():
+    client, transport = _client()
+    await client.graffiti.set_pixels((0, 255, 0), [(31, 31)])  # top-right corner, in bounds
+    assert len(transport.writes) == 1
+
+
 async def test_effect_show_passes_speed_through():
     client, transport = _client()
     await client.effect.show(1, [(255, 0, 0), (0, 255, 0)], speed=120)
@@ -299,6 +315,37 @@ async def test_timer_set_timeout_raises(monkeypatch):
     client, _ = _client()
     with pytest.raises(ChunkedUploadError):
         await client.experimental.timer_set(_timer_obj(), b"a" * 5)
+
+
+async def test_timer_set_unrecognized_status_raises_with_raw_ack():
+    """Any status other than SAVED/NEXT_CHUNK/FAILED must also raise, not be
+    silently treated as 'keep going' (item 4, code review)."""
+    client, transport = _client()
+    task = asyncio.create_task(client.experimental.timer_set(_timer_obj(), b"a" * 5))
+    await _yield_control()
+
+    ack = _status_ack(0x00, 0x80, 99)  # not SAVED (3), NEXT_CHUNK (1), or FAILED (0)
+    _push_ack(transport, ack)
+    with pytest.raises(ChunkedUploadError) as excinfo:
+        await task
+    assert excinfo.value.raw == ack.raw  # UploadError carries the raw ack
+
+
+async def test_timer_set_never_saved_raises():
+    """A transfer that sends every chunk and only ever sees NEXT_CHUNK -- never
+    a terminal SAVED -- must not read as a silent success. This is the exact
+    bug code review item 4 flagged: the old "anything but FAILED means
+    continue" logic let a transfer complete without ever confirming SAVED."""
+    client, transport = _client()
+    payload = b"y" * 8200  # 4096 + 4096 + 8 -> three outer chunks
+    task = asyncio.create_task(client.experimental.timer_set(_timer_obj(), payload))
+
+    for _ in range(3):
+        await _yield_control()
+        _push_ack(transport, _status_ack(0x00, 0x80, STATUS_NEXT_CHUNK))
+
+    with pytest.raises(ChunkedUploadError):
+        await task
 
 
 async def test_schedule_set_theme_single_chunk_goes_straight_to_saved():

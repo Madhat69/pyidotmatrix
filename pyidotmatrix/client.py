@@ -18,6 +18,7 @@ from typing import Any
 
 from PIL import Image
 
+from pyidotmatrix.display.backend import validate_coordinates
 from pyidotmatrix.display.ble_display import BleDisplay
 from pyidotmatrix.exceptions import CommandRejectedError, UploadError
 from pyidotmatrix.imaging import ResizeMode, adapt_image
@@ -37,7 +38,7 @@ from pyidotmatrix.protocol import (
     text,
     timer,
 )
-from pyidotmatrix.protocol.response import STATUS_FAILED, STATUS_SAVED, DeviceAck, StatusAck
+from pyidotmatrix.protocol.response import STATUS_NEXT_CHUNK, STATUS_SAVED, DeviceAck, StatusAck
 from pyidotmatrix.screen import ScreenSize
 from pyidotmatrix.transport.ble import _GRAFFITI_TYPE_BYTE, BleTransport, ConnectionCallback, DeviceInfo
 from pyidotmatrix.transport.status import TransportEvent, TransportSnapshot
@@ -83,8 +84,13 @@ async def _send_chunked_upload(
 
     NEXT_CHUNK -> send the next outer chunk. SAVED -> return (tolerates a
     single-chunk upload skipping NEXT_CHUNK and going straight to SAVED,
-    hardware-confirmed 2026-07-12). FAILED -> raise UploadError.
-    Timeout waiting for an ack -> raise UploadError.
+    hardware-confirmed 2026-07-12). FAILED, or any status this driver doesn't
+    recognize -> raise UploadError carrying the raw ack. Timeout waiting for an
+    ack -> raise UploadError. Sending every chunk without ever seeing a
+    terminal SAVED (e.g. the device only ever answers NEXT_CHUNK) -> raise
+    UploadError -- a transfer that never confirms SAVED must not read as a
+    silent success (code review item 4: the previous "anything but FAILED
+    means continue" logic let exactly this happen).
 
     Duplicate StatusAck frames (hardware sends them -- the same status
     observed twice for one chunk) are tolerated by draining any ack still
@@ -111,11 +117,17 @@ async def _send_chunked_upload(
 
             if ack.status == STATUS_SAVED:
                 return  # early SAVED is expected for single-chunk uploads; tolerate it any time
-            if ack.status == STATUS_FAILED:
-                raise UploadError(
-                    f"{label} upload rejected (status=FAILED) at chunk {index + 1}/{len(chunks)}"
-                )
-            # STATUS_NEXT_CHUNK (or any other value): proceed to the next chunk.
+            if ack.status == STATUS_NEXT_CHUNK:
+                continue  # proceed to the next chunk
+            # STATUS_FAILED or any status this driver doesn't recognize: never
+            # treated as "keep going" -- raise, carrying the raw ack.
+            raise UploadError(
+                f"{label} upload rejected (status={ack.status}) at chunk {index + 1}/{len(chunks)}",
+                raw=ack.raw,
+            )
+        # Every chunk was sent and every ack was NEXT_CHUNK, but no terminal
+        # SAVED ever arrived -- the transfer did not confirm success.
+        raise UploadError(f"{label} upload: sent all {len(chunks)} chunk(s) but never received a SAVED ack")
     finally:
         unsubscribe()
 
@@ -252,12 +264,25 @@ class GraffitiFeature(_Feature):
     plus a mirrored copy -- hardware-mapped 2026-07-21, see protocol.graffiti).
     """
 
+    def __init__(self, transport: BleTransport, screen_size: ScreenSize):
+        super().__init__(transport)
+        self._screen_size = screen_size
+
     async def set_pixels(
         self,
         color: Color,
         xys: list[tuple[int, int]],
         move_type: int = graffiti.MOVE_NONE,
     ) -> None:
+        """Sets every coordinate in xys to color, batched to the device's
+        per-command pixel limit.
+
+        Validates every coordinate against this client's ScreenSize before
+        anything goes on the wire (item 9, code review) -- unlike
+        display.backend's set_pixels, this namespace previously had no size
+        awareness of its own and would happily send off-screen coordinates.
+        """
+        validate_coordinates(xys, self._screen_size.width, self._screen_size.height)
         for start in range(0, len(xys), graffiti.MAX_PIXELS_PER_COMMAND):
             batch = xys[start:start + graffiti.MAX_PIXELS_PER_COMMAND]
             await self._send(graffiti.build_set_pixels(color, batch, move_type))
@@ -551,7 +576,7 @@ class IDotMatrixClient:
         self.scoreboard = ScoreboardFeature(self._transport)
         self.eco = EcoFeature(self._transport)
         self.color = FullscreenColorFeature(self._transport)
-        self.graffiti = GraffitiFeature(self._transport)
+        self.graffiti = GraffitiFeature(self._transport, screen_size)
         self.effect = EffectFeature(self._transport)
         self.music_sync = MusicSyncFeature(self._transport)
         self.text = TextFeature(self._transport, screen_size)
@@ -646,9 +671,13 @@ class IDotMatrixClient:
         """A read-only view of the connection state (for observability)."""
         return self._transport.snapshot()
 
-    async def await_device_ack(self, command: bytearray, timeout: float = 2.0) -> DeviceAck | None:
+    async def await_device_ack(self, command: bytearray, timeout: float = 2.0) -> DeviceAck | StatusAck | None:
         """Sends a command and returns the device's ack, or None on timeout.
 
+        Returns a plain DeviceAck (accepted/rejected) for ordinary commands, or
+        a StatusAck (the NEXT_CHUNK/SAVED/FAILED family) if the command's
+        (type, subtype) is one of the chunked-upload keys -- see
+        BleTransport.await_device_ack's docstring for the full breakdown.
         Command bytes come from the protocol builders, e.g.
         await_device_ack(protocol.common.build_set_brightness(60)).
         """
