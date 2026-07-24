@@ -20,7 +20,30 @@ PHASE C: chunk 1 ONLY of a NEVER-uploaded gif (seed 101 -- NOT 99, which is
 Recovery: clock, 10s health check.
 FINAL: full upload of a seed-102 fixture to prove clean recovery; 8s watch.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25): single-slot recognition; lone chunks inert; glitch narrowed.
+  Baseline: clock healthy, no leftovers from the prior day's glitch.
+  1. PHASE B (chunk 1 of the STORED seed-7 gif): status=1 at +0.99s -- NOT
+     status=3. The night before, these exact bytes drew instant status=3, but a
+     full seed-100 upload had happened in between. So recognition is a SINGLE
+     SLOT: the device knows only the CURRENTLY stored GIF's CRC, not a library
+     of past uploads (kills the multi-entry cache theory). Visually inert; no
+     artifacts.
+  2. PHASE C (chunk 1 of never-uploaded seed-101): status=1 at +1.02s. Visually
+     inert; no artifacts.
+  3. FINAL (cold full upload of seed-102, 44,8xx bytes, 11 chunks): ten status=1
+     (+1.01..+7.79) then terminal status=3 at +8.57s, captured in-window this
+     time. Played normally; clock restored clean.
+  4. TERMINAL-STATUS MUDDLE (recorded honestly): the prior night's cold seed-100
+     ended terminal 0; tonight's cold seed-102 ended terminal 3, near-identical
+     scenarios. The tidy "terminal 0 = fresh store, 3 = duplicate" mapping is now
+     SUSPECT -- a terminal-status distribution over repeated fresh uploads is
+     needed before any semantics claim (probe_gif_stored_chunk1.py phase 2).
+  5. GLITCH ATTRIBUTION NARROWED: both unrecognized lone-chunk cases reproduced
+     clean tonight, so the prior day's transient glitch (stutter, CRT-like
+     artifacts, bottom pixels stuck orange-ish) correlates with the one case NOT
+     reproduced tonight: chunk 1 of the RECOGNIZED (currently stored) gif,
+     status=3. Working hypothesis (one sample, not a finding): recognition
+     triggers a messy playback-switch attempt.
 """
 
 import asyncio
