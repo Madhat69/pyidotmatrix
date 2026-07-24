@@ -152,10 +152,16 @@ _ENTRIES: tuple[Capability, ...] = (
         "graffiti", "move_type", CapabilityStatus.VERIFIED, _S32,
         "Header byte 4 = the APK's DiyImageMoveType: 1 = HORIZONTAL_MIRROR, 2 = VERTICAL_MIRROR "
         "-- draws the pixels PLUS a mirrored copy across the panel's center axis (single-pixel "
-        "discriminator, probes/probe_graffiti_transform{,2}.py, 2026-07-21). 0 and 3 draw "
-        "plainly; 4 unresolved. CORRECTION: the earlier 'recolors the command two back' theory "
-        "(probe_graffiti_movetype*.py, 2026-07-20) was FALSE -- vertical mirroring onto "
-        "symmetric probe layouts mimicked recoloring exactly; the single-pixel test killed it.",
+        "discriminator, probes/probe_graffiti_transform{,2}.py, 2026-07-21). MAP COMPLETE "
+        "2026-07-25 (probes/probe_graffiti_byte4_erase.py, dark-blue field): values 4-7 are all "
+        "accepted silently and draw PLAIN -- no mirror, no motion, no erase, no nack. The ERASE "
+        "hypothesis for 4 is FALSIFIED (white pixels re-sent with byte4=4 stayed white on a "
+        "non-black field; same-color-resend caveat noted). Only 1/2 carry firmware semantics; "
+        "0 and 3-7 draw plain, so the APK DiyImageMoveType names (OVERALL_MOVEMENT/ERASE) are "
+        "app-side paint-tool labels, not firmware behavior. CORRECTION: the earlier 'recolors "
+        "the command two back' theory (probe_graffiti_movetype*.py, 2026-07-20) was FALSE -- "
+        "vertical mirroring onto symmetric probe layouts mimicked recoloring exactly; the "
+        "single-pixel test killed it.",
     ),
     Capability(
         "graffiti", "byte3_required_one", CapabilityStatus.VERIFIED, _S32,

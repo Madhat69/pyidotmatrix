@@ -23,7 +23,35 @@ graffiti accepts are silent, but rejections nack as [5,0,5,2,0], so an empty
 trace after a phase means accepted (or silently swallowed), and a captured
 (5,2)-shaped ack means nacked.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-25, reference 32x32 panel, operator-narrated, dark-blue
+background):
+
+The byte-4 map is now COMPLETE -- only values 1 and 2 carry firmware semantics;
+0 and 3-7 all draw plain. Graffiti stayed ack-silent throughout (only the
+frame-entry background carried an ack); every drawing phase reported no acks,
+i.e. no [5,0,5,2,0] nack for any byte-4 value.
+
+  - byte4=0 (PHASE B): the white 2x2 block drew at (10,10)-(11,11) on the blue
+    field and stayed. Plain draw, as the map already had it.
+  - byte4=4 (PHASE C, ERASE TEST, same coords/color): NOTHING changed -- the
+    white pixels stayed WHITE. They did not go black, and did not return to the
+    dark-blue background. The ERASE hypothesis is FALSIFIED: on a non-black
+    field, byte4=4 is a plain (no-op) re-draw, not an erase. CAVEAT recorded
+    honestly: re-sending the SAME color over already-lit pixels makes "plain
+    draw" and "no-op" indistinguishable by design, so this phase alone cannot
+    tell those two apart -- but combined with the 2026-07-21 observation of
+    byte4=4 drawing normally on black, and with 5/6/7 below, plain-draw is the
+    parsimonious reading.
+  - byte4=5 (PHASE D): the yellow pixel rendered at its own coords (5,20), no
+    mirrored copies anywhere, no nack.
+  - byte4=6 (PHASE E): the magenta pixel rendered at (20,5), no copies, no nack.
+  - byte4=7 (PHASE F): the cyan pixel rendered at (26,17), no copies, no nack.
+
+CONCLUSION: graffiti header byte 4 is fully mapped -- 1 = HORIZONTAL_MIRROR and
+2 = VERTICAL_MIRROR are the only values with firmware effect; 0/3/4/5/6/7 all
+draw plain (accepted silently, no mirror, no erase, no motion). The APK's
+DiyImageMoveType enum names (OVERALL_MOVEMENT, ERASE) describe APP-SIDE paint-
+tool behavior, not firmware behavior. P3 CLOSED.
 """
 
 import asyncio

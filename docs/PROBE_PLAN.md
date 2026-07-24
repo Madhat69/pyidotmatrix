@@ -130,6 +130,19 @@ can't distinguish "erased" from "drew black"):
    renders? (Mirror combos? The h/v mirror pair suggests 3 bits of options.)
    Cost: ~3 min. Extends the byte-4 map beyond 0/1/2.
 
+**P3 CLOSED (2026-07-25):** `probe_graffiti_byte4_erase.py` ran on a dark-blue
+field. The byte-4 map is COMPLETE: only 1 (HORIZONTAL_MIRROR) and 2
+(VERTICAL_MIRROR) carry firmware semantics; 0 and 3-7 all draw PLAIN. The ERASE
+hypothesis for byte4=4 is FALSIFIED -- white pixels re-sent with b4=4 stayed
+white (they neither went black nor restored the background), with the honest
+same-color-resend caveat that "plain draw" and "no-op" are indistinguishable in
+that one phase but plain-draw is parsimonious given the 2026-07-21 black-field
+draw and the 5/6/7 results. b4=5/6/7 each rendered a single pixel at its own
+coords with no mirrored copies and no nack; graffiti stayed ack-silent
+throughout. Conclusion: the APK's DiyImageMoveType enum names (OVERALL_MOVEMENT,
+ERASE) describe APP-SIDE paint-tool behavior, not firmware behavior. No further
+byte-4 probes planned.
+
 ## P4 — Streaming endurance: find the safe sustained rate
 
 The flood benchmark killed the link twice; the render cap is ~1.75 fps. What
