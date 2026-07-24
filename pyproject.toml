@@ -22,6 +22,11 @@ dependencies = [
     "pillow>=11.2.1",  # text rendering and GIF adaptation are core features
 ]
 
+[project.scripts]
+# Capture-analysis CLI: decodes an Android btsnoop HCI log into annotated
+# iDotMatrix BLE traffic (standard library only).
+pyidotmatrix-btsnoop = "pyidotmatrix.btsnoop:main"
+
 [project.urls]
 # Decided 2026-07-20 (ROADMAP §18).
 Homepage = "https://github.com/Madhat69/pyidotmatrix"

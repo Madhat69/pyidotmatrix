@@ -189,7 +189,11 @@ live in `probes/` — human-run against a real panel, never in CI.
 
 Reverse engineering is a first-class contribution: hardware probe results,
 BLE packet captures, firmware/model comparisons, and protocol documentation
-are as valuable as code. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to
+are as valuable as code. Captures decode with the bundled analysis CLI —
+`pyidotmatrix-btsnoop capture.log` turns an Android btsnoop HCI log into
+annotated iDotMatrix traffic, matched against this SDK's own builders (add
+`--stats`, `--only writes`, `--grep`, or `--json`). See
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to
 run the test suite, how to run hardware probes safely, and the ⚠→✅
 graduation process for experimental features.
 

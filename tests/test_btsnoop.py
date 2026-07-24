@@ -1,4 +1,4 @@
-"""Tests for tools/parse_btsnoop.py, the btsnoop HCI capture decoder.
+"""Tests for pyidotmatrix.btsnoop, the btsnoop HCI capture decoder.
 
 Every fixture is synthesized in memory: a btsnoop header plus hand-built records
 whose HCI/L2CAP/ATT framing is spelled out byte by byte, so a regression in any
@@ -8,14 +8,10 @@ mismatch.
 
 import json
 import struct
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
-
-import parse_btsnoop as pb  # noqa: E402
+from pyidotmatrix import btsnoop as pb
 
 CONNECTION_HANDLE = 0x0040
 WRITE_HANDLE = 0x0011  # fa02 in the real device's GATT table
