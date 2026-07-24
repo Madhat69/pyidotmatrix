@@ -84,7 +84,12 @@ _ENTRIES: tuple[Capability, ...] = (
         "notifies track frames processed (~1.75/s), not frames received. Geometry contract "
         "verified 2026-07-24 (probes/probe_p8_geometry.py, two runs): the buffer is row-major "
         "from a top-left origin in RGB channel order, and graffiti pixel commands share this "
-        "exact coordinate space (asymmetric corner + canary landmarks all landed as painted).",
+        "exact coordinate space (asymmetric corner + canary landmarks all landed as painted). "
+        "PNG PAYLOADS ACCEPTED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the "
+        "app sent an 89-50-4e-47 RGBA 32x32 PNG under our exact 9-byte DIY header and the device "
+        "acked it [05 00 00 00 01] -- so this path takes encoded PNG as well as the raw RGB "
+        "buffer we send (same finding shape as timer CONTENT_IMAGE). Untested by us; our raw-RGB "
+        "path is unaffected.",
     ),
     Capability(
         "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
@@ -146,7 +151,11 @@ _ENTRIES: tuple[Capability, ...] = (
     Capability(
         "graffiti", "set_pixels", CapabilityStatus.VERIFIED, _S32,
         "Hardware-verified delta-render path; genuinely ack-silent, so the transport never "
-        "awaits an ack for it (ROADMAP.md section 3 Display; FEATURE_MATRIX.md).",
+        "awaits an ack for it (ROADMAP.md section 3 Display; FEATURE_MATRIX.md). App usage "
+        "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the paint screen's ERASER "
+        "is not a protocol feature at all -- it is a normal draw of color #000000 with move=0, "
+        "which matches the falsified byte-4 ERASE hypothesis (see graffiti.move_type). The app "
+        "only ever emitted single-pixel 10-byte commands, never a multi-pixel batch.",
     ),
     Capability(
         "graffiti", "move_type", CapabilityStatus.VERIFIED, _S32,
@@ -181,8 +190,14 @@ _ENTRIES: tuple[Capability, ...] = (
         "effect", "speed", CapabilityStatus.KNOWN_BROKEN, _S32,
         "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)), and every "
         "value is accepted -- but 1 vs 255 produced NO observable animation-rate difference on "
-        "styles 2 and 4 (probes/probe_effect_speed{,2}.py, 2026-07-21). Joins common.set_speed "
-        "in this firmware's ignored-speed-fields club.",
+        "styles 2 and 4 (probes/probe_effect_speed{,2}.py, 2026-07-21). MECHANISM CONFIRMED "
+        "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): byte 5 IS how the app "
+        "changes effect speed -- on gesture release it re-sends the WHOLE effect command "
+        "[1c 00 03 02 style speed count + count*RGB] with a new byte 5 (0x5a then 0x64, style=0, "
+        "7 colors), and never touches common.set_speed. So the field and the delivery shape are "
+        "both app-confirmed; what remains unexplained is why OUR sends of the same field showed "
+        "no rate change. Status stays KNOWN_BROKEN until the hardware retest passes: PROBE_PLAN "
+        "P1-follow-up (a) replays the byte-identical captured frame at speed 5 vs 100.",
     ),
     Capability(
         "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -193,14 +208,30 @@ _ENTRIES: tuple[Capability, ...] = (
     Capability(
         "music_sync", "set_mic_type", CapabilityStatus.SOURCE_DERIVED, _S32,
         "BleProtocolN.setMicType; acked on hardware 2026-07-21 with no visible change of its "
-        "own (probes/probe_capability_sweep3.py) -- effect unobservable in isolation.",
+        "own (probes/probe_capability_sweep3.py) -- effect unobservable in isolation. FRAME "
+        "CORRECTED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the frame is SIX "
+        "bytes, [06 00 0b 80 mic_type value], observed [06 00 0b 80 01 64]. Our builder emitted "
+        "five while declaring six, so every set_mic_type this SDK ever sent -- including the "
+        "2026-07-21 hardware run -- was truncated. Re-probe on hardware before trusting the "
+        "'acked, no visible change' reading above.",
     ),
     Capability(
         "music_sync", "send_image_rhythm", CapabilityStatus.KNOWN_BROKEN, _S32,
         "BleProtocolN.sendImageRhythm promises a dancing figure; a 10-value stream was fully "
         "acked but NO figure appeared, and the clock face stuttered during the stream "
-        "(probes/probe_capability_sweep3.py, 2026-07-21). Possibly needs a device-side music "
-        "mode this panel lacks.",
+        "(probes/probe_capability_sweep3.py, 2026-07-21). REAL MECHANISM FOUND 2026-07-25 "
+        "(vendor-app HCI capture, tools/parse_btsnoop.py): the app never sends this command for "
+        "its music screen -- it streams rhythm LEVELS instead (see music_sync.rhythm_levels). "
+        "This entry stays KNOWN_BROKEN: the command is still inert on our panel.",
+    ),
+    Capability(
+        "music_sync", "rhythm_levels", CapabilityStatus.SOURCE_DERIVED, None,
+        "protocol.music_sync.build_rhythm_levels, added 2026-07-25 from the vendor-app HCI "
+        "capture (tools/parse_btsnoop.py): the PHONE does the FFT and streams [21 00 01 02 00] + "
+        "16 level bytes to fa02 at ~10 Hz, unacked (byte 0 is a constant 0x21, not the 21-byte "
+        "length). Observed levels 0x00-0x0d; the app mirrors 8 bands into a palindrome. Byte "
+        "layout is capture-exact, but this SDK has NEVER streamed it to a panel -- live test is "
+        "PROBE_PLAN P1-follow-up (b).",
     ),
     Capability(
         "music_sync", "stop_rhythm", CapabilityStatus.SOURCE_DERIVED, _S32,
@@ -222,8 +253,13 @@ _ENTRIES: tuple[Capability, ...] = (
     # --- gif ---
     Capability(
         "gif", "upload_file", CapabilityStatus.VERIFIED, _S32,
-        "Chunked GIF upload with native playback, optimize=True required; time_sign/ConvertTime "
-        "semantics matched (FEATURE_MATRIX.md Display/rendering; ROADMAP.md section 3 Images). "
+        "Chunked GIF upload with native playback, optimize=True required (FEATURE_MATRIX.md "
+        "Display/rendering; ROADMAP.md section 3 Images). The old 'time_sign/ConvertTime "
+        "semantics matched' claim was WRONG and is corrected 2026-07-25 (vendor-app HCI capture, "
+        "tools/parse_btsnoop.py): the field is little-endian and the app's default key emits 5, "
+        "where we wrote big-endian 10. Invisible until now because the client only ever uses the "
+        "no-time-signature branch, which writes 00 00. The capture contained NO duplicate GIF "
+        "upload, so the dedup/CRC-cache findings below remain ours alone. "
         "Ack semantics 2026-07-24 (probes/probe_gif_crc_cache.py): replies are StatusAck family "
         "(1,0). Status vocabulary UNIFIED with Timer/Schedule 2026-07-25 "
         "(probes/probe_gif_stored_chunk1.py): 1 = NEXT_CHUNK, 3 = SAVED, 0 = FAILED -- terminal "
@@ -254,7 +290,20 @@ _ENTRIES: tuple[Capability, ...] = (
         "common", "set_time", CapabilityStatus.VERIFIED, _S32,
         "RTC sync; alarms armed against it fired at the intended wall-clock time 2026-07-12. "
         "Stronger 2026-07-21: the RTC's WEEKDAY follows set_time too -- spoofing tomorrow's "
-        "date flipped a day-masked timer from firing to silent (probes/probe_timer_weekbit.py).",
+        "date flipped a day-masked timer from firing to silent (probes/probe_timer_weekbit.py). "
+        "UNPARSED REPLY 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the app's "
+        "set_time drew a NINE-byte notification, [09 00 01 80 04 0f 01 03 00] -- not the 5-byte "
+        "ack shape. protocol/response.py requires len == 5 and returns None for it, which is "
+        "correct and deliberately unchanged; documented here so the frame's existence is on "
+        "record. Its payload (a device/firmware descriptor?) is undecoded.",
+    ),
+    Capability(
+        "common", "device_id_read", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "The device exposes a readable ID string at ATT handle 0x0007: our panel returned "
+        "\"TR2306R007-15\" to the vendor app (vendor-app HCI capture 2026-07-25, "
+        "tools/parse_btsnoop.py). No SDK method reads it yet; recorded so a future model/firmware "
+        "identification feature has a starting point. Handle numbers are per-connection GATT "
+        "artifacts -- rediscover by UUID rather than hardcoding 0x0007.",
     ),
     Capability(
         "common", "set_screen_flipped", CapabilityStatus.VERIFIED, _S32,
@@ -279,7 +328,12 @@ _ENTRIES: tuple[Capability, ...] = (
         "effect-screen speed dial DOES change animation speed live (operator-confirmed, same "
         "panel), so real speed control rides an unmapped wire path -- HCI-snoop the app "
         "(ROADMAP M3 remaining). Calibration: our effect commands run at roughly the app "
-        "dial's 50-60%; the app's 100% is visibly faster than anything we can send.",
+        "dial's 50-60%; the app's 100% is visibly faster than anything we can send. RESOLVED "
+        "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the app NEVER sends this "
+        "frame -- not once across the whole scripted capture, speed dial included. It is dead "
+        "code in the vendor ecosystem. The speed dial re-sends the complete effect command with "
+        "a new byte 5 instead (see effect.speed). Our byte layout is fine; there is simply "
+        "nothing on the other end listening.",
     ),
     Capability(
         "common", "set_joint", CapabilityStatus.UNKNOWN, None,

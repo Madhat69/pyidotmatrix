@@ -82,6 +82,27 @@ def test_spot_checks_match_the_evidence_record():
     assert capability("common.freeze_screen").status is CapabilityStatus.KNOWN_BROKEN
 
 
+def test_capture_findings_2026_07_25():
+    """The vendor-app HCI capture (tools/parse_btsnoop.py) explained two
+    long-standing speed mysteries but proved nothing on our own panel, so
+    neither entry may drift off KNOWN_BROKEN until a hardware retest passes.
+    """
+    set_speed = capability("common.set_speed")
+    assert set_speed.status is CapabilityStatus.KNOWN_BROKEN
+    assert "NEVER sends this frame" in set_speed.evidence
+
+    effect_speed = capability("effect.speed")
+    assert effect_speed.status is CapabilityStatus.KNOWN_BROKEN  # retest pending, not passed
+    assert "MECHANISM CONFIRMED" in effect_speed.evidence
+
+    # The music screen's real wire path: added from the capture, never run
+    # against a panel by us, and it does not rehabilitate the old command.
+    assert capability("music_sync.rhythm_levels").status is CapabilityStatus.SOURCE_DERIVED
+    assert capability("music_sync.send_image_rhythm").status is CapabilityStatus.KNOWN_BROKEN
+
+    assert capability("common.device_id_read").status is CapabilityStatus.SOURCE_DERIVED
+
+
 def test_table_is_read_only():
     with pytest.raises(TypeError):
         CAPABILITIES["common.reset"] = None  # type: ignore[index]

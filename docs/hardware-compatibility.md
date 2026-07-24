@@ -32,7 +32,7 @@ capability("text.show").evidence    # the probe/date/source behind that status
 
 | Capability | Status | Panel | Notes |
 |---|---|---|---|
-| `display.show_frame` | ✅ | 32×32 | Full-frame DIY upload; ~1.5 s device processing, ack is flow control. Device **renders** full frames at a hard ~1.75 fps cap regardless of send rate (streaming benchmark 2026-07-20). |
+| `display.show_frame` | ✅ | 32×32 | Full-frame DIY upload; ~1.5 s device processing, ack is flow control. Device **renders** full frames at a hard ~1.75 fps cap regardless of send rate (streaming benchmark 2026-07-20). Also accepts an encoded **PNG** payload under the same 9-byte header (HCI capture 2026-07-25, untested by us). |
 | `display.write_without_response` | ✅ | 32×32 | Honored by the reference panel — unacked frames render. Firmware-variant caveat: ignored on LumiSync's unit. |
 | `display.set_pixels` | ✅ | 32×32 | Graffiti delta path, ~20 ms unacked, ≤255 px/command. |
 | `display.diy_entry_no_clear` | ✖ | 32×32 | DIY entry mode 3 silently fails to take over an active effect/clock state — device acks anyway. |
@@ -48,15 +48,16 @@ capability("text.show").evidence    # the probe/date/source behind that status
 | `scoreboard.show` | ✅ | 32×32 | Two scores rendered correctly on panel. |
 | `eco.set_mode` | ✅ | 32×32 | Scheduled dimming visibly dimmed the panel; disable restored brightness. |
 | `color.show` | ✅ | 32×32 | Fullscreen color flash-persists across power-cycle (survived 3 days observed). |
-| `graffiti.set_pixels` | ✅ | 32×32 | Ack-silent by design — the transport never awaits an ack for it. |
+| `graffiti.set_pixels` | ✅ | 32×32 | Ack-silent by design — the transport never awaits an ack for it. The app's paint eraser is just a draw of `#000000` with `move=0` (HCI capture 2026-07-25). |
 | `graffiti.move_type` | ✅ | 32×32 | Byte 4: 1 = horizontal mirror, 2 = vertical mirror (draws pixels plus a mirrored copy). 0/3 draw plainly; 4 unresolved. |
 | `graffiti.byte3_required_one` | ✅ | 32×32 | Byte 3 must be `1`; `2` is nacked, `0`/`3`/`4` are acked-and-silently-swallowed. |
 | `effect.show` | ✅ | 32×32 | Effect mode activates live at the historical speed byte (90). |
-| `effect.speed` | ✖ | 32×32 | Real speed field exists at byte 5, every value accepted, but 1 vs 255 showed **no** observable rate difference. |
+| `effect.speed` | ✖ | 32×32 | Real speed field exists at byte 5, every value accepted, but 1 vs 255 showed **no** observable rate difference. Mechanism app-confirmed 2026-07-25 (HCI capture): the app's dial re-sends the *whole* effect command with a new byte 5. Stays ✖ until our retest passes. |
 | `effect.show_chunked` | ✖ | 32×32 | Vendor app's bespoke chunked effect framing acked but no effect appeared; `show()` is the working path. |
 | `music_sync.set_mic_type` | ⚠ | 32×32 | Acked on hardware with no visible change of its own (unobservable in isolation). |
 | `music_sync.send_image_rhythm` | ✖ | 32×32 | Fully acked, no dancing figure appeared, clock face stuttered during the stream. |
 | `music_sync.stop_rhythm` | ⚠ | 32×32 | Acked; nothing to observe stopping since `send_image_rhythm` never rendered. |
+| `music_sync.rhythm_levels` | ⚠ | — | The music screen's real path: the phone streams 16 level bytes at ~10 Hz, unacked (HCI capture 2026-07-25). Capture-exact bytes, never run against our panel. |
 
 ## Text
 
@@ -77,10 +78,11 @@ capability("text.show").evidence    # the probe/date/source behind that status
 |---|---|---|---|
 | `common.set_brightness` | ✅ | 32×32 | 5–100% works; out-of-range values nacked by the device. |
 | `common.set_power` | ✅ | 32×32 | Power on/off exercised live. |
-| `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. |
+| `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). |
+| `common.device_id_read` | ⚠ | 32×32 | Device ID string readable over GATT — our panel returned `TR2306R007-15` to the vendor app (HCI capture 2026-07-25). No SDK method reads it yet. |
 | `common.set_screen_flipped` | ✅ | 32×32 | Clock rendered upside down on `True`, righted on `False`. |
 | `common.freeze_screen` | ✖ | 32×32 | Acked, no observable effect in three separate tests. |
-| `common.set_speed` | ✖ | 32×32 | Acked, no effect on live text or a running effect. The vendor app's own speed dial *does* work — real speed control rides an unmapped wire path. |
+| `common.set_speed` | ✖ | 32×32 | Acked, no effect on live text or a running effect. Resolved 2026-07-25 (HCI capture): the vendor app **never sends this frame** — dead code in the ecosystem; the speed dial re-sends the effect command instead. |
 | `common.set_joint` | ❓ | — | Bytes match the decompiled `sendJoint`; purpose unknown upstream too. |
 | `common.set_password` | ⚠ | — | Byte-4 mode field hardcoded `1`, unexplored. **Never sent to hardware** — sequenced last across the whole roadmap by maintainer ruling (lockout risk, no known factory reset). |
 | `common.verify_password` | ⚠ | — | Bytes confirmed from source; ack shape unobserved and its (5,2) key collides with graffiti's nack. Untested by the same maintainer ruling as `set_password`. |
