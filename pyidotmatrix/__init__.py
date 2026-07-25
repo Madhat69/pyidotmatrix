@@ -9,6 +9,7 @@ Public surface:
     discover / DeviceInfo            rich device discovery
     discover_devices                 discovery returning bare MAC strings
     ResizeMode / adapt_image         image adaptation helpers
+    adapt_gif                        GIF adaptation helper (see protocol.gif)
     TransportSnapshot / TransportEvent / TransportEventKind
                                       connection observability
     IDotMatrixError                  base of the exception hierarchy
@@ -31,6 +32,7 @@ from pyidotmatrix.exceptions import (
     UploadError,
 )
 from pyidotmatrix.imaging import ResizeMode, adapt_image
+from pyidotmatrix.protocol.gif import adapt_gif
 from pyidotmatrix.screen import ScreenSize
 from pyidotmatrix.transport import BleTransport, DeviceInfo, discover, discover_devices
 from pyidotmatrix.transport.status import TransportEvent, TransportEventKind, TransportSnapshot
@@ -47,6 +49,7 @@ __all__ = [
     "discover_devices",
     "ResizeMode",
     "adapt_image",
+    "adapt_gif",
     "TransportSnapshot",
     "TransportEvent",
     "TransportEventKind",
