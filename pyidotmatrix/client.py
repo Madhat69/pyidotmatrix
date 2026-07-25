@@ -474,6 +474,14 @@ class TextFeature(_Feature):
         proven 16x32 glyph cell; 16 = the 8x16 cell captured from the vendor
         app 2026-07-25, unverified here). Other panel sizes ignore it, since
         the generic builder has only ever had one cell size.
+
+        No font ships with this package -- font_path must point to a TTF/OTF
+        the caller provides. Pass an explicit, known font for reproducible
+        rendering rather than relying on whatever Pillow resolves by default
+        on the host system. The rasterization itself (FreeType via Pillow) was
+        verified byte-stable across CI's platforms given the same font, unlike
+        gif.adapt_gif's re-encoding step, whose Pillow GIF encoder output is
+        NOT byte-stable across platform wheels.
         """
         if self._screen_size == ScreenSize.SIZE_32x32:
             packets = text.build_text_packet_32x32(

@@ -105,9 +105,10 @@ how the 16 levels map to pixels remains unmapped -- material for a dedicated
 music-sync probe.
 
 FOOTNOTE: a phantom animation appeared on the panel AFTER this probe
-disconnected and restored the clock. Attributed -- UNCONFIRMED -- to the
-operator's phone app auto-reconnecting the moment we released the link, not to
-any command this probe sent.
+disconnected and restored the clock. CONFIRMED 2026-07-25: the cause was an
+accidentally forked chat session re-running this identical probe against the
+same panel, not any external actor. The earlier phone-app auto-reconnect
+theory is FALSIFIED -- the phone was never involved.
 """
 
 import asyncio

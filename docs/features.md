@@ -91,6 +91,12 @@ no kerning) and animated/colorized device-side. `common.set_speed` has **no**
 effect on a running text animation — the packet's own `speed` byte is what
 governs marquee smoothness.
 
+No font ships with this package: `font_path` is a caller-supplied TTF/OTF, and
+without one you're at the mercy of whatever Pillow resolves on the host —
+pass an explicit path for reproducible output. The rasterization step itself
+is CI-verified byte-stable across platforms given the same font (unlike the
+`gif` feature's re-encoding, whose Pillow GIF encoder is not).
+
 ## `gif` — GIF upload + native playback
 
 **Status:** ✅ verified. Chunked upload, native on-device playback and
