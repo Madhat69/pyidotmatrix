@@ -497,7 +497,11 @@ class GifFeature(_Feature):
                                    (0x01, 0x00) StatusAck handshake -- see
                                    _send_gif_upload; raises UploadError if the
                                    transfer never confirms SAVED even after its
-                                   one whole-upload retry).
+                                   one whole-upload retry). Both return the
+                                   bytes actually sent (upload_file's adapted
+                                   output; upload_bytes's own input echoed
+                                   back), so either one can feed
+                                   activate_stored later.
       activate_stored              instant (~1s) switch to a gif the device
                                    already holds, via single-slot CRC
                                    recognition -- no re-upload.
@@ -514,15 +518,31 @@ class GifFeature(_Feature):
         do_palettize: bool = True,
         background_color: Color = (0, 0, 0),
         duration_per_frame_ms: int | None = None,
-    ) -> None:
+    ) -> bytes:
+        """Adapts file_path to the canvas (resize/re-encode) and uploads it.
+
+        Returns the adapted GIF bytes that were actually sent -- the device
+        only recognizes an EXACT byte match, so activate_stored(gif_data) later
+        needs precisely these bytes, not the original file's. Raises
+        UploadError if the transfer never confirms SAVED.
+        """
         gif_data = gif.adapt_gif(
             file_path, self._canvas_size, resize_mode, do_palettize, background_color, duration_per_frame_ms
         )
         await _send_gif_upload(self._transport, gif.build_packets(gif_data))
+        return gif_data
 
-    async def upload_bytes(self, gif_data: bytes) -> None:
-        """Uploads already-adapted GIF bytes without re-processing."""
+    async def upload_bytes(self, gif_data: bytes) -> bytes:
+        """Uploads gif_data as-is -- no adaptation, unlike upload_file.
+
+        Returns gif_data unchanged: the same bytes the caller passed in. The
+        return exists so upload_file and upload_bytes are interchangeable
+        when feeding activate_stored -- whichever one a caller used to get a
+        gif onto the device, its return value is what activate_stored needs
+        later.
+        """
         await _send_gif_upload(self._transport, gif.build_packets(gif_data))
+        return gif_data
 
     async def activate_stored(self, gif_data: bytes) -> bool:
         """Instantly switches playback to gif_data IF the device already holds

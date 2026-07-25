@@ -579,6 +579,56 @@ async def test_gif_activate_stored_false_on_timeout(monkeypatch):
     assert len(transport.packet_writes) == 1
 
 
+async def test_gif_upload_bytes_returns_sent_bytes_round_tripping_into_activate_stored():
+    """upload_bytes must hand back exactly what it sent -- activate_stored only
+    recognizes an EXACT byte match, so a caller needs this return value to use
+    the instant-switch path later without re-deriving the adapted bytes."""
+    client, transport = _client()
+    payload = b"g" * 8200  # three outer chunks
+    n = len(gif.build_packets(payload))
+    task = asyncio.create_task(client.gif.upload_bytes(payload))
+
+    for _ in range(n - 1):
+        await _yield_control()
+        _push_ack(transport, _gif_ack(STATUS_NEXT_CHUNK))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    result = await task
+
+    assert result == payload
+
+    # Round-trip: the device now holds exactly `result` -- activate_stored
+    # recognizes it and switches without a re-upload.
+    task = asyncio.create_task(client.gif.activate_stored(result))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    assert await task is True
+
+
+async def test_gif_upload_file_returns_adapted_bytes_round_tripping_into_activate_stored(tmp_path):
+    """upload_file discards the original file's bytes and sends adapted ones --
+    the return value must be THOSE adapted bytes, since that's what
+    activate_stored needs to recognize a later match."""
+    from PIL import Image
+
+    path = tmp_path / "one.gif"
+    Image.new("RGB", (8, 8), (10, 20, 30)).save(path)
+
+    client, transport = _client()
+    task = asyncio.create_task(client.gif.upload_file(str(path)))
+    await _yield_control()  # tiny adapted gif fits in a single outer chunk
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    adapted = await task
+
+    assert isinstance(adapted, bytes)
+    assert adapted == gif.adapt_gif(str(path), 32)  # same defaults upload_file used
+
+    task = asyncio.create_task(client.gif.activate_stored(adapted))
+    await _yield_control()
+    _push_ack(transport, _gif_ack(STATUS_SAVED))
+    assert await task is True
+
+
 # --- reject-raises-by-default: _send awaits the device ack (M2) --------------
 
 
