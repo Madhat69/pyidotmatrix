@@ -98,7 +98,18 @@ _ENTRIES: tuple[Capability, ...] = (
         "Firmware-variant caveat: LumiSync's RE notes report no-response writes IGNORED on "
         "their unit, while idotmatrix-overclocked uses them successfully on a 64x64 -- treat "
         "as per-variant. Sustained flooding eventually dropped our BLE link twice; pace near "
-        "the ~1.75 fps render cap.",
+        "the ~1.75 fps render cap. PACKET RE-SPLITTING VALIDATED 2026-07-27 (P9, probes/"
+        "probe_p9_write_boundaries.py): the same landmark DIY frame, hopping GIF and "
+        "scrolling-text payloads were sent at forced write sizes 18, 20, 128 and the link's "
+        "negotiated 514 bytes -- ALL FOUR rendered identically and correctly, including the "
+        "trailing bottom-right pixel that a dropped final packet would darken. "
+        "transport.write_packets' re-splitting is therefore measured correct down to 18 "
+        "bytes per write, and the BlueZ low-MTU escape hatch (write_size_override) is safe "
+        "to recommend for panels this SDK cannot test directly. WRITE-MODE THROUGHPUT, same "
+        "probe: an identical frame at the negotiated write size took 0.67s with "
+        "response=True (final packet GATT-acked) vs 0.11s with response=False -- unacked "
+        "writes ran 3-6x faster across the sizes measured, with no rendering difference "
+        "either way.",
     ),
     Capability(
         "display", "set_pixels", CapabilityStatus.VERIFIED, _S32,
@@ -114,6 +125,24 @@ _ENTRIES: tuple[Capability, ...] = (
         "display", "diy_quit_keep_frame", CapabilityStatus.VERIFIED, _S32,
         "DIY quit mode 2 parks a kept frame that survives clean disconnect but not power-cycle "
         "(2-run probe 2026-07-18; ROADMAP.md section 3 Display).",
+    ),
+    Capability(
+        "display", "visual_transients", CapabilityStatus.UNKNOWN, _S32,
+        "TWO OBSERVED-BUT-UNREPRODUCED visual glitches, logged rather than explained, because "
+        "each occurred with the BLE link otherwise healthy. (1) 2026-07-24, single-chunk GIF "
+        "sends (docs/PROBE_PLAN.md P2): a transient render glitch -- stutter, CRT-like "
+        "artifacts, bottom-row pixels stuck orange-ish -- appeared once. It was chased through "
+        "probe_gif_chunk1_isolation.py and probe_gif_stored_chunk1.py and never reproduced "
+        "again, including on the specific recognized-chunk-1 case it was first suspected to be "
+        "(P2d, 2026-07-25: that case switched playback cleanly, no artifacts); downgraded to an "
+        "unexplained one-off but kept on record rather than discarded. (2) 2026-07-27, "
+        "probes/probe_effect_speed_sweep.py: a one-off FREEZE at a single effect-to-scoreboard "
+        "phase transition. The five (or more) other identical transitions in the same run were "
+        "seamless, and the transport's scoreboard acks were spaced EVENLY at 14.44-14.61s "
+        "across the event -- consistent, jitter-free timing that shows the BLE link did not "
+        "stall; whatever froze the display did not freeze the link. Neither event has a "
+        "reproduction recipe; both are recorded as a caution against reading a single glitchy "
+        "run as evidence of a protocol bug.",
     ),
     # --- native modes ---
     Capability(
@@ -135,13 +164,54 @@ _ENTRIES: tuple[Capability, ...] = (
         "2026-07-17; 3-run clock probe 2026-07-19; ROADMAP.md section 3 Native modes).",
     ),
     Capability(
+        "clock", "style_select", CapabilityStatus.UNKNOWN, _S32,
+        "LIMITED EVIDENCE 2026-07-27 (probes/probe_p17b_eco_isolation.py phases "
+        "9-12): style selection APPEARS INERT on this panel -- the operator "
+        "confirmed the face never visibly changed across STYLE_COLOR (3) and "
+        "STYLE_RGB_SWIPE_OUTLINE (0), the only two of the eight defined styles "
+        "tried. Only 2 of 8 values exercised; this is a limit on the evidence, "
+        "not a full negative result, and a sweep of all eight styles is queued "
+        "(docs/PROBE_PLAN.md). RENDERING MODEL: STYLE_COLOR (3) colours the "
+        "BACKGROUND with the given color and renders the digits as BLACK "
+        "cutouts -- it does not colour the digits themselves. That is why the "
+        "colour phases read 'white' throughout: the passed color=WHITE was "
+        "always painting the background, so the digit colour never had a "
+        "chance to move independent of it. Any future style probe must "
+        "distinguish background colour from digit colour explicitly, or it "
+        "will silently repeat this same misreading.",
+    ),
+    Capability(
         "scoreboard", "show", CapabilityStatus.VERIFIED, _S32,
         "12:34 rendered as two scores on panel (probes/probe_capability_sweep1.py, 2026-07-20).",
     ),
     Capability(
         "eco", "set_mode", CapabilityStatus.VERIFIED, _S32,
-        "With the eco window covering now and eco_brightness=5, the panel visibly dimmed; "
-        "disable restored brightness (probes/probe_capability_sweep3.py, 2026-07-21).",
+        "With the eco window covering now and eco_brightness=5, the panel visibly "
+        "dimmed (probes/probe_capability_sweep3.py, 2026-07-21). CITATION CORRECTED "
+        "2026-07-27: that 2026-07-21 run never set a prior brightness, so it could "
+        "not actually establish 'disable restores brightness' -- restoring TO "
+        "WHAT was never pinned down. The claim now rests on probes/"
+        "probe_p17b_eco_isolation.py phases 4-8 and probes/probe_p17_brightness_eco.py "
+        "Part B, both of which pin a KNOWN prior brightness (100) before eco ever "
+        "runs. eco_brightness IS LIVE (falsifying the inert-parameter hypothesis "
+        "this probe was built to test) and IS THE ORDINARY BRIGHTNESS SCALE, not a "
+        "separate one: eco@5 measured 4.55 lux against a standalone brightness-5 "
+        "reading of 4.69 lux, and eco@100 measured 65.23 lux against "
+        "brightness-100's 65.84 lux. ECO OFF RESTORES THE HOST'S PINNED "
+        "BRIGHTNESS (65.94 and 65.00 lux, both back at the ~65.84 reference, on "
+        "the now-supported evidence). ECO IS A ONE-SHOT DIM, NOT A CLAMP: a host "
+        "set_brightness(100) sent INTO an active eco window won outright -- the "
+        "white field went fully bright and stayed there; eco sets the level once "
+        "when its window opens and does not re-assert. THE ECO CONFIGURATION IS "
+        "AUTONOMOUS DEVICE STATE: the dim survived a disconnect with no host "
+        "attached, so a fresh client can inherit an eco window it cannot read "
+        "back and that silently overrides brightness it never touched. ECO DOES "
+        "NOT ALTER COLOUR: with eco armed and active but pinned to "
+        "eco_brightness=100 (so brightness could not confound the reading), the "
+        "clock face stayed white across eco-off/eco-on/eco-off; the magenta "
+        "digits seen in an earlier by-eye run were traced instead to the dim "
+        "brightness level itself, not to eco altering rendering (see clock."
+        "style_select).",
     ),
     Capability(
         "color", "show", CapabilityStatus.VERIFIED, _S32,
@@ -200,7 +270,26 @@ _ENTRIES: tuple[Capability, ...] = (
         "byte (6 + colorCount = 13 where the app sends 0x1c = the total frame length) -- the "
         "leading explanation for the device rendering the effect while apparently never reading "
         "the speed field. Builder fixed 2026-07-25; the length byte is NOT yet isolated as the "
-        "cause (probe style/colors/method also differed) -- PROBE_PLAN P1-(c) runs the A/B.",
+        "cause (probe style/colors/method also differed) -- PROBE_PLAN P1-(c) runs the A/B. "
+        "P1-(c) RESOLVED 2026-07-26/27 across three runs (probes/probe_effect_length_byte.py, "
+        "probe_effect_length_byte2.py, probe_effect_speed_sweep.py). The FIVE-POINT SPEED "
+        "SWEEP (run 3, speeds 5/25/50/75/100 at both the malformed 0x0d and correct 0x1c "
+        "declared lengths, panel-labelled via the scoreboard) is the decisive run: pace rose "
+        "MONOTONICALLY 5 -> 100 at BOTH declared lengths, and every one of the 10 phases "
+        "rendered. Byte 5 IS a speed field, higher = faster: CONFIRMED, and this VERIFIED "
+        "status stands. The MALFORMED-LENGTH-BYTE-HID-THE-SPEED-FIELD hypothesis is FALSIFIED "
+        "-- the speed field responds correctly even behind the malformed 0x0d length, so the "
+        "length byte was never the gate. Run 1's inverted-looking reading (speed 5 appearing "
+        "faster than 100) is attributed to a design fault, not a device behavior: run 1 sent "
+        "its four phases back to back with no clock reset between them, so phases 2-4 each "
+        "landed on an already-running effect instead of a fresh mode entry, corrupting the "
+        "pace comparison. RETRACTED: run 2's headline finding, 'all four 0x0d-declared frames "
+        "drew no ack whatsoever', is WITHDRAWN as of run 3. It was an instrumentation bug, not "
+        "a device behavior -- run 2 printed its ack report immediately after the send and "
+        "cleared the list at the next phase boundary, before the device's ~4.3s reply for an "
+        "effect command had arrived (see common.ack_timing, P14, which measured no silent "
+        "command family at all). Every effect frame sent that night, at either declared "
+        "length, in fact acked.",
     ),
     Capability(
         "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -305,17 +394,64 @@ _ENTRIES: tuple[Capability, ...] = (
         "saved (terminal 3). Blind back-to-back sending hit ~50% silent failure on this panel "
         "(2 of 4). The SDK now PACES on the status handshake as of 2026-07-25 "
         "(client.py _send_gif_upload): send a chunk, await its StatusAck, restart the whole "
-        "upload once on a doomed/timed-out pass -- the vendor app's own remedy for the race.",
+        "upload once on a doomed/timed-out pass -- the vendor app's own remedy for the race. "
+        "INTERRUPTED-UPLOAD RECOVERY MAPPED 2026-07-27 (P10, probes/"
+        "probe_p10_interrupted_upload.py): deliberately abandoning a replacement upload "
+        "after its first BLE packet, after its first outer chunk, and mid-way through a "
+        "later outer chunk NEVER CORRUPTED THE PREVIOUSLY STORED GIF -- checked each time "
+        "via gif.activate_stored() against the old bytes, which kept returning SAVED. "
+        "UploadError therefore means only 'the new content did not arrive', never 'and the "
+        "old content is gone too', which is what makes _send_gif_upload's automatic "
+        "whole-upload retry SAFE to run unattended. Two more results from the same run: a "
+        "GIF already PLAYING FREEZES the instant a new upload starts arriving, rather than "
+        "continuing to animate through the transfer; and gif.activate_stored() RESTARTS "
+        "PLAYBACK AT FRAME 0 rather than resuming wherever the previous playback of that "
+        "content had reached -- an instant-switch primitive (P2d), not a pause/resume one.",
     ),
     # --- common (device control) ---
     Capability(
         "common", "set_brightness", CapabilityStatus.VERIFIED, _S32,
         "5-100% works; out-of-range values nacked by the device via fa03 "
-        "(ROADMAP.md section 3 Device).",
+        "(ROADMAP.md section 3 Device). BOUNDARY CLOSED 2026-07-25 (P13, "
+        "probes/probe_boundary_sweep.py): raw frames at 0/1/4/101/255 all NACK "
+        "hard ([05 00 04 80 00]), no clamping -- the firmware's accepted range is "
+        "exactly 5-100 and matches the SDK's own validation precisely. CROSS-MODE "
+        "SEMANTICS 2026-07-27 (P17 Part A, probes/probe_p17_brightness_eco.py): "
+        "brightness applies IMMEDIATELY and PERSISTS in every mode tested (DIY "
+        "frame, GIF, effect, clock) -- never redraw-gated. Operator: 'the panel "
+        "is 100%, the picture draws and then changes to 40%. If you then leave it "
+        "there, the panel will stay there. Until you send another brightness "
+        "command.' RESPONSE CURVE MEASURED 2026-07-27 (probes/"
+        "probe_brightness_curve.py, an 11-rung ladder metered with a lux sensor "
+        "at two distances, and probes/probe_p17b_eco_isolation.py phases 1-4): "
+        "the curve is genuinely COMPRESSED, not a sensor artifact -- ratios "
+        "measured at ~2in and ~4in from the panel agreed within 1-2% at every "
+        "rung, which sensor saturation cannot survive. Brightness 50-100 are "
+        "VISUALLY INDISTINGUISHABLE (40% already delivers within 6% of 100%'s "
+        "output); the usable dimming range is roughly 5 to ~42, consistent with "
+        "firmware computing something like min(255, percent*6). A distance-based "
+        "correction on the record: the initial expectation that doubling the "
+        "sensor distance would drop every reading ~4x (inverse-square, point "
+        "source) was WRONG PHYSICS for this rig -- the panel is an extended "
+        "source inside a small reflective chamber, and the measured drop between "
+        "2in and 4in was ~0.74x, not ~4x. The within-run RATIO argument the curve "
+        "conclusion rests on does not depend on that prediction being right, so "
+        "the compressed-curve finding stands, but the 4x figure must not be "
+        "reused as a calibration constant.",
     ),
     Capability(
         "common", "set_power", CapabilityStatus.VERIFIED, _S32,
-        "Power on/off exercised live (ROADMAP.md section 3 Device).",
+        "Power on/off exercised live (ROADMAP.md section 3 Device). SEMANTICS "
+        "MAPPED 2026-07-27 (P7, probes/probe_p7_odds_and_ends.py phases 1-2): "
+        "commands sent to a POWERED-OFF panel are still accepted and EXECUTE "
+        "INVISIBLY -- the device keeps processing config and mode commands into "
+        "an unseen framebuffer with the screen dark, rather than dropping them. "
+        "turn_on() then REVEALS THE RESULTING FRAMEBUFFER: whatever was last "
+        "commanded while off is what appears, not the mode that was showing "
+        "before power-off and not a reset to clock. A caller that pushes frames "
+        "into an off panel and gets clean acks back can be fooled into believing "
+        "it is rendering; turn_on is a reveal, not a restore-to-prior-mode or a "
+        "reset-to-clock operation.",
     ),
     Capability(
         "common", "set_time", CapabilityStatus.VERIFIED, _S32,
@@ -401,6 +537,22 @@ _ENTRIES: tuple[Capability, ...] = (
         "common", "reset", CapabilityStatus.VERIFIED, _S32,
         "Used live 2026-07-18 to clear a stuck state (ROADMAP.md section 3 Device).",
     ),
+    Capability(
+        "common", "ack_timing", CapabilityStatus.VERIFIED, _S32,
+        "CALIBRATED 2026-07-27 (P14, probes/probe_p14_ack_timing.py: 7 command families, 5 "
+        "repeats each, verification off so the measured t=0 is GATT write completion, not the "
+        "SDK's own internal ack-await). NO COMMAND FAMILY TESTED WAS SILENT -- brightness "
+        "(valid and out-of-range), scoreboard, effect, clock, a full DIY frame, and chunked GIF "
+        "upload all acked on every repeat. First-ack latency clustered by family: FLAT config/"
+        "native-mode commands (brightness, scoreboard, clock) replied in roughly 0.13-0.30s; "
+        "FULL-FRAME commands (the DIY frame, and the effect command) replied in roughly "
+        "0.6-0.9s. This directly RETRACTS the 2026-07-26 'all four 0x0d effect frames drew no "
+        "ack whatsoever' finding (probes/probe_effect_length_byte2.py): that was an "
+        "instrumentation bug (see effect.speed's retraction note below), not a device or "
+        "declared-length-byte behavior, and the corrected latency figures here are the ones "
+        "to design timeouts against -- transport.await_device_ack's 2.0s default has margin "
+        "over every measured family.",
+    ),
     # --- experimental ---
     Capability(
         "experimental", "set_time_indicator", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -442,8 +594,17 @@ _ENTRIES: tuple[Capability, ...] = (
         "experimental", "schedule_set_theme", CapabilityStatus.VERIFIED, _S32,
         "GIF theme upload SAVED and fired inside its window 2026-07-12 -- end boundary looked "
         "minute-exclusive (probes/probe_schedule_gif.py; ROADMAP.md section 3 Alarms). Image "
-        "content is PNG, not raw RGB (APK_SECOND_PASS.md Q2), and its on-device rendering plus "
-        "the week-bit day mapping remain unverified.",
+        "content is PNG, not raw RGB (APK_SECOND_PASS.md Q2). DAY-BIT MAP CONFIRMED and PNG "
+        "RENDERING CONFIRMED 2026-07-27 (P5, probes/probe_p5_schedule.py, RTC-spoofed): a "
+        "theme armed for a single weekday's bit FIRED when the device RTC was spoofed to that "
+        "weekday and stayed silent (clock face, no content) when spoofed to a different, "
+        "non-adjacent weekday with nothing re-armed -- confirming Schedule's patch_week() "
+        "source-traced encoding on hardware for the first time (Timer's own week-bit map does "
+        "not call patch() and so never covered this). A PNG (CONTENT_IMAGE) theme rendered as "
+        "a static image inside its window, resolving the last untested Schedule content path. "
+        "STILL OPEN: the window END-BOUNDARY question (inclusive vs. exclusive minute) did not "
+        "reach a clean read this run and needs the redesigned boundary probe queued in "
+        "docs/PROBE_PLAN.md.",
     ),
 )
 
