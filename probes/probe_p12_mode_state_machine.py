@@ -1,194 +1,211 @@
-"""P12 -- command-order and display-mode state machine.
+"""P12 -- does a full frame need a DIY re-entry after mode X? ONE SEQUENCE PER RUN.
 
-WHY THIS PROBE EXISTS
----------------------
-Every mode we have tested, we have tested in ISOLATION: enter it from a clock
-baseline, look at it, go back to clock. That tells us nothing about the edges
-between modes, and the edges are where the SDK actually hurts. The one hard
-piece of evidence we have is a failure: on 2026-07-20 a native text takeover
-ended, the daemon sent its reclaim frame, and the frame was SILENTLY SWALLOWED
--- BleDisplay._diy_mode_enabled still said "we are in DIY mode", so no DIY-entry
-command was sent, and a full frame sent into text mode is dropped. Graffiti
-deltas painted through; only a later periodic keyframe healed the panel. That is
-the whole reason invalidate_diy_mode() exists, and it is currently the embedder's
-job to know when to call it -- undocumented knowledge of device state, exactly
-what P12 is meant to remove.
+WHY THIS PROBE WAS REBUILT
+--------------------------
+The first version ran five sequences back to back in one seven-minute
+invocation: roughly twenty distinct visuals, each needing a judgement, with no
+way for the operator to re-check anything. It ran twice on hardware and produced
+usable data only for sequence 5, both times. Run 1 (no panel labels) was called
+"a lab book probe". Run 2 (labels added) was called "a circus, nothing matched
+to what you said".
 
-So the question at EVERY transition here is one thing: after mode X, does the
-next full frame land on its own, or does it need a forced DIY re-entry first?
+The design was the fault, not the operator and not the labelling. It was the
+third instance of the same mistake in one session -- P5's phase 3 failed
+identically. A probe a remote observer cannot follow yields no data however
+sound its protocol design is.
 
-HOW THAT QUESTION IS MADE VISIBLE RATHER THAN INFERRED
-------------------------------------------------------
-Every sequence ends in a RECLAIM PAIR -- two frames, back to back, with a watch
-window after each:
+Two specific failures are fixed here:
 
-    attempt A (NAIVE)  -- show_frame() with NO invalidate_diy_mode(). This is
-                          what a caller who does not know about DIY state would
-                          write. Base colour RED.
-    attempt B (FORCED) -- invalidate_diy_mode(), then show_frame(). This forces
-                          the mode-1 entry that is hardware-proven to take from
-                          any panel state. Base colour GREEN.
+  1. ONE SEQUENCE PER RUN, ~70 s, mandatory argument. One labelled baseline, one
+     mode change, one two-colour reclaim pair. Nothing else reaches the panel.
+     Re-running a sequence costs about a minute, so a missed observation is
+     cheap to recover instead of unrecoverable.
+  2. THE FULL VISUAL SCRIPT IS PRINTED AT STARTUP, before any BLE contact, and
+     it is EXHAUSTIVE -- every visual in order, including the BLUE BASELINE
+     FRAME. That omission is precisely what sank run 2: the operator was briefed
+     on "RED = no re-entry, GREEN = re-entry" and the first thing they saw was
+     blue, which contradicted the brief and discredited everything after it. The
+     blue baseline was always in the design; it was never in the briefing. The
+     console text below is the source the operator gets briefed from, so it is
+     written to be read aloud literally.
 
-The readout is then direct, not deduced:
+THE QUESTION, UNCHANGED
+-----------------------
+After mode X, does the next full frame land on its own, or does it need a forced
+DIY re-entry first? The hard evidence behind the question is a failure: on
+2026-07-20 a native text takeover ended, the daemon sent its reclaim frame, and
+the frame was SILENTLY SWALLOWED -- BleDisplay._diy_mode_enabled still said "we
+are in DIY mode", so no DIY-entry command was sent, and a full frame sent into
+text mode is dropped. Only a later periodic keyframe healed the panel. That is
+why invalidate_diy_mode() exists, and knowing when to call it is currently
+undocumented knowledge every embedder must somehow have.
 
-    panel turns RED in window A    => NO re-entry needed after that mode. The
-                                      SDK can leave the flag alone.
-    panel stays on the OLD mode
-    through window A, then turns
-    GREEN in window B              => RE-ENTRY IS REQUIRED after that mode. The
-                                      SDK must invalidate automatically when
-                                      that mode's command goes out.
-    panel stays on the old mode
-    through BOTH windows           => the reclaim path is broken for that mode
-                                      entirely -- a much bigger finding, and one
-                                      no amount of flag-fiddling fixes.
-    panel turns GREEN in window A  => impossible; the probe has a bug, stop and
-                                      report it rather than recording a result.
+Each run answers the question for exactly one mode, via the RECLAIM PAIR:
 
-RED and GREEN mean the same thing in every sequence, so the operator learns the
-convention once. Staleness is caught by the frame content itself, not by colour
-alone: every frame carries N white 3x3 blocks along the TOP edge, where N is the
-sequence number 1-5, plus a single white 3x3 anchor block in the BOTTOM-LEFT
-corner. A frame left over from an earlier sequence therefore shows the WRONG
-BLOCK COUNT, and a half-updated or rotated panel is obvious -- under a 180-degree
-rotation the counting blocks move to the bottom and the anchor to the top-right.
-A plain solid colour would have taught nothing here, since a stale red and a
-fresh red look identical.
+    attempt A (NAIVE)  -- show_frame() with NO invalidate_diy_mode(). What a
+                          caller who does not know about DIY state would write.
+                          Base colour RED.
+    attempt B (FORCED) -- invalidate_diy_mode(), then show_frame(). Forces the
+                          mode-1 entry that is hardware-proven to take from any
+                          panel state. Base colour GREEN.
 
-THE ACK-REPORTING BUG THIS PROBE MUST NOT REPRODUCE
----------------------------------------------------
-On 2026-07-26 two probes printed their ack reports IMMEDIATELY after the write
-returned -- before the device's reply, which can take ~4.3 s on this panel -- and
-then cleared the ack list at the phase boundary, destroying the evidence. That
-produced the false finding "these frames are never acked" and cost a hardware
-run (retracted in probes/probe_effect_speed_sweep.py). Here: every step waits
-SETTLE_SECONDS (6 s, comfortably past the worst latency ever measured) before
-reading acks, the ack list is NEVER cleared -- each step reports a slice from its
-own start index -- and every ack is printed with its wall-clock delta from the
-send that (probably) caused it.
+    RED appears   => NO re-entry needed after that mode.
+    only GREEN    => RE-ENTRY IS REQUIRED after that mode.
+    neither       => the reclaim path is broken for that mode -- a bigger
+                     finding than the flag, and one no flag-fiddling fixes.
+    GREEN in A    => impossible; the probe has a bug. Report it, record nothing.
 
-THE FIVE SEQUENCES (docs/PROBE_PLAN.md P12)
--------------------------------------------
-1. DIY frame -> text -> full frame
-2. DIY frame -> clock -> graffiti -> full frame
-3. GIF -> effect -> DIY frame
-4. Clock -> countdown -> chronograph -> clock
-5. Power off -> command -> power on -> full frame
+Frames are asymmetric by construction: N white 3x3 blocks along the TOP edge
+(N = the sequence number) plus one white 3x3 anchor in the BOTTOM-LEFT corner. A
+frame left from another run shows the WRONG BLOCK COUNT, and a 180-degree
+rotation moves the counting row to the bottom and the anchor to the top-right.
+A plain solid colour would teach nothing, since a stale red and a fresh red look
+identical.
 
-Sequence 3's reclaim is the interesting one: O-27 (2026-07-17) found that DIY
-entry mode 3 does NOT reliably take over an EFFECT state, which is why the
-daemon now always requests clear=True. BleDisplay defaults to clear=True (mode
-1), so attempt B here should take -- if it does not, mode 1's "always takes"
-claim needs qualifying.
+THE FIVE SEQUENCES
+------------------
+    1  reclaim after TEXT
+    2  reclaim after CLOCK + GRAFFITI  (plus its own graffiti observation)
+    3  reclaim after GIF + EFFECT
+    4  reclaim after the TIMER BRANCH
+    5  reclaim after software POWER OFF/ON   <- known answer, validation case
 
-Sequence 4 carries the paused-countdown branch flagged in P7: we have seen a
-PAUSED countdown hijack chronograph commands. This probe arms a countdown, lets
-it tick, PAUSES it, and only then sends the full chronograph vocabulary
-(reset/start/pause/resume), recording the ack and the panel for each. GlanceOS
-M7 renders timers itself and must never trip over device state the vendor app
-left behind, so "what does a chronograph command do to a paused countdown" is a
-shipping question, not a curiosity. The countdown is explicitly stopped
-afterwards so the run leaves no armed timer on the device.
+SEQUENCE 5 IS ALREADY ANSWERED. KEEP IT, DO NOT RE-DERIVE IT.
+Run 1 of the previous version returned GREEN: DIY RE-ENTRY IS REQUIRED after
+turn_off/turn_on. The naive show_frame was silently swallowed WHILE STILL ACKING
+ACCEPTED (05 00 00 00 01) -- an ack means the frame was received, never that
+pixels changed. Corroborated the same night by P11: the DIY frame is the ONLY
+state that does not survive a BLE reconnect or a software power cycle; every
+native mode persists. Sequence 5 is retained as the validation case -- the run
+that proves the apparatus still works. Any run of it that comes back RED means
+this probe, not the device, has changed.
 
-Sequence 5 uses the SDK's SOFTWARE power command -- client.common.turn_off() /
-turn_on() (protocol.common.build_set_power, [5 0 7 1 on]). Nothing is unplugged;
-BLE stays connected throughout, which is the point. While the screen is off the
-probe sends a brightness change and a scoreboard (a MODE change), then powers
-back on. Three outcomes are distinguishable at power-on: the scoreboard appears
-(commands sent while off were executed, just invisible), the pre-off mode
-appears (commands while off were dropped and prior mode resumed), or the clock
-appears (power-on resets to clock regardless).
+SEQUENCE 2 carries a second observation that matters on its own, so it gets its
+own clearly described mark and its own watch window instead of being buried
+mid-sequence: DO GRAFFITI PIXELS DRAW OVER A RUNNING CLOCK WITHOUT DIY MODE?
+That is the daemon's entire delta-path assumption. If graffiti paints through
+from a native state, deltas are safe from anywhere; if it does not, the daemon's
+rendering model is wrong.
 
-OPERATOR NOTES -- READ THE PANEL LABELS
----------------------------------------
-Watch the panel throughout; this probe is entirely visual apart from the ack
-timings. You never need the console.
+SEQUENCE 4 does NOT re-derive the countdown/chronograph semantics. Those are
+settled: probes/probe_p7_odds_and_ends.py phases 3-8 got a clean readout -- the
+countdown FROZE on pause, chronograph.start produced an INDEPENDENT stopwatch
+counting up rather than hijacking the paused countdown, resume continued from
+the frozen value, and reset zeroed it. This sequence walks the panel through
+that branch only far enough to be genuinely "after the timer branch", then asks
+the reclaim question. Cite P7 for the timer semantics, never this probe.
 
-    0 | 0   RUN START MARKER. The run has begun. Shown once, then the clock for
-            a moment, then the sequence 1 label. 0 is reserved for this marker
-            and no sequence ever uses it, so 0 | 0 can only mean "starting".
-    1 | 0   sequence 1 begins        4 | 0   sequence 4 begins
-    2 | 0   sequence 2 begins        5 | 0   sequence 5 begins
-    3 | 0   sequence 3 begins
+ACK DISCIPLINE
+--------------
+Acks are read only after SETTLE_SECONDS, the list is NEVER cleared -- each step
+reports a slice from its own start index -- and every ack prints its wall-clock
+delta from the send. This exists because on 2026-07-26 two probes printed ack
+reports immediately after the write, before the reply arrived, then cleared the
+list at the phase boundary; that produced the false finding "these frames are
+never acked" and cost a hardware run.
 
-A label appears ONCE, at the start of its sequence, and is held ~4 s. Everything
-you see after a label, until the next label, belongs to that sequence. There are
-deliberately NO labels between the steps within a sequence, and none between a
-sequence's last mode step and its RED/GREEN reclaim pair. That is not an
-oversight: the scoreboard is itself a native-mode command, so a label inserted
-between steps would become part of the transition under test. Sequence 1 is
-DIY -> text -> frame; labelling every step would silently make it DIY ->
-scoreboard -> text -> scoreboard -> frame, and a label placed just before a
-reclaim pair would change the question from "does DIY need re-entry after TEXT"
-to "after SCOREBOARD" -- invalidating the only result the sequence exists to
-produce. (The P7 author flagged the same confound independently.)
-
-The labels do double duty as a render check: each sequence's FIRST step says
-what should replace the label, so if the label numbers are STILL on screen when
-that step's watch window ends, the step never rendered -- which is itself a
-result worth recording.
-
-The two things to actually report per sequence are unchanged: which colour the
-reclaim pair landed on (RED = no DIY re-entry needed, GREEN = re-entry
-required), and the white-block count on the top edge, which says WHICH sequence
-painted the frame you are looking at. What to report per step is printed before
-its watch window opens.
+SETTLE_SECONDS is 2.0. P14 (probes/probe_p14_ack_timing.py, run 2026-07-27)
+measured the real numbers across 7 families and 55 notifications: no silent
+family, post-write latency sub-50 ms, flat commands acking 0.13-0.30 s from send
+start, a full DIY frame 0.6-0.9 s, and GIF chunk statuses interleaving with
+later chunk writes. The earlier "~4.3 s worst case" figure was an artifact of a
+4 s scoreboard hold being counted as latency, and is retired.
 
 METHOD
 ------
 Device reset (common.reset, 04 00 03 80 -- VERIFIED non-destructive, used live
 2026-07-18 to clear a stuck state), settle, clock baseline. Command verification
 is turned OFF for the whole run so a nack cannot raise CommandRejectedError and
-end a sequence early -- acks still arrive through the response listener, which
-fires regardless. Every step and every sequence is wrapped so one failure cannot
-end the run. Nothing in the `experimental` namespace is touched; set_password /
-verify_password are never called; nothing is written to ae00/ae01;
-delete_device_data is never called. Cleanup: countdown stopped, screen powered
-on, clock restored.
+end a run early -- acks still arrive through the response listener, which fires
+regardless. Every step is wrapped so one failure cannot end the run. Nothing in
+the `experimental` namespace is touched; set_password / verify_password are
+never called; nothing is written to ae00/ae01; delete_device_data is never
+called. Cleanup: any timer stopped, screen powered on, clock restored.
 
 READOUT
 -------
-  * Per transition, the reclaim pair gives a direct yes/no on "does the SDK have
-    to invalidate DIY mode after this mode?". Each YES is a mode whose feature
-    namespace should call display.invalidate_diy_mode() itself, turning
-    undocumented caller knowledge into driver behavior.
-  * If EVERY mode needs re-entry, the answer is simpler and better: invalidate
+  * Each YES ("re-entry required") is a mode whose feature namespace should call
+    display.invalidate_diy_mode() itself, turning undocumented caller knowledge
+    into driver behavior.
+  * If every mode needs re-entry, the answer is simpler and better: invalidate
     unconditionally whenever any non-frame command goes out, and delete the
-    per-mode question entirely.
-  * If NO mode needs re-entry, the 2026-07-20 text incident was something else
-    (a race, or text specifically), and invalidate_diy_mode's docstring is
-    overclaiming.
-  * Graffiti painting through onto a NATIVE clock (sequence 2) => graffiti does
-    not require DIY mode and is the safe delta path from any state, which is
-    what the daemon already assumes. Graffiti NOT painting through => that
-    assumption is wrong and the 2026-07-20 incident report needs correcting.
-  * Chronograph commands moving a PAUSED countdown's display (sequence 4) =>
-    the two features share one device-side timer, and the SDK must document that
-    countdown.stop() is mandatory before any chronograph use.
-  * Commands acked while the screen is OFF (sequence 5) => an ack means "frame
-    received", never "pixels changed", and every probe that used an ack as proof
-    of a visual result needs re-reading.
+    per-mode question entirely. Sequence 5 already says YES for power, and P11
+    says the DIY frame is the only state that does not survive a reconnect --
+    two independent pushes toward the unconditional rule.
+  * If NO mode needs re-entry, the 2026-07-20 text incident was something else,
+    and invalidate_diy_mode's docstring overclaims.
+  * Graffiti painting through onto a NATIVE clock (sequence 2) => graffiti needs
+    no DIY mode and is the safe delta path from any state, which is what the
+    daemon already assumes. NOT painting through => that assumption is wrong.
+  * A naive frame that ACKS ACCEPTED but never appears (already seen in sequence
+    5) => an ack is receipt, never a visual result. Any probe that treated an
+    ack as proof of rendering needs re-reading.
 
-RESULT (2026-07-27): PARTIAL. This probe ran, but a verified, attributed
-per-sequence readout (which reclaim pairs landed RED vs. GREEN, whether the
-paused-countdown/chronograph hijack reproduced under sequence 4, and whether
-graffiti painted through onto the native clock in sequence 2) is not
-recorded in this pass. Do not infer specific per-mode invalidate_diy_mode()
-requirements from this entry -- the five-sequence state machine
-(docs/PROBE_PLAN.md P12) stays an open question pending a session that
-records the operator's colour/count readout for each reclaim pair. The one
-thing this run's design does establish independent of the operator's
-readout is methodological: command verification was held off for the whole
-run specifically so a nack could not raise CommandRejectedError and end a
-sequence early, and the ack list was never cleared mid-run -- so, whatever
-the visual verdicts turn out to be, they are not at risk of the same
-ack-instrumentation bug that produced the retracted 2026-07-26 findings
-elsewhere tonight.
+USAGE
+-----
+    python probes/probe_p12_mode_state_machine.py <1-5>
+
+The sequence argument is MANDATORY and is validated before any BLE contact, so a
+typo cannot half-run anything. Exactly one sequence runs per invocation; there is
+no "all" mode, deliberately.
+
+RESULT (2026-07-27): all five sequences run, one invocation each. HEADLINE: the
+real question is not "does DIY mode need re-entry", it is "is a native mode
+still actively drawing". A naive show_frame() is never rejected and never
+silently swallowed at the protocol level -- it arrives, acks ACCEPTED, and
+renders. What happens next depends on whether something else still owns the
+framebuffer.
+
+  * Sequence 1 (after TEXT): re-entry required. Operator: "red flicker
+    (microsecond) -> P12 text (scrolling never stopped) -> Green". The naive
+    frame DID render, then the still-running marquee scroll repainted over it
+    on its next tick -- it lost a REPAINT RACE, not a silent swallow. The
+    2026-07-20 incident's "silently swallowed while acking ACCEPTED"
+    description is corrected on this point: not swallowed, outraced. The
+    fix (invalidate_diy_mode before the reclaim) is unchanged.
+  * Sequence 2 (after CLOCK + GRAFFITI): no re-entry needed -- both the naive
+    red and the forced green held. SEPARATE RESULT, own finding: graffiti
+    sent onto the running clock, no DIY mode, does NOT composite over it --
+    operator: "nothing drew over each other and the clock stayed for a sec
+    and switched". It forces a MODE SWITCH rather than drawing through, so
+    the daemon's delta-path assumption (graffiti is safe from any state) is
+    wrong as a blanket claim: it is safe only once the panel is already in
+    the pixel/DIY framebuffer. Also observed: the native clock does take
+    over cleanly from the blue DIY baseline, but holds only ~1s before the
+    next command in the sequence lands.
+  * Sequence 3 (after GIF + EFFECT): re-entry required, with a distinct
+    footprint. Operator: "Red frame appeared and was then PUSHED DOWN by the
+    rainbow effect, it literally DRAGGED THE FRAME DOWN and continued with
+    the rainbow effect of falling." The effect operates on the LIVE
+    framebuffer, not a private buffer -- it consumed the injected frame and
+    transformed it into its own animation. Speculative, UNPROBED follow-up
+    only (not a capability): content might be deliberately feedable to a
+    running effect. Queued in docs/PROBE_PLAN.md.
+  * Sequence 4 (after the TIMER BRANCH): re-entry required, with a third
+    distinct footprint. The red frame stayed visible as a background while
+    "the chrono's digits and the dot animation drew over red... I could see
+    the digits changing", then it fully reverted; the timer never stopped
+    counting. Native modes repaint only their own DIRTY REGIONS -- text takes
+    the full width, the effect takes the whole buffer, the chronograph takes
+    only its glyphs. One unidentified transient: a brief unreadable flicker
+    between green and the clock at the end of this sequence -- logged as
+    observed-and-unexplained, the third such this session, none reproduced.
+  * Sequence 5 (after software POWER OFF/ON): no re-entry needed on this
+    clean run -- blue DIY frame -> dark -> BLUE FRAME RESTORED -> RED landed
+    at the naive attempt -> green. This CONTRADICTS the "known answer" this
+    docstring opens with (GREEN, 2026-07-26): that earlier run needed green
+    only because it had also sent a scoreboard 77|77 command while the panel
+    was dark, which executed invisibly and left a NATIVE MODE live at
+    power-on, forcing the reclaim. Re-entry tracks whether a native mode is
+    actively live, not power-cycling itself -- the module's "SEQUENCE 5 IS
+    ALREADY ANSWERED" framing above is superseded by this result and should
+    not be treated as settled without accounting for it.
 """
 
 import asyncio
 import io
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -205,32 +222,23 @@ from pyidotmatrix.protocol.response import (
 
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 
-# Longer than the ~4.3 s worst-case ack latency measured on this panel
-# (probes/probe_effect_speed_sweep.py). Acks are read only after this.
-SETTLE_SECONDS = 6.0
+# P14 (2026-07-27) measured post-write ack latency at sub-50 ms, flat commands at
+# 0.13-0.30 s from send start and a full DIY frame at 0.6-0.9 s. 2 s is a wide
+# margin over the slowest of those and keeps every run under 90 s.
+SETTLE_SECONDS = 2.0
 WATCH_SECONDS = 10.0
 LABEL_SECONDS = 4.0
 
-# The run-start marker: scoreboard 0 | 0, then a short clock gap before sequence
-# 1's own label. The operator reported not knowing the run had started and not
-# being sure the first label they saw was really sequence 1. The clock gap is
-# what separates the two -- without it, 0 | 0 and 1 | 0 four seconds apart read
-# as one flickering label rather than two distinct events.
-START_MARKER_SECONDS = 5.0
-START_MARKER_GAP_SECONDS = 2.0
-
 # The repo's own test font -- the package bundles none, and text.show requires a
-# real TTF/OTF path. Resolved from this file so the probe works from any cwd; if
-# it is missing the text step is skipped rather than crashing the sequence.
+# real TTF/OTF path. Resolved from this file so the probe works from any cwd.
 FONT_PATH = Path(__file__).resolve().parent.parent / "tests" / "Rain-DRM3.otf"
 
-# The reclaim-pair convention, identical in every sequence (see the module
-# docstring): RED = the naive attempt, GREEN = the forced-re-entry attempt.
+# The reclaim-pair convention: RED = naive attempt, GREEN = forced re-entry.
 NAIVE_COLOR = (220, 0, 0)
 FORCED_COLOR = (0, 200, 0)
-# Baseline frames that open a sequence, and must always land -- they are sent
-# after an explicit invalidate, so a failure here is a probe/hardware problem
-# rather than a state-machine result.
+# The baseline frame that opens every run. Sent after an explicit invalidate, so
+# it must always land -- and the operator MUST be told to expect it, which is
+# what the startup script exists for.
 BASELINE_COLOR = (0, 60, 220)
 
 # The app's 7-color effect palette from the 2026-07-25 HCI capture, byte-order
@@ -243,6 +251,149 @@ STATUS_NAMES = {
     STATUS_NEXT_CHUNK: "NEXT_CHUNK",
     STATUS_SAVED: "SAVED",
 }
+
+SEQUENCE_TITLES = {
+    1: "reclaim after TEXT",
+    2: "reclaim after CLOCK + GRAFFITI (plus the graffiti-over-clock observation)",
+    3: "reclaim after GIF + EFFECT",
+    4: "reclaim after the TIMER BRANCH (timer semantics already settled by P7)",
+    5: "reclaim after software POWER OFF/ON  [KNOWN ANSWER: GREEN -- validation case]",
+}
+
+# The middle of each run's visual script: what replaces the blue baseline, in
+# order, before the reclaim pair. Written to be read to the operator verbatim --
+# literal colours and shapes, no shorthand.
+SEQUENCE_VISUALS = {
+    1: (
+        'SCROLLING TEXT reading "P12" replaces the blue frame. ~10 s.'
+        " This is the mode whose reclaim we are testing.",
+    ),
+    2: (
+        "The CLOCK replaces the blue frame -- normal time display, ticking. ~10 s.",
+        "WHITE PIXELS are drawn ON TOP of the still-running clock: a 12-pixel"
+        " DIAGONAL line from the upper-left going down and to the right, PLUS a"
+        " small 3-pixel hook near the TOP-RIGHT corner. ~12 s."
+        " THIS IS ITS OWN RESULT, report it separately: white marks appear over a"
+        " clock that keeps ticking => graffiti needs no DIY mode and the daemon's"
+        " delta path is safe from any state. Nothing appears => that assumption is"
+        " wrong. (Graffiti sends no ack at all, by design -- console silence here"
+        " is expected and is not a failure.)",
+    ),
+    3: (
+        "ANIMATED COLOUR NOISE (a GIF) replaces the blue frame. ~14 s, including"
+        " several seconds of upload during which the blue frame may simply"
+        " persist -- that is the transfer, not a failure.",
+        "A COLOUR EFFECT -- a moving multi-colour pattern -- replaces the noise. ~10 s.",
+    ),
+    4: (
+        "A COUNTDOWN appears and TICKS DOWN from about 05:00. ~10 s.",
+        "The countdown FREEZES, then a STOPWATCH starts COUNTING UP from 00:00."
+        " ~10 s. This matches P7 and is expected -- the stopwatch is INDEPENDENT"
+        " of the paused countdown, not a hijack of it. Nothing here needs judging;"
+        " the run only needs the panel to have been through the timer branch.",
+    ),
+    5: (
+        "The panel goes COMPLETELY DARK (software power off; BLE stays"
+        " connected). ~10 s.",
+        "The panel comes back on. ~10 s. Per P11 the blue frame will NOT return --"
+        " native modes survive a power cycle but a DIY frame does not -- so expect"
+        " the clock or the last native mode, not blue.",
+    ),
+}
+
+
+def print_usage() -> None:
+    print("usage: python probes/probe_p12_mode_state_machine.py <1-5>", flush=True)
+    print("", flush=True)
+    print("Runs exactly ONE sequence, ~70 s. The argument is mandatory.", flush=True)
+    for number, title in SEQUENCE_TITLES.items():
+        print(f"    {number}   {title}", flush=True)
+
+
+def select_sequence(argv: list[str]) -> int:
+    """Which sequence to run, from the command line. Validated before any BLE contact.
+
+    Mandatory and single-valued on purpose: the multi-sequence version of this
+    probe was unfollowable, and there is deliberately no "run all" mode.
+    """
+    if not argv:
+        print("error: a sequence number is required.\n", flush=True)
+        print_usage()
+        raise SystemExit(2)
+    if len(argv) > 1:
+        print(f"error: expected exactly one sequence number, got {len(argv)}.\n", flush=True)
+        print_usage()
+        raise SystemExit(2)
+    try:
+        sequence = int(argv[0])
+    except ValueError:
+        sequence = -1
+    if sequence not in SEQUENCE_TITLES:
+        print(f"error: unrecognized sequence {argv[0]!r}.\n", flush=True)
+        print_usage()
+        raise SystemExit(2)
+    return sequence
+
+
+def print_visual_script(sequence: int) -> None:
+    """The COMPLETE ordered list of everything the operator will see, before BLE.
+
+    Exhaustive on purpose. The previous version briefed "RED = no re-entry,
+    GREEN = re-entry" and never mentioned the blue baseline frame that opens
+    every run -- so the first thing the operator saw contradicted their brief and
+    discredited the whole run. Every visual is listed here, including the ones
+    that are merely setup, with the colour named and what replaces it.
+    """
+    blocks = "block" if sequence == 1 else "blocks"
+    visuals = [
+        "The CLOCK, for a few seconds. Start-up baseline after a device reset."
+        " Nothing to judge.",
+        f"A SCOREBOARD reading  {sequence} | 0  for {LABEL_SECONDS:.0f} s. This is the run's"
+        f" label: it confirms sequence {sequence} is what is running. It is the only"
+        f" label all run.",
+        f"*** A SOLID BLUE FRAME *** with {sequence} white {blocks} along the TOP edge and one"
+        f" white block in the BOTTOM-LEFT corner. ~10 s. EXPECT THIS -- it is the"
+        f" baseline every run opens with, it is NOT part of the red/green test, and it"
+        f" is not an error. If it does not appear, the run is broken before it starts:"
+        f" say so and stop.",
+    ]
+    visuals.extend(SEQUENCE_VISUALS[sequence])
+    visuals.extend([
+        f"*** ATTEMPT A *** A SOLID RED FRAME with the same {sequence} white {blocks} on top."
+        f" ~10 s. THE FIRST THING TO REPORT: does the panel actually turn RED, or does"
+        f" it stay on the previous visual?",
+        f"*** ATTEMPT B *** A SOLID GREEN FRAME with the same {sequence} white {blocks} on"
+        f" top. ~10 s. THE SECOND THING TO REPORT: does the panel turn GREEN?",
+        "The CLOCK returns. Cleanup, nothing to judge.",
+    ])
+
+    print("=" * 78, flush=True)
+    print(f"P12 SEQUENCE {sequence}: {SEQUENCE_TITLES[sequence]}", flush=True)
+    print("=" * 78, flush=True)
+    print("EVERYTHING YOU WILL SEE, IN ORDER -- read this before the run starts:", flush=True)
+    print("", flush=True)
+    for index, visual in enumerate(visuals, start=1):
+        print(f"  {index}. {visual}", flush=True)
+    print("", flush=True)
+    print("WHAT THE ANSWER MEANS:", flush=True)
+    print("  RED appeared at attempt A     => NO DIY re-entry needed after this mode.", flush=True)
+    print("  RED never came, GREEN did     => DIY RE-ENTRY IS REQUIRED after this mode.", flush=True)
+    print("  neither RED nor GREEN         => the reclaim path is broken for this mode.", flush=True)
+    print("                                   Bigger finding; record it prominently.", flush=True)
+    print("  GREEN appeared at attempt A   => impossible. The probe has a bug -- report", flush=True)
+    print("                                   that, and record no result.", flush=True)
+    if sequence == 2:
+        print("", flush=True)
+        print("  SEQUENCE 2 HAS A SECOND, SEPARATE RESULT: whether the white diagonal and", flush=True)
+        print("  corner hook appear over the running clock (visual 5). Report it even if", flush=True)
+        print("  the red/green part is inconclusive -- it stands on its own.", flush=True)
+    if sequence == 5:
+        print("", flush=True)
+        print("  SEQUENCE 5 IS THE VALIDATION CASE. The answer is already known to be", flush=True)
+        print("  GREEN (2026-07-26, corroborated by P11). If this run comes back RED, the", flush=True)
+        print("  probe has changed, not the device -- do not record a new finding.", flush=True)
+    print("=" * 78, flush=True)
+    print("", flush=True)
 
 
 def describe(ack: DeviceAck | StatusAck) -> str:
@@ -264,12 +415,12 @@ def make_frame(base: tuple[int, int, int], sequence: int) -> bytes:
     """A 32x32 RGB frame: solid `base`, N counting blocks on top, anchor bottom-left.
 
     ASYMMETRIC BY CONSTRUCTION, and deliberately not a plain solid colour. The N
-    white 3x3 blocks along the top edge (N = sequence number) identify WHICH
-    sequence painted the frame, so a leftover frame from an earlier sequence is
-    read as stale instead of fresh. The single anchor block in the bottom-left
-    corner fixes orientation: rotate the panel 180 degrees and the counting row
-    drops to the bottom while the anchor jumps to the top-right, which no
-    symmetric pattern would reveal.
+    white 3x3 blocks along the top edge (N = sequence number) identify WHICH run
+    painted the frame, so a leftover frame from another run reads as stale
+    instead of fresh. The single anchor block in the bottom-left corner fixes
+    orientation: rotate the panel 180 degrees and the counting row drops to the
+    bottom while the anchor jumps to the top-right, which no symmetric pattern
+    would reveal.
     """
     pixels = bytearray(bytes(base) * (32 * 32))
 
@@ -289,8 +440,8 @@ def make_noise_gif(seed: int, frames: int = 8) -> bytes:
     """A 32x32 noise GIF, deterministic in `seed`. ~11 KB -> 3 outer chunks.
 
     Noise rather than a pattern so it compresses badly and the upload is a real
-    multi-chunk transfer. The seed must be novel per upload: identical bytes
-    hit the device's single-slot CRC and short-circuit to SAVED without a real
+    multi-chunk transfer. The seed must be novel per upload: identical bytes hit
+    the device's single-slot CRC and short-circuit to SAVED without a real
     transfer (GifFeature.activate_stored's fast path).
     """
     rng = random.Random(seed)
@@ -309,16 +460,17 @@ def make_noise_gif(seed: int, frames: int = 8) -> bytes:
 
 
 def graffiti_dots() -> list[tuple[int, int]]:
-    """An asymmetric dot cluster: a short diagonal plus one isolated pixel.
+    """A 12-pixel diagonal from the upper-left plus a 3-pixel hook near the top-right.
 
     Asymmetric on both axes so "graffiti painted through" can be told apart from
-    "the panel happened to already have white pixels there", and so a flipped
-    render is visible.
+    "the clock happened to have white pixels there", and so a flipped render is
+    visible. The startup script describes it to the operator in exactly these
+    terms -- keep the two in sync if this changes.
     """
     return [(x, x) for x in range(4, 16)] + [(28, 4), (27, 4), (28, 5)]
 
 
-async def main() -> None:
+async def main(sequence: int) -> None:
     print("connecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
         # NEVER cleared. Each step reports the slice from its own start index, so
@@ -328,8 +480,7 @@ async def main() -> None:
         unsubscribe = client.add_response_listener(lambda a: acks.append((time.perf_counter(), a)))
 
         # Fire-and-forget for the whole run: a nack must not raise
-        # CommandRejectedError and end a sequence early (sequence 5 sends
-        # commands to a powered-off screen and may well draw one).
+        # CommandRejectedError and end the run early.
         client.set_command_verification(False)
 
         async def step(label: str, send, watch: str, watch_seconds: float = WATCH_SECONDS) -> None:
@@ -347,40 +498,35 @@ async def main() -> None:
             except Exception as ex:
                 print(f"     SEND FAILED: {ex!r} (continuing)", flush=True)
             t_written = time.perf_counter()
-            print(f"     write completed in {t_written - t_send:.3f}s;"
-                  f" letting acks settle {SETTLE_SECONDS:.0f}s ...", flush=True)
 
             await asyncio.sleep(SETTLE_SECONDS)
             window = acks[mark:]
-            if window:
-                print(f"     {len(window)} ack(s):", flush=True)
-                for t, ack in window:
-                    print(f"       +{t - t_written:6.3f}s after write  {describe(ack)}", flush=True)
-            else:
-                # Silence after a full settle window is a RESULT (fire-and-forget),
-                # not a failure -- graffiti is already known to be ack-silent.
-                print(f"     NO ACKS in {SETTLE_SECONDS:.0f}s -- record as silent, not as broken",
-                      flush=True)
+            print(f"     write completed in {t_written - t_send:.3f}s; {len(window)} ack(s)"
+                  f" in the {SETTLE_SECONDS:.0f}s settle window:", flush=True)
+            for t, ack in window:
+                print(f"       +{t - t_written:6.3f}s after write  {describe(ack)}", flush=True)
+            if not window:
+                # Silence after a full settle window is a RESULT, not a failure --
+                # graffiti is ack-silent by design, and P14 found no other silent
+                # family, so silence anywhere else is worth noticing.
+                print("       (none -- record as silent, not as broken)", flush=True)
 
             print(f"     WATCH: {watch}", flush=True)
             remaining = watch_seconds - SETTLE_SECONDS
             if remaining > 0:
                 await asyncio.sleep(remaining)
 
-        async def reclaim_pair(sequence: int, after: str) -> None:
-            """The two-frame test that makes "is DIY re-entry required?" visible.
-
-            Attempt A is what an unaware caller writes. Attempt B forces the
-            mode-1 entry. Which window the panel changes in IS the answer.
-            """
+        async def reclaim_pair(after: str) -> None:
+            """The two-frame test that makes "is DIY re-entry required?" visible."""
             print(f"\n  ### RECLAIM PAIR after {after} -- RED = no re-entry, GREEN = re-entry forced",
                   flush=True)
             await step(
-                f"seq {sequence} attempt A (NAIVE): show_frame, NO invalidate_diy_mode",
+                f"ATTEMPT A (NAIVE): show_frame after {after}, NO invalidate_diy_mode",
                 lambda: client.display.show_frame(make_frame(NAIVE_COLOR, sequence)),
-                f"does the panel turn RED with {sequence} white block(s) on top?"
-                f" RED => no DIY re-entry needed after {after}."
-                f" Still showing {after} => re-entry IS needed; keep watching attempt B.",
+                f"does the panel turn RED? RED => no DIY re-entry needed after {after}."
+                f" Still showing the previous visual => re-entry IS needed; keep watching"
+                f" attempt B. NOTE: this frame may ACK ACCEPTED and still never appear --"
+                f" that has already been seen once, so the ack line above is not the answer.",
             )
 
             def forced() -> object:
@@ -393,286 +539,185 @@ async def main() -> None:
                 return client.display.show_frame(make_frame(FORCED_COLOR, sequence))
 
             await step(
-                f"seq {sequence} attempt B (FORCED): invalidate_diy_mode + show_frame",
+                f"ATTEMPT B (FORCED): invalidate_diy_mode + show_frame after {after}",
                 forced,
-                f"does the panel turn GREEN with {sequence} white block(s) on top?"
-                f" GREEN after a RED-less window A => re-entry is REQUIRED after {after}."
-                f" Neither colour ever appears => the reclaim path is broken for {after}"
-                f" (a bigger finding -- record it prominently).",
+                f"does the panel turn GREEN? GREEN after a RED-less window A => re-entry"
+                f" is REQUIRED after {after}. Neither colour ever appeared => the reclaim"
+                f" path is broken for {after} -- record that prominently.",
             )
-
-        async def run_start_marker() -> None:
-            """Panel says 0 | 0: the run has begun and the NEXT label is sequence 1.
-
-            Shown ONCE, before sequence 1's label and therefore before any step of
-            any sequence, so it can never sit inside a transition under test.
-            """
-            print("\n" + "#" * 78, flush=True)
-            print(f"# RUN START MARKER -- panel shows scoreboard 0 | 0 for {START_MARKER_SECONDS:.0f}s,",
-                  flush=True)
-            print(f"# then the clock for {START_MARKER_GAP_SECONDS:.0f}s, then the SEQUENCE 1 label"
-                  f" (1 | 0).", flush=True)
-            print("# 0 is reserved for this marker; no sequence uses it.", flush=True)
-            print("#" * 78, flush=True)
-            try:
-                await client.scoreboard.show(0, 0)
-                await asyncio.sleep(START_MARKER_SECONDS)
-                # The gap exists so 0 | 0 and 1 | 0 read as two events, not one.
-                await client.clock.show()
-                await asyncio.sleep(START_MARKER_GAP_SECONDS)
-            except Exception as ex:
-                print(f"  start marker FAILED (continuing): {ex!r}", flush=True)
-
-        async def sequence_label(number: int, title: str) -> None:
-            """The ONLY panel label a sequence gets, held before its first step.
-
-            Never called between steps and never before a reclaim pair: the
-            scoreboard is a native-mode command, so a label inside a sequence
-            would become part of the transition being measured and would change
-            the reclaim pair's question from "after TEXT" to "after SCOREBOARD".
-            """
-            print(f"\n{'=' * 78}\n=== SEQUENCE {number}: {title}", flush=True)
-            print(f"=== PANEL LABEL: scoreboard {number} | 0, held {LABEL_SECONDS:.0f}s. Everything"
-                  f" after it, until the", flush=True)
-            print(f"=== next label, is sequence {number}. No further labels appear inside it.", flush=True)
-            print("=" * 78, flush=True)
-            try:
-                await client.scoreboard.show(number, 0)
-                await asyncio.sleep(LABEL_SECONDS)
-            except Exception as ex:
-                print(f"  label FAILED (continuing): {ex!r}", flush=True)
 
         # Known-state entry: reset (04 00 03 80, non-destructive), settle, clock.
         try:
             print("resetting device to a known state ...", flush=True)
             await client.common.reset()
-            await asyncio.sleep(4)
+            await asyncio.sleep(3)
             await client.common.turn_on()
             await client.common.set_brightness(60)
             await client.clock.show()
             await asyncio.sleep(3)
-            print(f"baseline: screen on, brightness 60, clock. {len(acks)} ack(s) logged"
-                  f" (kept, never cleared).", flush=True)
+            print("baseline: screen on, brightness 60, clock. (visual 1)", flush=True)
         except Exception as ex:
             print(f"  reset/clock baseline FAILED: {ex!r}", flush=True)
 
-        await run_start_marker()
-
-        # ================= SEQUENCE 1: DIY frame -> text -> full frame =========
+        # The run's one and only panel label, before the first step. The
+        # scoreboard is itself a native-mode command, so no further label is
+        # shown: one placed between steps would become part of the transition
+        # under test, and one placed before the reclaim pair would change the
+        # question from "after TEXT" to "after SCOREBOARD".
+        print(f"\n=== PANEL LABEL (visual 2): scoreboard {sequence} | 0, held"
+              f" {LABEL_SECONDS:.0f}s. No further labels this run.", flush=True)
         try:
-            await sequence_label(1, "DIY frame -> text -> full frame")
+            await client.scoreboard.show(sequence, 0)
+            await asyncio.sleep(LABEL_SECONDS)
+        except Exception as ex:
+            print(f"  label FAILED (continuing): {ex!r}", flush=True)
 
-            def baseline_frame(sequence: int) -> object:
-                client.display.invalidate_diy_mode()
-                return client.display.show_frame(make_frame(BASELINE_COLOR, sequence))
+        # The blue baseline every run opens with -- forced entry, so it is
+        # independent of whatever the panel was doing beforehand.
+        def baseline_frame() -> object:
+            client.display.invalidate_diy_mode()
+            return client.display.show_frame(make_frame(BASELINE_COLOR, sequence))
 
-            await step(
-                "seq 1 step 1: DIY baseline frame (forced entry -- this MUST land)",
-                lambda: baseline_frame(1),
-                "the 1 | 0 label should be REPLACED by BLUE with 1 white block on top and"
-                " the bottom-left anchor. Still showing 1 | 0 => the frame never rendered;"
-                " stop, because the probe's own baseline is broken.",
-            )
+        await step(
+            "BASELINE (visual 3): blue DIY frame, forced entry",
+            baseline_frame,
+            f"the {sequence} | 0 label should be REPLACED by a SOLID BLUE frame with"
+            f" {sequence} white block(s) on the top edge and one in the bottom-left."
+            f" THIS IS EXPECTED AND IS NOT THE RED/GREEN TEST. Still showing the"
+            f" scoreboard => the baseline frame never rendered; stop, the run is broken"
+            f" before it starts.",
+        )
+
+        # ---------------------------------------------------------------- modes
+        if sequence == 1:
             if FONT_PATH.exists():
                 await step(
-                    "seq 1 step 2: native text takeover -- the 2026-07-20 incident's mode",
+                    "MODE (visual 4): native text takeover -- the 2026-07-20 incident's mode",
                     lambda: client.text.show("P12", str(FONT_PATH), font_size=16),
-                    "scrolling text should replace the blue frame entirely.",
+                    'scrolling text reading "P12" should replace the blue frame.',
                 )
             else:
-                print(f"\n  -- seq 1 step 2 SKIPPED: no font at {FONT_PATH}", flush=True)
-            await reclaim_pair(1, "TEXT")
-        except Exception as ex:
-            print(f"SEQUENCE 1 FAILED: {ex!r}", flush=True)
+                print(f"\n  -- MODE STEP SKIPPED: no font at {FONT_PATH}. The reclaim below"
+                      f" would measure the BASELINE, not TEXT -- abandon this run and"
+                      f" supply a font.", flush=True)
+            await reclaim_pair("TEXT")
 
-        # ======== SEQUENCE 2: DIY frame -> clock -> graffiti -> full frame =====
-        try:
-            await sequence_label(2, "DIY frame -> clock -> graffiti -> full frame")
-
-            def baseline_frame_2() -> object:
-                client.display.invalidate_diy_mode()
-                return client.display.show_frame(make_frame(BASELINE_COLOR, 2))
-
+        elif sequence == 2:
             await step(
-                "seq 2 step 1: DIY baseline frame (forced entry)",
-                baseline_frame_2,
-                "the 2 | 0 label should be REPLACED by BLUE with 2 white blocks on top."
-                " Still showing 2 | 0 => the frame never rendered.",
-            )
-            await step(
-                "seq 2 step 2: native clock",
+                "MODE (visual 4): native clock",
                 lambda: client.clock.show(),
-                "clock should replace the blue frame.",
+                "the clock should replace the blue frame.",
             )
             await step(
-                "seq 2 step 3: graffiti onto the NATIVE clock (graffiti is ack-silent by design)",
+                "OBSERVATION (visual 5, its own result): graffiti onto the RUNNING clock,"
+                " no DIY mode",
                 lambda: client.graffiti.set_pixels((255, 255, 255), graffiti_dots()),
-                "do white pixels appear OVER the running clock -- a diagonal from"
-                " upper-left plus a 3-pixel corner mark near the top-right?"
-                " YES => graffiti needs no DIY mode and is the safe delta path from any"
-                " state. NO => the daemon's delta assumption is wrong.",
+                "do WHITE PIXELS appear ON TOP of the still-ticking clock -- a 12-pixel"
+                " DIAGONAL from the upper-left going down-right, PLUS a 3-pixel hook near"
+                " the TOP-RIGHT corner? YES => graffiti needs no DIY mode and the daemon's"
+                " delta path is safe from any state. NO => that assumption is wrong and the"
+                " daemon's rendering model needs revisiting. Graffiti is ack-silent by"
+                " design, so no ack above is expected and is not a failure.",
+                watch_seconds=12.0,
             )
-            await reclaim_pair(2, "CLOCK + GRAFFITI")
-        except Exception as ex:
-            print(f"SEQUENCE 2 FAILED: {ex!r}", flush=True)
+            await reclaim_pair("CLOCK + GRAFFITI")
 
-        # ============== SEQUENCE 3: GIF -> effect -> DIY frame =================
-        try:
-            await sequence_label(3, "GIF -> effect -> DIY frame")
+        elif sequence == 3:
             # Novel seed per run: identical bytes would hit the single-slot CRC
             # and short-circuit instead of performing a real upload.
             gif_seed = int(time.time())
             await step(
-                "seq 3 step 1: GIF upload (chunked, 3-way StatusAck handshake)",
+                "MODE 1 of 2 (visual 4): GIF upload (chunked, 3-way StatusAck handshake)",
                 lambda: client.gif.upload_bytes(make_noise_gif(gif_seed)),
-                "the 3 | 0 label should be REPLACED by animated colour noise."
-                " Still showing 3 | 0 => the GIF never took over from the scoreboard,"
-                " and everything later in this sequence is measuring the wrong entry"
-                " state -- say so rather than rating the reclaim pair.",
-                watch_seconds=12.0,
+                "animated colour noise should replace the blue frame. The blue frame may"
+                " persist for several seconds during the upload -- that is the transfer,"
+                " not a failure.",
+                watch_seconds=14.0,
             )
             await step(
-                "seq 3 step 2: effect, the app-exact captured frame (type 3 subtype 2)",
+                "MODE 2 of 2 (visual 5): effect, the app-exact captured frame (type 3 subtype 2)",
                 lambda: client.effect._send(APP_EFFECT_FRAME, verify=False),
-                "the effect should replace the GIF.",
+                "a moving multi-colour effect should replace the noise.",
             )
             # O-27 (2026-07-17): DIY entry mode 3 does NOT reliably take over an
-            # EFFECT state. BleDisplay defaults to clear=True (mode 1), which is
-            # the entry hardware-proven to always take -- so attempt B here is
-            # also a direct test of that claim's strongest case.
-            await reclaim_pair(3, "GIF + EFFECT")
-        except Exception as ex:
-            print(f"SEQUENCE 3 FAILED: {ex!r}", flush=True)
+            # EFFECT state. BleDisplay defaults to clear=True (mode 1), the entry
+            # hardware-proven to always take -- so attempt B is also a direct
+            # test of that claim's strongest case.
+            await reclaim_pair("GIF + EFFECT")
 
-        # ===== SEQUENCE 4: clock -> countdown -> chronograph -> clock ==========
-        # The P7 branch: a PAUSED countdown has been seen to hijack chronograph
-        # commands. Arm, tick, pause, then send the whole chronograph vocabulary.
-        try:
-            await sequence_label(4, "clock -> countdown -> chronograph -> clock (P7 paused-countdown branch)")
+        elif sequence == 4:
+            # Timer SEMANTICS are settled -- probe_p7_odds_and_ends.py phases 3-8:
+            # countdown froze on pause, chronograph.start produced an INDEPENDENT
+            # stopwatch counting up (not a hijack), resume continued from the
+            # frozen value, reset zeroed it. Nothing here re-derives that. These
+            # two steps exist only to put the panel genuinely through the timer
+            # branch before the reclaim question is asked.
             await step(
-                "seq 4 step 1: clock",
-                lambda: client.clock.show(),
-                "the 4 | 0 label should be REPLACED by the running clock."
-                " Still showing 4 | 0 => the clock command never took.",
-            )
-            await step(
-                "seq 4 step 2: countdown.start(5, 0) -- arm a 5-minute countdown",
+                "MODE 1 of 2 (visual 4): countdown.start(5, 0) -- enter the timer branch",
                 lambda: client.countdown.start(5, 0),
-                "a countdown should appear and TICK DOWN from about 05:00.",
+                "a countdown should appear and tick down from about 05:00. Nothing to"
+                " judge -- P7 already characterized this.",
             )
-            await step(
-                "seq 4 step 3: countdown.pause() -- the state that hijacks chronograph",
-                lambda: client.countdown.pause(),
-                "the countdown should FREEZE. Note the exact frozen value -- every"
-                " chronograph step below is judged against it.",
-            )
-            for name, call, expectation in (
-                ("chronograph.reset()", client.chronograph.reset,
-                 "does the frozen countdown jump to 00:00, does a stopwatch appear, or nothing?"),
-                ("chronograph.start()", client.chronograph.start,
-                 "does anything start COUNTING UP, does the paused countdown RESUME"
-                 " (the hijack), or nothing?"),
-                ("chronograph.pause()", client.chronograph.pause,
-                 "does whatever is running stop?"),
-                ("chronograph.resume()", client.chronograph.resume,
-                 "does it start again, and counting which way?"),
-            ):
-                await step(
-                    f"seq 4 step 4: {name} against a PAUSED countdown",
-                    call,
-                    f"{expectation} Report the digits, not just 'it changed'.",
-                )
-            await step(
-                "seq 4 step 5: countdown.stop() -- disarm, so the run leaves nothing armed",
-                lambda: client.countdown.stop(),
-                "the countdown/stopwatch should clear.",
-            )
-            await step(
-                "seq 4 step 6: back to clock",
-                lambda: client.clock.show(),
-                "clock should return. If a timer is still visible, the device holds"
-                " timer state the SDK cannot clear -- record that.",
-            )
-            await reclaim_pair(4, "CLOCK (after the timer branch)")
-        except Exception as ex:
-            print(f"SEQUENCE 4 FAILED: {ex!r}", flush=True)
 
-        # ===== SEQUENCE 5: power off -> command -> power on -> full frame ======
-        # SOFTWARE power only (common.build_set_power, [5 0 7 1 on]). Nothing is
-        # unplugged and BLE stays connected the whole time -- that is the point.
-        #
-        # The label makes this sequence's PRIOR MODE exactly known: the screen
-        # goes dark from scoreboard 5 | 0, not from whatever sequence 4 happened
-        # to leave behind. That is an improvement -- step 4's "did the prior mode
-        # resume?" outcome now has a specific value to look for -- but it does
-        # mean the prior mode AND the sent-while-off command are both
-        # scoreboards, so step 3 and step 4 name their digits explicitly.
-        try:
-            await sequence_label(5, "power off -> command -> power on -> full frame (software power)")
+            async def pause_then_chronograph() -> None:
+                await client.countdown.pause()
+                await asyncio.sleep(1)
+                await client.chronograph.start()
+
             await step(
-                "seq 5 step 1: common.turn_off() -- screen off, BLE still connected",
+                "MODE 2 of 2 (visual 5): countdown.pause() then chronograph.start()"
+                " -- the P7-verified pair",
+                pause_then_chronograph,
+                "the countdown should freeze and an INDEPENDENT stopwatch should count up."
+                " Expected, per P7 -- nothing to judge. The run only needs the panel to"
+                " have been through the timer branch.",
+            )
+            await reclaim_pair("TIMER BRANCH")
+
+        elif sequence == 5:
+            await step(
+                "MODE 1 of 2 (visual 4): common.turn_off() -- software power off,"
+                " BLE stays connected",
                 lambda: client.common.turn_off(),
-                "the 5 | 0 label should go DARK. BLE stays up. Note that 5 | 0 is therefore"
-                " the PRIOR MODE for step 4's readout -- it is what was on screen when the"
-                " power went off.",
+                "the panel should go COMPLETELY DARK. BLE stays up.",
             )
             await step(
-                "seq 5 step 2: brightness 40 sent to a POWERED-OFF screen -- acked?",
-                lambda: client.common.set_brightness(40),
-                "panel should stay dark. The ack line above is the result:"
-                " an ack while off proves an ack means 'frame received', NEVER"
-                " 'pixels changed'.",
-            )
-            await step(
-                "seq 5 step 3: scoreboard 77 | 77 sent while OFF -- a MODE change in the dark",
-                lambda: client.scoreboard.show(77, 77),
-                "panel should stay dark. What matters is what appears at power-on."
-                " 77 is chosen so this can never be confused with the 5 | 0 label:"
-                " both are scoreboards, and only the digits tell them apart.",
-            )
-            await step(
-                "seq 5 step 4: common.turn_on()",
+                "MODE 2 of 2 (visual 5): common.turn_on()",
                 lambda: client.common.turn_on(),
-                "WHICH comes back? READ THE DIGITS -- two of the three answers are"
-                " scoreboards. 77 | 77 => commands sent while off DID execute,"
-                " invisibly. 5 | 0 (this sequence's label, the mode in force when the"
-                " screen went dark) => commands while off were dropped and the prior"
-                " mode resumed. CLOCK => power-on resets to clock regardless.",
-                watch_seconds=12.0,
+                "the panel comes back. Per P11 the BLUE frame will NOT return -- native"
+                " modes survive a power cycle, a DIY frame does not -- so expect the clock"
+                " or the last native mode.",
             )
-            await reclaim_pair(5, "POWER OFF/ON")
-        except Exception as ex:
-            print(f"SEQUENCE 5 FAILED: {ex!r}", flush=True)
+            # KNOWN ANSWER: GREEN (2026-07-26), corroborated by P11. This pair is
+            # the apparatus check, not a new question.
+            await reclaim_pair("POWER OFF/ON")
 
-        # ------------------------------------------------------------------ wrap-up
+        # ------------------------------------------------------------- wrap-up
         print("\n" + "=" * 78, flush=True)
-        print("verdict to record, per sequence:", flush=True)
-        print("  RED landed in window A     => no DIY re-entry needed after that mode.", flush=True)
-        print("  only GREEN landed          => re-entry REQUIRED; that mode's feature namespace", flush=True)
-        print("                                should call display.invalidate_diy_mode() itself.", flush=True)
-        print("  neither colour landed      => the reclaim path is broken for that mode. Bigger", flush=True)
-        print("                                finding than the flag; record prominently.", flush=True)
-        print("  ALL five need re-entry     => stop asking per-mode: invalidate unconditionally", flush=True)
-        print("                                whenever any non-frame command goes out.", flush=True)
-        print("  NONE need re-entry         => the 2026-07-20 swallowed-reclaim incident was not", flush=True)
-        print("                                about DIY state, and invalidate_diy_mode's docstring", flush=True)
-        print("                                overclaims.", flush=True)
-        print("  chrono moved the PAUSED countdown => shared device-side timer; the SDK must", flush=True)
-        print("                                document countdown.stop() before any chronograph use.", flush=True)
-        print("  commands acked while OFF   => an ack is receipt, never a visual result. Re-read any", flush=True)
-        print("                                probe that treated an ack as proof of rendering.", flush=True)
-        print(f"\nfull ack log: {len(acks)} notification(s) captured across the whole run"
-              f" (never cleared).", flush=True)
+        print(f"SEQUENCE {sequence} ({SEQUENCE_TITLES[sequence]}) -- report:", flush=True)
+        print("  1. Did the panel turn RED at attempt A?   (RED => no re-entry needed)", flush=True)
+        print("  2. Did the panel turn GREEN at attempt B? (only GREEN => re-entry REQUIRED)", flush=True)
+        if sequence == 2:
+            print("  3. Did the white diagonal + corner hook appear over the running clock?", flush=True)
+            print("     Its own result: the daemon's delta-path assumption stands or falls.", flush=True)
+        if sequence == 5:
+            print("  NOTE: the expected answer is GREEN. RED here means the probe changed,", flush=True)
+            print("        not the device -- do not record a new finding.", flush=True)
+        print(f"\nfull ack log: {len(acks)} notification(s) this run (never cleared).", flush=True)
 
         # Cleanup: leave nothing armed, nothing dark.
         unsubscribe()
         try:
-            await client.countdown.stop()
+            if sequence == 4:
+                await client.countdown.stop()
+                await client.chronograph.reset()
             await client.common.turn_on()
         except Exception as ex:
-            print(f"cleanup (countdown/power) FAILED: {ex!r}", flush=True)
+            print(f"cleanup FAILED: {ex!r}", flush=True)
         await client.clock.show()
-        print("countdown stopped, screen on, clock restored. done.", flush=True)
+        print("clock restored. done.", flush=True)
 
 
-asyncio.run(main())
+SEQUENCE = select_sequence(sys.argv[1:])
+print_visual_script(SEQUENCE)
+asyncio.run(main(SEQUENCE))
