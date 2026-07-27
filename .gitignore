@@ -4,3 +4,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Private working notes -- decompiled-app analysis, not for publication.
+docs/SDK_ANALYSIS.md
