@@ -258,7 +258,7 @@ GlanceOS actually needs is the SAFE sustained envelope:
 Cost: ~25 min mostly unattended (panel shows a test pattern; operator can
 leave). Directly feeds GlanceOS animated-scene design + an SDK streaming doc.
 
-## P5 — Weekly Schedule verification via RTC spoofing
+## P5 — Weekly Schedule verification via RTC spoofing  ⚠ PARTIAL 2026-07-27
 
 Same trick that mapped the Timer week bits in minutes. Schedule differs from
 Timer: it DOES apply patch_week(), and the 2026-07-12 session left the end
@@ -270,6 +270,21 @@ PNG image-theme rendering unverified.
 3. Image (PNG) theme content — renders? (GIF themes verified.)
 Cost: ~15 min. Closes the last ⚠ subsystem short of PyPI.
 
+**Progress (2026-07-27):** `probes/probe_p5_schedule.py` ran. Day-bit map
+CLOSED: a theme armed for Wednesday's bit fired when the device RTC was
+spoofed to Wednesday and stayed silent when spoofed to the non-adjacent
+Saturday with nothing re-armed -- the source-traced patch_week() encoding is
+now hardware-confirmed (the first such confirmation, since Timer's own
+week-bit map does not call patch() and never covered this path). PNG
+(CONTENT_IMAGE) theme rendering CLOSED: a static PNG theme rendered inside
+its window. STILL OPEN: the window end-boundary question (inclusive vs.
+exclusive minute) did not reach a clean read -- the continuous, unlabelled
+multi-minute watch this phase depends on proved fragile to interrupt-free
+observation in practice. **Follow-up queued:** a redesigned P5 boundary
+probe that labels the boundary crossing itself (e.g. a scoreboard tick or a
+distinct visual marker at the moment the RTC crosses the window's end
+minute) rather than relying on one long silent watch.
+
 ## P6 — Multi-slot alarms (GlanceOS M7 Stage 4 groundwork)
 
 Arm slots 0 and 1 for adjacent minutes (RTC-spoofed, DURATION_10S): both
@@ -278,13 +293,15 @@ start? Does `timer_close` on slot 0 leave slot 1 armed? Do armed slots
 survive a device power-cycle?
 Cost: ~10 min. Defines the alarm UX GlanceOS can safely offer.
 
-## P7 — Quick odds and ends (batch into any session's tail)
+## P7 — Quick odds and ends (batch into any session's tail)  ✅ CLOSED 2026-07-27
 
 - **Power-state semantics**: after `turn_off`, do commands still ack? Does
   `turn_on` restore the prior mode or reset to clock? (Informs eco/night
   behavior in GlanceOS.)
-- **Brightness floor**: app dial reads 0–100, our verified range is 5–100 —
-  what do 1–4 do (nack? clamp? off)?
+- ~~**Brightness floor**: app dial reads 0–100, our verified range is 5–100 —
+  what do 1–4 do (nack? clamp? off)?~~ **CLOSED by P13** (probes/
+  probe_boundary_sweep.py, 2026-07-25): raw frames at 0/1/4/101/255 all NACK
+  with `05 00 04 80 00`, no clamping, firmware range exactly 5-100.
 - **Countdown/chronograph shared state**: we saw a paused countdown hijack
   chronograph commands. One targeted sequence (arm countdown, pause, send
   chrono start/pause/etc.) to map the shared-state machine properly, since
@@ -292,6 +309,17 @@ Cost: ~10 min. Defines the alarm UX GlanceOS can safely offer.
   state left by the vendor app.
 - **Fullscreen-color persistence recheck** after tonight's resets (the
   3-day-persistence claim predates many firmware pokes).
+
+**Progress (2026-07-27):** `probes/probe_p7_odds_and_ends.py` ran.
+Power-state semantics CLOSED: commands sent to a powered-off panel are still
+accepted and execute invisibly into an unseen framebuffer; `turn_on` reveals
+that resulting framebuffer rather than restoring the prior mode or resetting
+to the clock (capabilities.py's common.set_power entry). The countdown/
+chronograph shared-state mapping and the fullscreen-colour persistence
+recheck were exercised by this run's phases 3-9 but a verified per-step
+readout was not carried forward into this documentation pass; treat those
+two items as still needing a citation-worthy result before relying on them
+beyond the existing 2026-07-20 caveats already in capabilities.py.
 
 ---
 
@@ -319,7 +347,7 @@ row-major, top-left origin, RGB order; graffiti shares the frame coordinate
 space exactly; flip is a 180° rotation applied at render to frames, graffiti,
 and native modes alike (commands stay in canonical unflipped space).
 
-## P9 — BLE packet-boundary and write-mode matrix
+## P9 — BLE packet-boundary and write-mode matrix  ✅ CLOSED 2026-07-27
 
 The transport deliberately re-splits protocol packets to the negotiated GATT
 write size. Prove that BLE write boundaries do not change device behavior.
@@ -334,7 +362,16 @@ Cost: ~15 min. Directly validates transport re-splitting,
 `write_size_override`, and the BlueZ low-MTU escape hatch; P4 measures rate,
 while this probe proves correctness.
 
-## P10 — Interrupted-upload recovery and saved-data integrity
+**CLOSED (2026-07-27):** `probes/probe_p9_write_boundaries.py` ran, including
+a re-observation of the 514-byte block and the write-mode pair after an
+initial partial pass. Packet re-splitting renders correctly at every write
+size tested -- 18, 20, 128, and the link's negotiated 514 bytes -- across all
+three payload types (DIY frame, GIF, 32x32 text); the BlueZ low-MTU escape
+hatch is safe to recommend. Unacknowledged (no-response) writes ran 3-6x
+faster than response-acked writes with no rendering difference. No further
+P9 probes planned.
+
+## P10 — Interrupted-upload recovery and saved-data integrity  ✅ CLOSED 2026-07-27
 
 Start from a known saved GIF/alarm/schedule asset. Deliberately interrupt a
 larger replacement upload after (a) its first BLE packet, (b) its first outer
@@ -354,6 +391,19 @@ upload was unaffected. So at minimum a first-chunk abandon does not corrupt
 subsequent uploads; the render-glitch attribution and packet-level case (a) are
 still open (`probe_gif_chunk1_isolation.py`).
 
+**CLOSED (2026-07-27):** `probes/probe_p10_interrupted_upload.py` ran all
+three interruption cases. `activate_stored(BASE)` returned SAVED after every
+case -- interrupted uploads do NOT touch previously stored content, so
+`UploadError` means only "the new content did not arrive" and the automatic
+whole-upload retry in `_send_gif_upload` is safe to run unattended. Also
+recorded: a GIF already playing freezes the instant a new upload starts
+arriving, and `gif.activate_stored()` restarts playback at frame 0 rather
+than resuming. The closing DIY health-check frame rendered in every case, so
+interrupted native uploads do not poison the frame pipeline. The
+2026-07-24 render-glitch attribution referenced above remains a separate,
+still-unreproduced item (see capabilities.py's display.visual_transients
+entry).
+
 ## P11 — Persistence and reset matrix
 
 Turn the existing P6/P7 persistence checks into one explicit matrix. For every
@@ -371,7 +421,7 @@ requires a new command.
 Cost: ~20 min. Supplies reliable reconnect documentation and tells the SDK when
 it must invalidate DIY mode or restore caller-visible state.
 
-## P12 — Command-order and display-mode state machine
+## P12 — Command-order and display-mode state machine  ⚠ PARTIAL 2026-07-27
 
 Run deliberate transition sequences rather than testing modes in isolation:
 
@@ -387,6 +437,16 @@ countdown/chronograph interaction from P7 as the time-mode branch.
 
 Cost: ~10 min. Unblocks automatic mode invalidation in the client and prevents
 callers from needing undocumented knowledge of device state.
+
+**Progress (2026-07-27):** `probes/probe_p12_mode_state_machine.py` ran, but
+a verified, attributed per-sequence readout (which reclaim pairs landed RED
+vs. GREEN, whether sequence 4's paused-countdown/chronograph hijack
+reproduced, whether sequence 2's graffiti painted through onto the native
+clock) is not carried forward into this documentation pass. **STILL OPEN:**
+the whole five-sequence state machine, including the specific question of
+which native modes require `display.invalidate_diy_mode()` before the next
+full frame lands. Re-run and record the operator's colour/count readout per
+sequence before treating any of P12's five questions as answered.
 
 ## P13 — Non-destructive validation-boundary sweep
 
@@ -404,7 +464,7 @@ visual behavior. Do not fuzz blindly and keep password/OTA exclusions intact.
 Cost: ~10 min. Aligns SDK validation with actual firmware behavior and guards
 against accidental, permanent API semantics.
 
-## P14 — Ack timing, duplication, and silence characterization
+## P14 — Ack timing, duplication, and silence characterization  ✅ CLOSED 2026-07-27
 
 For representative config commands, graffiti, frames, text, and chunked uploads,
 timestamp GATT write completion and each fa03 notification. Measure whether
@@ -413,6 +473,18 @@ frequency, and behavior after reconnect.
 
 Cost: ~10 min. Supports defensible default timeouts and identifies which command
 families must remain fire-and-forget.
+
+**CLOSED (2026-07-27):** `probes/probe_p14_ack_timing.py` ran seven command
+families at 5 repeats each. No family was silent -- every family acked on
+every repeat. First-ack latency clustered by shape: flat config/native-mode
+commands (brightness, scoreboard, clock) replied in ~0.13-0.30s; full-frame
+commands (the DIY frame, the effect command) replied in ~0.6-0.9s.
+`transport.await_device_ack`'s 2.0s default has margin over every family
+measured. This run is also the evidentiary basis for retracting the
+"0x0d effect frames never ack" finding from `probe_effect_length_byte2.py`
+(2026-07-26) -- that silence was an instrumentation bug (reading the ack
+list before the device's reply had arrived), not a device behavior. See
+capabilities.py's new common.ack_timing entry.
 
 ## P15 — Long soak with intentional recoveries
 
@@ -441,7 +513,7 @@ Cost: SDK engineering plus community panel time. This is more valuable for a
 PyPI release than another obscure opcode, because it turns one-panel truth into
 a scalable compatibility table.
 
-## P17 — Brightness and eco interaction matrix
+## P17 — Brightness and eco interaction matrix  ✅ CLOSED 2026-07-27
 
 While DIY, GIF, effect, and clock are active, change brightness and observe
 whether it applies immediately. Then enter/exit eco and test whether it restores
@@ -450,6 +522,37 @@ screen power state.
 
 Cost: ~10 min. Brightness is a universal user-facing feature; its cross-mode
 semantics should be documented rather than inferred.
+
+**CLOSED (2026-07-27):** `probes/probe_p17_brightness_eco.py` and
+`probes/probe_p17b_eco_isolation.py` (lux-instrumented) both ran. Brightness
+applies IMMEDIATELY and PERSISTS in every mode tested (DIY frame, GIF,
+effect, clock) -- never redraw-gated. eco_brightness is live and is the
+ordinary brightness scale (not a separate or reduced one); eco OFF restores
+the host's pinned brightness; eco is a one-shot dim, not a clamp (a host
+brightness write during an active eco window wins outright); the eco
+configuration is autonomous device state that survives a BLE disconnect with
+no host attached; eco does NOT alter the clock's rendered colour. A
+follow-up open question surfaced by this same run: whether eco affects the
+clock's colour-CYCLING behavior over a longer window than these probes held
+(the colour phases here only ran ~25s each) is not fully excluded -- see the
+new follow-up below. Clock style selection also appeared inert across the
+two values tried (0 and 3); see the clock-style follow-up below. Full
+account in capabilities.py's common.set_brightness, eco.set_mode, and
+clock.style_select entries.
+
+**New follow-ups queued from this session:**
+- **Clock-colour cycling window.** P17b's colour phases (9-12) held each
+  state ~25s and found no colour change from eco; that rules out an
+  immediate eco-colour interaction but not a slower one. A longer-hold
+  variant (multi-minute per phase) would close the gap.
+- **Clock-style sweep, all eight values.** Only styles 0
+  (STYLE_RGB_SWIPE_OUTLINE) and 3 (STYLE_COLOR) have ever been put on
+  hardware, and both looked the same to the operator. Styles 1, 2, 4, 5, 6,
+  7 (protocol/clock.py) are completely untested. A dedicated sweep of all
+  eight, with the digit colour and the background colour distinguished
+  explicitly (STYLE_COLOR is now known to colour the background with black
+  digit cutouts, not the digits), is needed before "style selection is
+  inert" can be treated as more than a 2-sample observation.
 
 ## P18 — Add recovery and lifecycle actions to the HCI capture
 
