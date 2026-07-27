@@ -201,57 +201,108 @@ and exits 2 before any BLE contact. The three prelude knobs -- `--delay N`,
 are rejected for set/check/restore/shadow-recover. They may appear in any
 position.
 
-THE FIRST-CONNECTION SHADOW
----------------------------
-CONFIRMED 2026-07-27, and RENAMED: this section previously read THE RESET
-SHADOW and blamed common.reset(). That framing is DISPROVEN -- `--no-reset gif`
-died identically, twice, so the reset is not involved at all.
+LAZY DISPLAY-STATE PERSISTENCE
+-----------------------------
+CORRECTED AND CONSOLIDATED 2026-07-28. This section has now carried two wrong
+names. It first read THE RESET SHADOW and blamed common.reset(); that was
+disproven by `--no-reset gif`, which died identically, twice. It then read THE
+FIRST-CONNECTION SHADOW and claimed display state set on a client session's
+FIRST BLE connection was non-durable, scoped per-client-session. THAT IS ALSO
+DISPROVEN and is retracted below.
 
-What is not durable is DISPLAY / CURRENT-MODE STATE UPLOADED ON THE FIRST BLE
-CONNECTION OF A CLIENT SESSION. It renders correctly, it acks normally
-(StatusAck ... status=3, SAVED), and it is silently LOST AT THE NEXT BLE
-RECONNECT -- the panel returns to the clock, with nothing in the ack stream
-indicating a problem. ONE intervening BLE disconnect/reconnect within the same
-client session makes everything uploaded afterwards durable.
+PRIOR ART -- cited so this cannot be rediscovered a third time. Both readings
+were elaborations of a panel property this lab had already measured:
+
+    2026-07-12  "the device persists its current native mode to flash LAZILY
+                 (dwell somewhere under ~3 min) and boots into the last
+                 persisted mode"
+    2026-07-17  "CLEAN BLE disconnect -> device exits DIY -> reverts to the
+                 persisted screen in ~2s"
+
+Together those account for nearly everything the run series below observed. The
+session-scoped framing was an artifact of UNCONTROLLED ELAPSED TIME between
+commands -- the operator typing between runs -- which nothing held constant
+until probe_p19_g5_kill_event.py's `own-delayed` sequence.
+
+THE MODEL. Display-mode state -- which content the panel is showing -- lives in
+RAM when first written and is committed to flash LAZILY. A clean BLE disconnect
+makes the device revert to its LAST PERSISTED mode. So content written and then
+disconnected from too quickly is lost, and the panel comes back on whatever was
+persisted, usually the clock. It renders correctly, it acks normally (StatusAck
+... status=3, SAVED), and it goes with nothing in the ack stream indicating a
+problem.
+
+Content survives a disconnect/reconnect if EITHER of two INDEPENDENT SUFFICIENT
+conditions holds. Neither is necessary.
+
+    (A) DWELL -- enough time has passed since the write. Dies at ~8 s, across
+        many runs and both content types. SURVIVES at 90 s
+        (probe_p19_g5_kill_event.py `own-delayed`: the SAME session performs
+        the write and the reconnect, so session identity is held constant and
+        only the delay varies). Threshold is between 8 s and 90 s and is NOT
+        YET BISECTED; the 07-12 "under ~3 min" figure is consistent.
+
+    (B) A PRIOR DISCONNECT/RECONNECT EARLIER IN THE SAME SESSION.
+        `--preamble ble gif` survives a reconnect only ~8 s after the upload,
+        REPRODUCED TWICE (2026-07-27, 2026-07-28). On the 07-28 run the
+        operator reported the animation CONTINUED FROM WHERE IT WAS rather than
+        restarting -- the device did not re-initialise playback at all, it ran
+        straight through the disconnect. The matched control `--no-reset gif`
+        (no preamble, same ~8 s) reliably DIES. DWELL CANNOT EXPLAIN THIS: same
+        8 s, opposite outcome. The effect is real and ITS MECHANISM IS OPEN.
 
 A DYING RUN YIELDS EXACTLY ONE MEASUREMENT (methodology correction, operator-
 caught): once INTERRUPTION 1 has killed the content, INTERRUPTION 2 is looking
 at a clock that was already on screen, so that cell is VOID -- the same
 void-cell flaw the DIY row hit in the matrix proper. Earlier write-ups here said
 "clock after BOTH interruptions"; that overstated the evidence. It is also why
-the claim is now "lost at the next BLE RECONNECT" and not "...or power cycle":
-the power-cycle half was never separately measured on a dying run.
+the claim is "lost at the next BLE RECONNECT" and not "...or power cycle": the
+power-cycle half was never separately measured on a dying run.
 
-Every shadow run of the 2026-07-27 session -- ten runs:
+EVERY RELEVANT RUN. This table is the whole basis of the model:
 
-    run                    reset?  preceding row?  BLE reconnect first?  outcome
-    gif (x2)               yes     no              no                    DIED
-    --delay 120 gif        yes     no              no                    DIED
-    --no-reset gif (x2)    NO      no              no                    DIED
-    --preamble power gif   yes     no              no (power blink only) DIED
-    --no-reset color       NO      no              no                    DIED
-    full row sweep         yes     yes             yes                   SURVIVED
-    clock gif              yes     yes             yes                   SURVIVED
-    --preamble ble gif     yes     NO              YES                   SURVIVED
+    run                  prior reconnect?  dwell before interruption  outcome
+    gif (x2)             no                ~8 s                       DIED
+    --delay 120 gif      no                ~8 s (120 s ran BEFORE)    DIED
+    --no-reset gif (x2)  no                ~8 s                       DIED
+    --no-reset color     no                ~8 s                       DIED
+    --preamble power gif no (blink only)   ~8 s                       DIED
+    --preamble ble gif   YES               ~8 s                   SURVIVED (*)
+      (x2)
+    clock gif, full      yes (prior row)   ~8 s                   SURVIVED
+      row sweep
+    g5 own-delayed       no                90 s                   SURVIVED
+      (colour)
+    g5 reconnect         n/a -- foreign    minutes                SURVIVED
+    set brightness +     n/a               minutes                SURVIVED
+      PHYSICAL power cut                                          (booted to it)
 
-Perfect separation on exactly one column: whether a BLE disconnect/reconnect
-had happened earlier in the same process. RULED OUT as the operative factor:
-common.reset() (`--no-reset` died twice -- this is the correction that forces
-the rename); ELAPSED TIME (`--delay 120` died after 120 s of silence); A
-PRECEDING ROW or the mode change it performs (`--preamble ble` had no preceding
-row and survived, so the rescuing factor is the reconnect itself, not anything
-a row sets); DEVICE-SIDE RE-INITIALISATION (`--preamble power` blinks the panel
-dark and back over the SAME link and does not lift it, so the shadow is bound to
-the BLE SESSION, not to display state the device could re-initialise); and
-GIF-SPECIFIC MACHINERY (`--no-reset color` is a plain mode set -- no chunked
-upload, no flash write, no payload at all -- and died the same way, so what dies
-is the CURRENT-MODE POINTER, broadly across display state). The `--no-reset`
-result was re-run with no variables changed and reproduced exactly.
+    (*) animation CONTINUED rather than restarting.
 
-THE ORGANIZING MODEL: CONFIG-CLASS device state (RTC, alarms, schedules) commits
-durably on ANY connection, the first included. DISPLAY-CLASS state (the
-current-mode pointer) is SESSION-GATED: durable only when set on connection >= 2
-of the client session.
+RULED OUT as the operative variable: common.reset() (`--no-reset` died twice,
+re-run with no variables changed and reproduced exactly); a DEVICE POWER BLINK
+over the same link (`--preamble power` blinks the panel dark and back and died,
+so no cheap power-blink mitigation exists); ELAPSED TIME BEFORE THE WRITE
+(`--delay 120` died); GIF-SPECIFIC MACHINERY (`--no-reset color` is a plain mode
+set -- no chunked upload, no flash write, no payload at all -- and died the same
+way, so what is lost is the CURRENT-MODE POINTER, broadly across display state);
+and SESSION IDENTITY, retracted next.
+
+RETRACTED -- THE PER-CLIENT-SESSION CLAIM. This section previously read "THE
+SHADOW IS STRICTLY PER-CLIENT-SESSION (G1b, two instances, 2026-07-28)", on the
+strength of foreign sessions failing to kill content they had not written. THAT
+IS WITHDRAWN. Those runs all had minutes of elapsed time behind them, so they
+satisfied condition (A) and prove nothing about session identity, and
+`g5 own-delayed` then showed the SAME session failing to kill its own
+90-second-old content. Session identity is not the variable, and no part of this
+model is scoped to the client session, the transport instance, or the process.
+Consequence for integrators: multiple clients CAN share this panel, but the
+reason is DWELL, not ownership.
+
+THE ORGANIZING MODEL: CONFIG-CLASS device state (RTC, alarms, schedules,
+brightness) and STORED PAYLOADS (GIF bytes in flash) commit durably and PROMPTLY
+on any connection. DISPLAY-CLASS state -- the current-mode pointer alone --
+commits LAZILY, and it is the only thing at risk.
 
 BRIGHTNESS IS CONFIG-CLASS (G1, `--no-reset brightness`, 2026-07-28, two runs;
 run 2 is the record). The row arms a flat WHITE field at brightness 10 -- two
@@ -259,51 +310,45 @@ variables on one screen, which is the point of it. Operator: clock at full
 brightness -> WHITE, DIM (baseline) -> CLOCK, STILL DIM (after the BLE
 reconnect) -> full brightness at the restore. The white field died at the
 reconnect, display-class as expected; THE DIMMING SURVIVED, and survived the
-software power cycle after it too. That second cell IS valid here, unlike a
-dying run's: the void rule applies only to state interruption 1 had already
-killed, and brightness was still in force going in. Pinning brightness once at
-startup is safe.
+software power cycle after it too, and separately survived a PHYSICAL mains
+power cut. That second cell IS valid here, unlike a dying run's: the void rule
+applies only to state interruption 1 had already killed, and brightness was
+still in force going in. Pinning brightness once at startup is safe.
 
-THE SHADOW IS STRICTLY PER-CLIENT-SESSION (G1b, two instances, 2026-07-28).
-BOTH G1 runs were preceded by a full GlanceOSD daemon session that performed its
-own connect / disconnect / reconnect double-tap and then streamed, and in both
-the white field still died at the probe's first reconnect. The runs differ only
-in how long the daemon held the link first -- HOURS in run 1, ~60 s in run 2 --
-so prior-session duration is irrelevant. A prior PROCESS's BLE session does not
-lift the shadow for a later process, however long it was and however thoroughly
-it reconnected. Consequence: any mitigation has to live inside the transport's
-own connect path, per process; a startup-only or system-level "something already
-connected" fix buys nothing.
-
-POINTER-NOT-PAYLOAD, CONFIRMED (G2, `shadow-recover`, 2026-07-28). The shadow
-kills ONLY the current-mode pointer; the stored/flash payload commits normally
-even on a first connection. See THE `shadow-recover` MODE below for the run and
-its reading. SDK recovery rule: RE-ACTIVATE, DO NOT RE-TRANSFER.
+POINTER-NOT-PAYLOAD, CONFIRMED (G2, `shadow-recover`, 2026-07-28). Only the
+current-mode pointer is committed lazily; the stored/flash payload commits
+promptly and normally. See THE `shadow-recover` MODE below for the run and its
+reading. SDK recovery rule: RE-ACTIVATE, DO NOT RE-TRANSFER.
 
 THE `shadow-recover` MODE
 ------------------------
-DOES THE SHADOW KILL ONLY THE CURRENT-MODE POINTER, WHILE THE STORED PAYLOAD
-SURVIVES UNDERNEATH IT? One run, on a fresh client, with NO common.reset():
+THE MODE NAME IS A LEGACY LABEL from the retracted "shadow" model. It is kept
+because it is the CLI handle this probe is invoked with and is cited by name in
+capabilities.py and docs/PROBE_PLAN.md; read it as "short-dwell recovery".
 
-    1. upload the 4-corner hop GIF   -> WATCH: the hop (shadowed content)
-    2. BLE disconnect / reconnect    -> WATCH: expected the CLOCK (the kill)
+WHEN A SHORT-DWELL WRITE IS LOST, IS ONLY THE CURRENT-MODE POINTER GONE, OR THE
+STORED PAYLOAD WITH IT? One run, on a fresh client, with NO common.reset():
+
+    1. upload the 4-corner hop GIF   -> WATCH: the hop (the short-dwell write)
+    2. BLE disconnect / reconnect    -> WATCH: expected the CLOCK (the loss)
     3. gif.activate_stored(), on the POST-reconnect session, with the SAME
        bytes and NO re-upload        -> WATCH: does the hop come back?
-    4. BLE disconnect / reconnect    -> WATCH: this session is UNSHADOWED now,
-                                        so the hop is expected to be durable
+    4. BLE disconnect / reconnect    -> WATCH: this session now holds BOTH a
+                                        prior reconnect and dwell, so the hop
+                                        is expected to be durable
 
-    Step 3 HOP RETURNS  => pointer-not-payload CONFIRMED. The shadow drops the
-                           current-mode pointer and leaves the stored gif in
-                           flash. SDK recovery guidance becomes RE-ACTIVATE, DO
-                           NOT RE-TRANSFER -- a ~1 s single-chunk CRC hit
-                           instead of a whole upload.
+    Step 3 HOP RETURNS  => pointer-not-payload CONFIRMED. The pointer is
+                           dropped and the stored gif is left in flash. SDK
+                           recovery guidance becomes RE-ACTIVATE, DO NOT
+                           RE-TRANSFER -- a ~1 s single-chunk CRC hit instead
+                           of a whole upload.
     Step 3 STAYS CLOCK  => the payload went with the pointer (or the CRC slot
                            was cleared); recovery needs a real re-upload, and
-                           activate_stored is no use after a shadow kill.
+                           activate_stored is no use after such a loss.
                            activate_stored's own return value is printed and
                            is the second half of this reading: False means the
                            device did not recognize the CRC at all.
-    Step 4 HOP HOLDS    => the ordinary unshadowed durability result, and the
+    Step 4 HOP HOLDS    => the ordinary protected durability result, and the
                            control that says step 3's restore was real rather
                            than a repaint that would have died on its own.
 
@@ -311,53 +356,45 @@ RESULT (2026-07-28): HOP -> CLOCK -> HOP -> HOP. POINTER-NOT-PAYLOAD CONFIRMED.
 Step 3's activate_stored() returned True -- the device recognized its stored CRC
 and never asked for a re-transfer -- and the animation ACTUALLY RENDERED, which
 on this panel is the distinction that matters. Step 4 held, so the restore is
-durable and step 3 was a real recovery rather than a transient. The shadow
-destroys NOTHING: what is session-gated is only the device's "what am I
-displaying" state. RECOVERY RULE, now evidence-backed: RE-ACTIVATE, DO NOT
-RE-TRANSFER -- one small command instead of a whole chunked upload. SCOPE
-CAVEAT: this was shown for stored GIFs, which HAVE a re-activate path. It does
-not generalise to display-class content that has none -- a parked DIY still
-(DIY-clear -> frame -> QUIT_STILL) has no "activate what you already have"
-command, so for that path a real connect/disconnect/reconnect is still the only
-defence.
+durable and step 3 was a real recovery rather than a transient. NOTHING IS
+DESTROYED: what is committed lazily is only the device's "what am I displaying"
+state. RECOVERY RULE, now evidence-backed: RE-ACTIVATE, DO NOT RE-TRANSFER --
+one small command instead of a whole chunked upload. SCOPE CAVEAT: this was
+shown for stored GIFs, which HAVE a re-activate path. It does not generalise to
+display-class content that has none -- a parked DIY still (DIY-clear -> frame ->
+QUIT_STILL) has no "activate what you already have" command, so that path has no
+equivalent recovery and must rely on dwell or a prior reconnect.
 
-CONSISTENT-WITH (inferred topology, not proof): the 2026-07-17 persistence
-probes had fullscreen colour survive THREE DAYS including power cycles, in all
-likelihood pushed on a first connection with nothing reconnecting for days.
-Read with runs 9 and 10, the kill event sharpens to: shadowed content survives
-elapsed time and power events, and dies when a NEW BLE CONNECTION IS
-ESTABLISHED.
+CONSISTENT-WITH: the 2026-07-17 persistence probes had fullscreen colour survive
+THREE DAYS including power cycles -- pushed once and then left alone for days,
+i.e. condition (A) satisfied with room to spare.
 
-"First connection of a CLIENT SESSION", not of the device's power session:
-every run above is a separate OS process with a fresh client, against a panel
-the previous run had connected to and disconnected from minutes earlier. Having
-been connected by someone else recently does NOT lift the shadow.
+NOT "everything written on a first connection is volatile" -- that framing is
+retracted entirely, but the alarm result that bounded it still stands. ALARMS
+ARE UNAFFECTED: P6 Q4 armed both alarm slots in their own process and after a
+PHYSICAL power cycle both fired with payloads intact (red+beep 12:34, blue
+12:35). Alarm and schedule flash writes commit promptly; only display /
+current-mode state is committed lazily.
 
-NOT "everything written on a first connection is volatile". ALARMS ARE
-UNAFFECTED: P6 Q4 armed both alarm slots in their own process -- therefore on a
-first connection -- and after a PHYSICAL power cycle both fired with payloads
-intact (red+beep 12:34, blue 12:35). The shadow is confined to display /
-current-mode state; alarm and schedule flash writes commit normally on a first
-connection.
-
-MECHANISM: OPEN. interrupt_ble calls client.disconnect() then client.connect()
--- the SAME connect() used for the initial connection, and IDotMatrixClient.
-connect() only awaits BleTransport.connect() (no clock command, no set_time),
-so these are not two different client code paths at the API level. A read of
-transport/ble.py closes the one remaining suspicion on our side: connect() does
-NOT branch on a cached BLEDevice. Discovery runs only when no MAC was given,
-this probe always passes one, and every call builds a fresh BleakClient and
-re-subscribes identically. Nothing in our stack distinguishes the two
-connections, and the mechanism stays unexplained.
+MECHANISM OF THE PRIOR-RECONNECT RESCUE: OPEN, and the one genuinely unexplained
+piece left. interrupt_ble calls client.disconnect() then client.connect() -- the
+SAME connect() used for the initial connection, and IDotMatrixClient.connect()
+only awaits BleTransport.connect() (no clock command, no set_time), so these are
+not two different client code paths at the API level. A read of transport/ble.py
+closes the one remaining suspicion on our side: connect() does NOT branch on a
+cached BLEDevice. Discovery runs only when no MAC was given, this probe always
+passes one, and every call builds a fresh BleakClient and re-subscribes
+identically. Nothing in our stack distinguishes the two connections, so if
+anything does, the DEVICE does; an HCI capture comparing connection 1 with
+connection 2 is queued in docs/PROBE_PLAN.md P19 as the definitive tool.
 
 MITIGATION: none is in the driver, and the cheap one is off the table.
 `--preamble power gif` was the discriminator -- turn_off / turn_on over the SAME
 BLE connection, no disconnect -- and it DIED, so a power blink in a caller's
-startup handshake would buy nothing. The only known lift is a genuine throwaway
-connect / disconnect / reconnect, and per G1b it has to sit inside the
-transport's own connect path to help the process that needs it. For stored GIFs
-there is now a cheaper answer than lifting the shadow at all: G2's recovery rule,
-re-activate rather than re-transfer.
+startup handshake would buy nothing. The two known protections are to let
+content DWELL, or to perform a genuine throwaway connect / disconnect /
+reconnect. For stored GIFs there is a cheaper answer than either: G2's recovery
+rule, re-activate rather than re-transfer.
 
 The preamble deliberately calls the row loop's own interrupt_ble /
 interrupt_power, so a preamble interruption is byte-identical to a row's.
@@ -369,19 +406,20 @@ cost the whole run, which is why the filter exists.
 
 RESULT (2026-07-27): both automated columns ran, every row. On the BLE-reconnect
 column only the DIY frame reset to the clock; every native mode held. READ THOSE
-CELLS AS UNSHADOWED RESULTS -- the sweep arms its rows in sequence, so from the
-second row onwards each state was established on connection >= 2 of the process,
-out of the first-connection shadow. The clock control row is additionally
-vacuous as a shadow test (a clock dying to a clock is undetectable). The DIY x
-software-power-cycle cell is VOID (the state was never re-armed between the two
-interruptions); the PHYSICAL power-cycle column is unrun for every row. Full
-account in capabilities.py's display.persistence_matrix.
+CELLS AS PROTECTED RESULTS -- the sweep arms its rows in sequence, so from the
+second row onwards each state was established after an earlier disconnect/
+reconnect in the same process, i.e. under condition (B). The clock control row
+is additionally vacuous as a durability test (a clock dying to a clock is
+undetectable). The DIY x software-power-cycle cell is VOID (the state was never
+re-armed between the two interruptions); the PHYSICAL power-cycle column is
+unrun for every row. Full account in capabilities.py's
+display.persistence_matrix.
 
-RESULT (2026-07-28, P19 night session): three more results, all recorded above
-in full -- G1 brightness is CONFIG-CLASS (`--no-reset brightness`, two runs);
-G1b the shadow is STRICTLY PER-CLIENT-SESSION regardless of a prior session's
-duration; G2 POINTER-NOT-PAYLOAD confirmed (`shadow-recover`), so the recovery
-rule is re-activate, not re-transfer.
+RESULT (2026-07-28, P19 night session): G1 brightness is CONFIG-CLASS
+(`--no-reset brightness`, two runs) and G2 POINTER-NOT-PAYLOAD confirmed
+(`shadow-recover`), so the recovery rule is re-activate, not re-transfer. Both
+are recorded above in full. G1b -- "the shadow is strictly per-client-session"
+-- was recorded here too and is now RETRACTED; see the retraction above.
 """
 
 import asyncio
@@ -758,10 +796,10 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
           f"delay={options.delay:.0f}s  preamble={options.preamble}", flush=True)
 
     if options.skip_reset:
-        # --no-reset asked whether the shadow was about common.reset() at all or
-        # about the FIRST content pushed on ANY fresh connection. ANSWERED
-        # 2026-07-27: the latter -- this died twice, identically to the runs that
-        # did reset. Kept as the reproduction path for that result.
+        # --no-reset asked whether the loss was about common.reset() at all.
+        # ANSWERED 2026-07-27: it never was -- this died twice, identically to
+        # the runs that did reset. Kept as the reproduction path, and as the
+        # matched ~8s control that `--preamble ble` is read against.
         print("\n*** --no-reset: common.reset() SKIPPED. The prelude is a clock baseline "
               "only, on a connection that has been re-initialised by nothing. ***", flush=True)
         try:
@@ -780,10 +818,11 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
             print(f"  reset FAILED (continuing): {ex!r}", flush=True)
 
     if options.delay:
-        # Quiet time only: no sends, no disconnect, no power cycle. That is the
-        # point -- it isolates ELAPSED TIME from the re-initialisation a
-        # preceding row would also supply. Answer, 2026-07-27: time alone does
-        # NOTHING (--delay 120 gif still died). See THE FIRST-CONNECTION SHADOW.
+        # Quiet time only: no sends, no disconnect, no power cycle. NOTE the
+        # delay runs BEFORE the write, so it measures elapsed time preceding the
+        # content, NOT dwell after it -- 2026-07-27's `--delay 120 gif` died,
+        # which is why time-before-the-write is ruled out while DWELL is
+        # condition (A). See LAZY DISPLAY-STATE PERSISTENCE above.
         print(f"\nwaiting {options.delay:.0f}s before the first row "
               f"(no commands sent during the wait) ...", flush=True)
         await asyncio.sleep(options.delay)
@@ -952,31 +991,33 @@ def print_shadow_recover_script() -> None:
     print("=== shadow-recover: WHAT YOU WILL SEE, IN ORDER =============================", flush=True)
     print("  0. BEFORE ANYTHING: whatever the panel is showing right now is LEFT ALONE.", flush=True)
     print("     No reset, no clock command, no brightness change -- the whole point is", flush=True)
-    print("     that the GIF is the FIRST thing this client session puts on the panel.", flush=True)
+    print("     that the GIF is written and then disconnected from a few seconds later,", flush=True)
+    print("     with nothing else in the way.", flush=True)
     print(f"  1. THE HOP ({WATCH_SECONDS}s): {SHADOW_RECOVER_HOP}.", flush=True)
-    print("     This is the shadowed content: uploaded on the FIRST BLE connection.", flush=True)
+    print("     This is the short-dwell write: it will not have been persisted yet.", flush=True)
     print(f"  2. A ~{BLE_GAP_SECONDS}s GAP while the link is down. The panel keeps showing", flush=True)
     print("     whatever it was showing; nothing is sent during the gap.", flush=True)
     print(f"  3. AFTER RECONNECT ({WATCH_SECONDS}s): EXPECTED the ordinary CLOCK FACE -- the", flush=True)
-    print("     shadow killing the hop. If the hop is still there, the shadow did not", flush=True)
-    print("     bite this run and everything after step 3 is void; say so.", flush=True)
+    print("     panel reverting to its last PERSISTED mode. If the hop is still there,", flush=True)
+    print("     it dwelt long enough after all and everything after step 3 is void;", flush=True)
+    print("     say so.", flush=True)
     print(f"  4. AFTER activate_stored ({WATCH_SECONDS}s): THE QUESTION. Does the hop come", flush=True)
     print("     BACK, with no re-upload? Hop = the stored payload survived and only the", flush=True)
-    print("     mode pointer died. Still the clock = the payload went too.", flush=True)
+    print("     mode pointer was lost. Still the clock = the payload went too.", flush=True)
     print(f"  5. A second ~{BLE_GAP_SECONDS}s GAP, then AFTER RECONNECT ({WATCH_SECONDS}s):", flush=True)
-    print("     this session is UNSHADOWED by now, so whatever step 4 left up is", flush=True)
-    print("     expected to still be there. This is the control on step 4.", flush=True)
+    print("     this session now has BOTH a prior reconnect and dwell behind it, so", flush=True)
+    print("     whatever step 4 left up is expected to still be there. Control on step 4.", flush=True)
     print("  6. RESTORE: power on, unflipped, brightness 100, eco off, and the CLOCK.", flush=True)
     print("     That final clock is cleanup, NOT a result.", flush=True)
     print("=============================================================================", flush=True)
 
 
 async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
-    """Pointer-or-payload: after the shadow kills a GIF, can it be re-ACTIVATED?
+    """Pointer-or-payload: after a short-dwell GIF is lost, can it be re-ACTIVATED?
 
     Deliberately sends NOTHING before the upload -- no reset, no clock baseline
-    -- because any earlier command would be the first display state of the
-    session instead of the GIF, and the reconnect would then be killing that.
+    -- because any earlier command would be the display state the reconnect
+    reverts to, instead of the clock, and the reading would be ambiguous.
     """
     gif_bytes = build_test_gif()
     print(f"\nfixture: {len(gif_bytes)}B, the same 4-corner hop the gif row uses.", flush=True)
@@ -984,7 +1025,7 @@ async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
           "FIRST command.", flush=True)
 
     try:
-        print("\n=== STEP 1: upload the hop on the FIRST connection (no reset, no baseline)",
+        print("\n=== STEP 1: upload the hop, nothing before it (no reset, no baseline)",
               flush=True)
         sent_at = time.perf_counter()
         await client.gif.upload_bytes(gif_bytes)
@@ -996,8 +1037,9 @@ async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
         print(f"\n=== STEP 2: BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
         await interrupt_ble(client)
         print(f"  transport: {client.snapshot()!r}", flush=True)
-        print(f"  WATCH ({WATCH_SECONDS}s) -- EXPECTED: {CLOCK_LOOK}, i.e. the shadow killed the "
-              f"hop. Still hopping => the shadow did NOT bite; the rest of this run is void.",
+        print(f"  WATCH ({WATCH_SECONDS}s) -- EXPECTED: {CLOCK_LOOK}, i.e. the panel reverted to "
+              f"its last PERSISTED mode. Still hopping => the write dwelt long enough after "
+              f"all; the rest of this run is void.",
               flush=True)
         await asyncio.sleep(WATCH_SECONDS)
 
@@ -1008,19 +1050,20 @@ async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
               f"(True = the device recognized its stored CRC)", flush=True)
         await acks.settle_and_report("activate_stored", sent_at)
         print(f"  WATCH ({WATCH_SECONDS}s) -- THE QUESTION: is the hop BACK?", flush=True)
-        print("    HOP        -- the stored payload SURVIVED the shadow; only the current-mode "
-              "pointer died. Recovery = re-activate, not re-transfer.", flush=True)
+        print("    HOP        -- the stored payload SURVIVED; only the current-mode pointer "
+              "was lost. Recovery = re-activate, not re-transfer.", flush=True)
         print("    CLOCK      -- the payload went with the pointer; activate_stored is no use "
-              "after a shadow kill.", flush=True)
+              "after such a loss.", flush=True)
         await asyncio.sleep(WATCH_SECONDS)
 
         print(f"\n=== STEP 4: control -- BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect",
               flush=True)
         await interrupt_ble(client)
         print(f"  transport: {client.snapshot()!r}", flush=True)
-        print(f"  WATCH ({WATCH_SECONDS}s) -- this session has reconnected twice now, so it is "
-              f"UNSHADOWED. Whatever step 3 left up is expected to STILL BE THERE; if it "
-              f"vanished, step 3's restore was not durable and says nothing about recovery.",
+        print(f"  WATCH ({WATCH_SECONDS}s) -- this session has reconnected twice now and the "
+              f"content has dwelt, so it is PROTECTED on both counts. Whatever step 3 left up "
+              f"is expected to STILL BE THERE; if it vanished, step 3's restore was not durable "
+              f"and says nothing about recovery.",
               flush=True)
         await asyncio.sleep(WATCH_SECONDS)
     finally:
@@ -1063,19 +1106,21 @@ def take_flag(argv: list[str], name: str) -> tuple[list[str], bool]:
 def take_auto_options(argv: list[str]) -> tuple[list[str], "AutoOptions"]:
     """Pulls the automated mode's knobs out of argv, returning the rest.
 
-    All three exist to dissect THE FIRST-CONNECTION SHADOW (see the module
-    docstring). A preceding row rescues a doomed upload by supplying THREE
+    All three exist to dissect DISPLAY-STATE DURABILITY (see the module
+    docstring). A preceding row protects a doomed upload by supplying THREE
     things at once -- elapsed time, a BLE reconnect, and a software power cycle
     -- so each knob supplies exactly one of them, alone:
 
-        --delay N               elapsed time alone   (answered: does nothing)
+        --delay N               elapsed time alone, BEFORE the write (answered:
+                                does nothing; dwell AFTER the write is what
+                                matters, and this knob cannot supply it)
         --preamble ble|power    one interruption alone, before any row
-                                (ble: answered, it rescues; power: answered, it
-                                does NOT -- a same-connection power blink leaves
-                                the shadow in place)
+                                (ble: answered, it protects -- condition (B);
+                                power: answered, it does NOT, a same-connection
+                                power blink buys nothing)
         --no-reset              removes the reset itself, to ask whether the
-                                shadow was ever about common.reset() at all
-                                (answered: it never was -- hence the rename)
+                                loss was ever about common.reset() at all
+                                (answered: it never was)
     """
     argv, raw_delay = take_option(argv, "--delay", "--delay 120")
     argv, raw_preamble = take_option(argv, "--preamble", f"--preamble {PREAMBLE_BLE}")
@@ -1137,9 +1182,9 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
     # Anything else is a row filter for the automated mode: keys in the order
     # given, REPEATS KEPT. `gif gif` runs the GIF row, then runs it again after
     # the first one's interruption cycle -- that repeat is the discriminator
-    # for the first-connection-shadow finding, so deduping here would silently
-    # delete the experiment (it did, 2026-07-27). `combo` is a set-mode-only
-    # row and is still not accepted here.
+    # for condition (B), so deduping here would silently delete the experiment
+    # (it did, 2026-07-27). `combo` is a set-mode-only row and is still not
+    # accepted here.
     unknown = [key for key in argv if key not in automated_keys]
     if unknown:
         print(f"unrecognized row/mode {unknown}; rows: {', '.join(automated_keys)}", flush=True)

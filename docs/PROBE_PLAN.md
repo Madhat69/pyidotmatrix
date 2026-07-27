@@ -363,19 +363,20 @@ handshake is the vendor app's, observed only in the app's traffic; our
 `IDotMatrixClient.connect()` sends no such thing (verified against
 `client.py`/`transport/ble.py`). Phase 9's observation stands: magenta set,
 12s disconnect/reconnect, panel showed the clock, nothing we sent explains it.
-**Phase 9 is now RESOLVED (2026-07-27), and it turns out to be the
-first-connection shadow's earliest sighting.** This caveat read two wrong ways
+**Phase 9 is now RESOLVED (2026-07-27), and it is the earliest instance on
+record of LAZY DISPLAY-STATE PERSISTENCE.** This caveat read two wrong ways
 before that: first as a "reset shadow" (phase 9 runs immediately after that
 probe's own `common.reset()` cleanup), then as an open choice between genuine
-device-side colour volatility and the shadow. The reset is not the variable
-(`--no-reset` died identically). The colour-volatility branch is dead too: run
-10 of the shadow series, `--no-reset color`, is phase 9's scenario reproduced
-under control -- fullscreen colour, first connection, disconnect/reconnect --
-and it died the same way, while the persistence matrix's colour row, armed
-UNSHADOWED on connection >=2, held across the identical interruption. Colour is
-durable when it is set out of shadow. The phase-9 retest that used to be queued
-below is **cancelled**; see capabilities.py's color.show and
-display.persistence_matrix entries.
+device-side colour volatility and a "first-connection shadow" -- a model since
+**retracted**, see P11 below. The reset is not the variable (`--no-reset` died
+identically). The colour-volatility branch is dead too: `--no-reset color` is
+phase 9's scenario reproduced under control -- fullscreen colour written and
+then disconnected from ~8 s later with no prior reconnect -- and it died the
+same way, while the persistence matrix's colour row, armed with a prior
+reconnect behind it, held across the identical interruption. Colour is durable
+once it has dwelt, or once the session has already reconnected. The phase-9
+retest that used to be queued below is **cancelled**; see capabilities.py's
+color.show and display.persistence_matrix entries.
 
 ---
 
@@ -482,13 +483,13 @@ columns -- BLE disconnect/reconnect (~6s), then software power off/on (~5s)
 chained onto whatever the first interruption left in force -- across every
 row (clock, DIY frame, fullscreen colour, GIF, text, effect, flip, brightness,
 eco, power). The DIY frame resets to the clock on the BLE-reconnect column;
-every native mode held there. **Read every cell as an UNSHADOWED result:** the
+every native mode held there. **Read every cell as a PROTECTED result:** the
 sweep arms its rows in sequence, so from the second row onwards each state was
-established on connection >=2 of the process, out of the first-connection
-shadow described below -- "GIF held" here and "GIF died" there are both true and
-describe different conditions. The clock control row is additionally vacuous as
-a shadow test, since a clock face dying back to the clock face is
-undetectable. **CORRECTION, methodology flaw:** the DIY row's
+established after an earlier disconnect/reconnect in the same process --
+condition (B) of the model described below -- so "GIF held" here and "GIF died"
+there are both true and describe different conditions. The clock control row is
+additionally vacuous as a durability test, since a clock face dying back to the
+clock face is undetectable. **CORRECTION, methodology flaw:** the DIY row's
 software-power-cycle CELL IS VOID, not a second confirmation of volatility --
 the probe establishes each row's state once and does not re-arm it between
 the two interruptions, so for DIY (the only row that already lost the first
@@ -509,20 +510,31 @@ whether a native mode is actively live, not the power cycle itself. GlanceOS
 consequence: after a BLE reconnect the panel shows the clock and the caller
 must re-push a frame -- no native mode covers for it; whether a bare software
 power cycle carries the same consequence for DIY is unresolved pending the
-void cell's re-run. An unexplained, reproducible defect surfaced in the same
-run and was chased to a result the same evening: originally recorded as a
-"reset shadow", it is now the **first-connection shadow** -- display /
-current-mode state uploaded on the FIRST BLE connection of a client session
-renders, acks SAVED, and is silently lost **at the next BLE reconnect**, while
-one intervening BLE disconnect/reconnect makes everything uploaded afterwards
-durable. `common.reset()` is NOT involved (`--no-reset` died twice), a
-same-connection power blink does NOT lift it (`--preamble power` died), and it
-is not GIF-specific (`--no-reset color` died with no payload in play). Note
-also that a dying run yields exactly ONE measurement: once the reconnect has
-killed the content, the second interruption only re-reads a clock that was
-already up. See capabilities.py's display.persistence_matrix entry for the
-ten-run evidence table, the config-class / display-class model, and the
-pointer-not-payload hypothesis; P19 below carries the confirm probes.
+void cell's re-run. A reproducible display-durability effect surfaced in the
+same run and was chased over two evenings. It was named twice and wrongly both
+times -- first a "reset shadow" blamed on `common.reset()`, then a
+"first-connection shadow" scoped to the client session. **Both names are
+retracted.** What it actually is: **LAZY DISPLAY-STATE PERSISTENCE**, a panel
+property already recorded in this lab on 2026-07-12 ("the device persists its
+current native mode to flash LAZILY, dwell somewhere under ~3 min, and boots
+into the last persisted mode") and 2026-07-17 ("clean BLE disconnect → device
+exits DIY → reverts to the persisted screen in ~2s"), **plus one separate,
+unexplained prior-reconnect effect**. Display content renders and acks SAVED,
+but a clean disconnect reverts the panel to the last *persisted* mode, so
+content written and disconnected from too quickly is lost. It survives if
+**either** condition holds: **(A) DWELL** -- dies at ~8 s, survives at 90 s,
+threshold not yet bisected; or **(B) a prior disconnect/reconnect earlier in
+the same session** -- `--preamble ble gif` survives at the same ~8 s where the
+matched `--no-reset gif` control dies, reproduced twice, mechanism open.
+`common.reset()` is NOT involved (`--no-reset` died twice), a same-connection
+power blink does NOT help (`--preamble power` died), and it is not GIF-specific
+(`--no-reset color` died with no payload in play). Note also that a dying run
+yields exactly ONE measurement: once the reconnect has killed the content, the
+second interruption only re-reads a clock that was already up. See
+capabilities.py's display.persistence_matrix entry for the full evidence table,
+the config-class / display-class model, the pointer-not-payload result, and the
+retraction of the per-client-session claim; P19 below carries the open
+questions.
 **STILL OPEN:**
 the PHYSICAL power-cycle column (pulling mains power at the wall) has not
 been run for this matrix's rows -- P6's Q4 physical power-cycle covered Timer
@@ -695,49 +707,69 @@ command-byte discovery into initialization, persistence, transfer, and recovery.
 
 ## P19 — Second-pass follow-ups (queued 2026-07-27, results 2026-07-28)
 
-Re-cut 2026-07-27 after the post-audit pass on the first-connection shadow, then
-worked through with the operator at the panel on the night of 2026-07-27/28.
-Closed items are recorded here as closed rather than deleted, so nobody
-re-queues them. What is left is the passive magenta watch and the deferred tail.
+Re-cut 2026-07-27 after the post-audit pass on the display-durability effect,
+then worked through with the operator at the panel on the night of
+2026-07-27/28, and **consolidated and partly retracted on 2026-07-28**. Closed
+items are recorded here as closed rather than deleted, so nobody re-queues them.
 Each item is self-contained; batch into any session's tail the way P7 bundled
 its odds and ends.
 
+**RETRACTION, read this before anything else in P19.** The model this section
+was cut against — "the first-connection shadow", display state set on a client
+session's FIRST BLE connection being non-durable and the effect being scoped
+per-client-session — is **WRONG and is withdrawn.** It was an over-elaboration
+of a device property this lab had already recorded on 2026-07-12 and
+2026-07-17: the panel commits its current display mode to flash **lazily**, and
+a clean BLE disconnect reverts it to the last persisted mode. The
+session-scoped framing came from uncontrolled elapsed time between commands,
+which nothing held constant until G5. The corrected model — two independent
+sufficient conditions, DWELL and a PRIOR RECONNECT — and the full evidence
+table live in capabilities.py's display.persistence_matrix. **Lesson, recorded
+deliberately:** before naming a new phenomenon, check the `glanceos-hardware-facts`
+record and the 07-12/07-17 hardware entries. A "new" durability effect on this
+panel is far more likely to be an old one seen from a new angle.
+
 **Answered / cancelled — do not re-run:**
 
-- **`--preamble power gif`, the shadow's last discriminator.** RUN, and it
-  DIED: a `turn_off`/`turn_on` over the SAME BLE connection does not lift the
-  shadow, so the shadow is bound to the BLE SESSION and the cheap power-blink
-  mitigation is off the table. Only a genuine disconnect/reconnect lifts it.
-  Full account, with the ten-run table, in capabilities.py's
+- **`--preamble power gif`.** RUN, and it DIED: a `turn_off`/`turn_on` over the
+  SAME BLE connection does not protect subsequently-written content, so the
+  cheap power-blink mitigation is off the table. Only a genuine
+  disconnect/reconnect does (condition B), or dwell (condition A). Full
+  account, with the evidence table, in capabilities.py's
   display.persistence_matrix.
 - **The P7 phase-9 fullscreen-colour retest.** CANCELLED. `--no-reset color`
-  ran phase 9's scenario from the other direction and died, and the unshadowed
-  matrix colour row held, so phase 9 is the shadow and colour volatility is
-  dead as a hypothesis. Re-running it would only re-answer an answered
-  discriminator. See capabilities.py's color.show.
+  ran phase 9's scenario from the other direction and died, and the matrix
+  colour row — armed with a prior reconnect behind it — held, so phase 9 is a
+  short-dwell loss and colour volatility is dead as a hypothesis. Re-running it
+  would only re-answer an answered discriminator. See capabilities.py's
+  color.show.
 - **G1 — brightness's class.** RUN 2026-07-28, `probe_p11_persistence.py
   --no-reset brightness`, twice. **BRIGHTNESS IS CONFIG-CLASS.** The white
   field armed with it died at the BLE reconnect (display-class, expected); the
-  DIMMING SURVIVED, and survived the software power cycle after it as well.
-  That second cell is a VALID measurement, not a void one: the
-  void-second-column rule applies only to state interruption 1 had already
-  killed, and brightness was still in force. Pinning brightness once at
-  startup is safe. See capabilities.py's common.set_brightness.
-- **G1b — is the shadow per-client-session?** Answered as a by-product of G1,
-  **TWO instances: YES, strictly per-client-session.** Both G1 runs were
-  preceded by a full daemon session that did its own connect/disconnect/
-  reconnect double-tap and streamed, and both died at the probe's first
-  reconnect. The runs differed only in the prior session's DURATION -- hours
-  vs ~60 s -- so prior-session duration is irrelevant. A mitigation must
-  therefore live inside the transport's own connect path, per process;
-  nothing another process did helps. See display.persistence_matrix.
+  DIMMING SURVIVED, and survived the software power cycle after it as well, and
+  separately survived a PHYSICAL mains power cut. That second cell is a VALID
+  measurement, not a void one: the void-second-column rule applies only to
+  state interruption 1 had already killed, and brightness was still in force.
+  Brightness is flash-backed; pinning it once at startup is safe. See
+  capabilities.py's common.set_brightness.
+- **G1b — is the effect per-client-session? RETRACTED.** This was recorded as
+  "**TWO instances: YES, strictly per-client-session**", on the strength of
+  foreign sessions failing to kill content they had not written. **That claim
+  is withdrawn.** Those runs all had minutes of elapsed time behind them, so
+  they satisfied condition (A) — dwell — and prove nothing about session
+  identity. G5's `own-delayed` sequence then showed the *same* session failing
+  to kill its own 90-second-old content, holding session identity constant and
+  varying only the delay. Session identity is not the variable. Consequence for
+  integrators: multiple clients CAN share this panel, but the reason is dwell,
+  not ownership. See display.persistence_matrix.
 - **G2 — shadow-recover: pointer or payload?** RUN 2026-07-28,
-  `probe_p11_persistence.py shadow-recover`. **POINTER, NOT PAYLOAD.**
-  Operator saw HOP -> CLOCK -> HOP -> HOP: the shadowed GIF died at the
-  reconnect, `gif.activate_stored()` with the same bytes and NO re-upload
-  brought it back and it actually rendered, and a control reconnect proved the
-  restore durable. The shadow destroys nothing -- only the current-mode
-  pointer is session-gated. SDK recovery rule: **RE-ACTIVATE, DO NOT
+  `probe_p11_persistence.py shadow-recover` (the mode name is a legacy label
+  from the retracted model, kept because it is the CLI handle). **POINTER, NOT
+  PAYLOAD.** Operator saw HOP -> CLOCK -> HOP -> HOP: the short-dwell GIF died
+  at the reconnect, `gif.activate_stored()` with the same bytes and NO
+  re-upload brought it back and it actually rendered, and a control reconnect
+  proved the restore durable. Nothing is destroyed -- only the current-mode
+  pointer is committed lazily. SDK recovery rule: **RE-ACTIVATE, DO NOT
   RE-TRANSFER**, with the caveat that it only applies to content that HAS a
   re-activate path (a parked DIY still has none). See gif.upload_file.
 - **G3 — sweep all eight clock styles.** RUN 2026-07-28,
@@ -771,6 +803,17 @@ its odds and ends.
   2.0 s ack timeout, so `client.set_time` is now fire-and-forget
   (`verify=False`). See capabilities.py's common.set_time and
   common.ack_timing.
+- **G5 — what is the kill event?** RUN 2026-07-28,
+  `probe_p19_g5_kill_event.py`, both sequences. **This is the probe that
+  falsified the session-bound model**, and the one that forced the whole P19
+  retraction above. `reconnect` (a foreign process reconnecting on content it
+  did not write, minutes old) SURVIVED, which the session-bound reading had
+  predicted -- but `own-delayed` (the SAME session writing content, holding
+  90 s, then reconnecting) ALSO SURVIVED, which it had not. Session identity
+  held constant, delay the only variable: **elapsed time is the variable, not
+  ownership.** That plus the `--preamble ble` result gives the two-condition
+  model. The dwell threshold is bracketed at 8 s < t <= 90 s and is not
+  bisected; see the open questions below.
 
 **LESSON, now a probe house rule (from G3/G3b):** an on-panel label is itself
 a mode-changing command. Scoreboard and text labels are a legitimate way to
@@ -783,16 +826,37 @@ same mode the label would occupy. This raises the value of the label-free
 chronograph rerun in the deferred tail: P7's own caveat is now MORE likely,
 not less.
 
-**Still queued:**
+**OPEN QUESTIONS, as of the 2026-07-28 consolidation:**
 
-- **Passive: the magenta watch.** Leave a static clock face up and glance at
-  it occasionally through the session. Tests whether the face cycles colour
-  on its own over time -- the last standing candidate for the unexplained
-  magenta digits from an early P17 run, now that eco, clock style selection,
-  the default colour argument, low-brightness channel dropout, AND RGB-style
-  hue cycling (G3c's falsified prediction) are all excluded
-  (capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
-  Send no commands once the face is up.
+1. **Bisect the dwell threshold.** It sits between 8 s and 90 s. This sizes any
+   delay-based mitigation exactly, and it is the single most useful number
+   still missing. A drill already exists:
+   `D:\glanceos\glanceosd\drills\measure_persistence_dwell.py`.
+2. **Why does a prior reconnect rescue an 8-second-old write?** Reproduced
+   twice; dwell cannot explain it (same 8 s, opposite outcome), and on the
+   07-28 run the animation **continued from where it was** rather than
+   restarting, so the device did not re-initialise playback across the
+   disconnect at all. Mechanism unknown. This is the load-bearing evidence for
+   GlanceOS's double-tap connect, so it matters. An HCI capture comparing
+   connection 1 with connection 2 is the definitive tool (see the deferred tail
+   below).
+3. **Does the dwell differ by content type?** GIF (a stored payload),
+   fullscreen colour (~3 bytes), and DIY frames (never persisted at all, per
+   07-17) plausibly commit on different schedules.
+4. **The magenta digits** remain unexplained. Passive watch: leave a static
+   clock face up and glance at it occasionally through a session, sending no
+   commands once the face is up. Tests whether the face cycles colour on its
+   own over time -- the last standing candidate, now that eco, clock style
+   selection, the default colour argument, low-brightness channel dropout, AND
+   RGB-style hue cycling (G3c's falsified prediction) are all excluded
+   (capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
+5. **P11's DIY row across a software power cycle** is still a void cell (see
+   the deferred tail).
+6. **The `set` / `check` / `restore` handoff path is dwell-confounded** for
+   display-class rows. `set` runs in its own process and rejects `--preamble`,
+   so any display content it establishes is subject to conditions (A)/(B)
+   before the operator even gets up from the desk. Only config-class rows
+   (brightness, eco) are safe on that path as it stands.
 
 **Deferred tail (unchanged, no probe written):**
 
@@ -808,12 +872,13 @@ not less.
   row's BLE-reconnect reading ambiguous?).
 - **An interruption-order knob for P11**, so a row can be power-cycled before
   it is BLE-interrupted rather than always after. That is the general fix for
-  the void-cell class of flaw, of which the DIY cell and the dying shadow runs
-  are both instances.
-- **Optional: an HCI capture of connection 1 versus connection 2.** The
-  shadow's mechanism is unexplained and nothing in our stack distinguishes the
-  two connections (verified against `client.py`/`transport/ble.py`). A capture
-  is the only remaining way to see whether the DEVICE distinguishes them.
+  the void-cell class of flaw, of which the DIY cell and the short-dwell runs
+  that died at interruption 1 are both instances.
+- **An HCI capture of connection 1 versus connection 2.** The prior-reconnect
+  rescue (condition B) is unexplained and nothing in our stack distinguishes
+  the two connections (verified against `client.py`/`transport/ble.py`). A
+  capture is the only remaining way to see whether the DEVICE distinguishes
+  them. No longer optional -- it is the definitive tool for open question 2.
 - **Label-free rerun of the countdown/chronograph branch.** P7's
   countdown-pause / chronograph-start sequence did NOT reproduce the
   2026-07-20 "paused countdown hijacks chronograph" report, but the probe's
