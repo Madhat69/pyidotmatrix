@@ -97,9 +97,14 @@ blue one survived, the text didn't" with no ambiguity:
                  BOTTOM-LEFT. No symmetry anywhere, so a flip, a mirror, or a
                  half-drawn frame is instantly visible.
     colour       flat ORANGE, whole panel. Owned by no other row.
-    GIF          a GREEN bar bouncing LEFT <-> RIGHT twice a second with a
-                 fixed MAGENTA square in the top-left corner. Animated, so
-                 "resumed" is distinguishable from "a frozen still".
+    GIF          a small WHITE block hopping CLOCKWISE around the four corners
+                 (TL -> TR -> BR -> BL) on a dim GREEN field at 4 fps -- the
+                 fixture from probe_p10_interrupted_upload.py. The block's
+                 corner IS the frame number, so RESTARTED-FROM-FRAME-0 and
+                 CONTINUED-FROM-WHERE-IT-WAS are separable by eye. (The first
+                 version of this row used a bar oscillating left<->right; the
+                 2026-07-27 operator could not read its phase, which left the
+                 only question the row asks unanswerable.)
     text         the word ZULU scrolling in MAGENTA.
     effect       the built-in animation in RED and BLUE only.
     flip         the clock, UPSIDE DOWN.
@@ -174,13 +179,73 @@ Specific things worth watching for:
 
 USAGE
 -----
-    python probes/probe_p11_persistence.py            # automated columns 1+2
-    python probes/probe_p11_persistence.py set        # arm `combo`, then exit
-    python probes/probe_p11_persistence.py set gif     # arm one named state
-    python probes/probe_p11_persistence.py check       # after the power-cycle
-    python probes/probe_p11_persistence.py restore     # put the panel back
+    python probes/probe_p11_persistence.py                    # automated, all rows
+    python probes/probe_p11_persistence.py gif                # automated, one row
+    python probes/probe_p11_persistence.py gif diy color      # in the order given
+    python probes/probe_p11_persistence.py gif gif            # the same row TWICE
+    python probes/probe_p11_persistence.py --delay 120 gif    # quiet wait after the reset
+    python probes/probe_p11_persistence.py --preamble ble gif    # one BLE re-init first
+    python probes/probe_p11_persistence.py --preamble power gif  # one power cycle first
+    python probes/probe_p11_persistence.py --no-reset gif     # no common.reset() at all
+    python probes/probe_p11_persistence.py set                # arm `combo`, then exit
+    python probes/probe_p11_persistence.py set gif            # arm one named state
+    python probes/probe_p11_persistence.py check              # after the power-cycle
+    python probes/probe_p11_persistence.py restore            # put the panel back
 
-The automated run takes roughly 11-13 minutes and needs no one present.
+Row filter keys: clock, diy, color, gif, text, effect, flip, brightness, eco,
+power. Repeats are KEPT and run again in place. `combo` is a set-mode row only
+and is not accepted as a filter. An unrecognized key prints the accepted keys
+and exits 2 before any BLE contact. The three prelude knobs -- `--delay N`,
+`--preamble ble|power`, `--no-reset` -- apply to the automated mode only and
+are rejected for set/check/restore. They may appear in any position.
+
+THE RESET SHADOW
+----------------
+CONFIRMED 2026-07-27. Content pushed to the panel shortly after common.reset()
+RENDERS CORRECTLY, ACKS NORMALLY, and IS NOT DURABLE: it vanishes at the next
+disconnect or power event, with nothing in the ack stream indicating a problem.
+GIF row, one fixture, one session:
+
+    upload ~15 s after reset, quiet                  -> DIES     3 runs
+    upload ~120 s after reset, QUIET (--delay 120)   -> DIES     1 run
+    upload ~75-90 s after reset, AFTER an interruption -> SURVIVES 3 runs
+        (the full sweep; `clock gif`; row 2 of `gif gif`)
+
+ELAPSED TIME IS IRRELEVANT -- two minutes of silence changed nothing, while a
+6 s BLE disconnect changed everything. An intervening RE-INITIALISATION is what
+lifts the shadow. Note that an inert preceding row (`clock`, which changes no
+mode) rescues it just as well as a mode-changing one, so it is the interruption
+the row performs, not the content it sets.
+
+This unifies three previously unrelated oddities: the isolated GIF deaths here,
+P7 phase 9's magenta reverting on reconnect (set right after that phase's own
+common.reset()), and probably this probe's DIY row. It matters beyond the lab:
+common.reset() is the driver's remedy for a stuck panel and the daemon's
+recovery paths reset and then push, so that content is guaranteed to vanish at
+the first reconnect, silently.
+
+STILL OPEN, and what each knob asks:
+
+    --preamble ble gif    WHICH interruption lifts it? Every rescuing run so far
+    --preamble power gif  performed BOTH a BLE reconnect and a power cycle, so
+                          they are confounded. Either one surviving identifies a
+                          sufficient event; both surviving means any re-init
+                          works; NEITHER surviving means the rescuing factor is
+                          something else in the preceding row and this model
+                          needs revisiting.
+    --no-reset gif        Was it ever about common.reset()? If content pushed on
+                          a FRESH CONNECTION with no reset shows the same
+                          shadow, the finding is much larger: the FIRST content
+                          pushed after ANY connection is non-durable until
+                          something re-initialises the device.
+
+The preamble deliberately calls the row loop's own interrupt_ble /
+interrupt_power, so a preamble interruption is byte-identical to a row's.
+
+The full automated run takes roughly 11-13 minutes and needs no one present;
+one row is about 60-75 s, so `gif gif` is about 3 minutes, `--preamble ble gif`
+about 100 s and `--no-reset gif` about 85 s. Re-testing a single row used to
+cost the whole run, which is why the filter exists.
 
 RESULT (2026-07-__): pending -- NOT RUN tonight. The full persistence matrix
 (clock/DIY/colour/GIF/text/effect/flip/brightness/eco x BLE reconnect/
@@ -201,7 +266,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from pyidotmatrix import IDotMatrixClient, ScreenSize
 from pyidotmatrix.protocol import text as text_protocol
@@ -235,13 +300,13 @@ BLUE = (0, 0, 220)
 CYAN = (0, 200, 200)
 WHITE = (255, 255, 255)
 ORANGE = (255, 110, 0)
-GREEN = (0, 220, 0)
+GIF_FIELD = (0, 85, 0)  # dim green field, as probe_p10_interrupted_upload uses
 MAGENTA = (255, 0, 255)
 EFFECT_COLORS = [(255, 0, 0), (0, 0, 255)]
 EFFECT_STYLE = 0
 EFFECT_SPEED = 100  # byte 5, hardware-verified as a real speed 2026-07-26
 TEXT_WORD = "ZULU"
-GIF_FRAME_MS = 500
+GIF_FRAME_MS = 250  # 4 fps: one corner per frame, slow enough to read the phase
 
 
 # --- test content -----------------------------------------------------------
@@ -276,27 +341,25 @@ def build_diy_frame() -> bytes:
 
 
 def build_test_gif() -> bytes:
-    """A green bar bouncing left <-> right behind a fixed magenta corner.
+    """A 6x6 WHITE block hopping clockwise TL -> TR -> BR -> BL over a dim
+    GREEN field -- probe_p10_interrupted_upload.build_base_gif's fixture.
 
-    Two things at once: the motion proves the GIF is PLAYING rather than parked
-    on a still (RESUMES vs PERSISTS), and the magenta corner is a fixed
-    landmark that a half-decoded or stale frame cannot fake. Encoded exactly as
-    protocol/gif.py's adapt_gif does it -- optimize=True is required or the
-    transfer breaks.
+    The first fixture here was a bar bouncing left<->right, and the 2026-07-27
+    operator could not answer the only question this row asks: after an
+    interruption, did playback RESTART at frame 0 or CONTINUE where it was? A
+    fast symmetric oscillation has no readable phase. A four-corner hop does:
+    the block's corner IS the frame number, so restart-versus-continue is a
+    glance. Encoder settings are this probe's own (optimize=True, disposal=2 --
+    protocol/gif.py requires optimize) rather than P10's, since this row already
+    uploaded and rendered cleanly with them.
     """
     size = SCREEN.width
+    inset, block = 2, 5  # 6x6 block, 2 px in from each edge -- P10's geometry
+    far = size - inset - block - 1
     frames = []
-    for green_on_left in (True, False):
-        frame = Image.new("RGB", (size, size), (0, 0, 0))
-        pixels = frame.load()
-        for y in range(size):
-            for x in range(size):
-                on_green_side = (x < size // 2) == green_on_left
-                if on_green_side:
-                    pixels[x, y] = GREEN
-        for y in range(4):
-            for x in range(4):
-                pixels[x, y] = MAGENTA
+    for x, y in ((inset, inset), (far, inset), (far, far), (inset, far)):
+        frame = Image.new("RGB", (size, size), GIF_FIELD)
+        ImageDraw.Draw(frame).rectangle([x, y, x + block, y + block], fill=WHITE)
         frames.append(frame)
 
     buffer = io.BytesIO()
@@ -430,6 +493,7 @@ class Row:
     reset_look: str    # what a RESETS TO CLOCK reading looks like
     automated: bool = True
     software_power_cycle: bool = True
+    extra_question: str = ""  # row-specific question the four verdicts don't ask
 
 
 CLOCK_LOOK = "the ordinary clock face, right way up, normal brightness"
@@ -443,8 +507,12 @@ ROWS: tuple[Row, ...] = (
     Row("color", "fullscreen colour", set_color,
         "the whole panel flat ORANGE", CLOCK_LOOK),
     Row("gif", "GIF playback", set_gif,
-        "a GREEN bar bouncing left<->right twice a second, MAGENTA square fixed in the top-left",
-        CLOCK_LOOK),
+        "a small WHITE block hopping CLOCKWISE around the four corners "
+        "(top-left -> top-right -> bottom-right -> bottom-left) on a dim GREEN field, 4 fps",
+        CLOCK_LOOK,
+        extra_question="IF IT IS STILL HOPPING: did it RESTART FROM THE FIRST CORNER "
+                       "(top-left) or CONTINUE FROM WHERE IT WAS? That is the whole "
+                       "difference between RESUMES and PERSISTS for this row.",),
     Row("text", "scrolling text", set_text,
         f"the word {TEXT_WORD} scrolling in MAGENTA", CLOCK_LOOK),
     Row("effect", "built-in effect", set_effect,
@@ -472,6 +540,24 @@ ROWS: tuple[Row, ...] = (
 
 ROWS_BY_KEY = {row.key: row for row in ROWS}
 AUTOMATED_ROWS = tuple(row for row in ROWS if row.automated)
+
+PREAMBLE_NONE, PREAMBLE_BLE, PREAMBLE_POWER = "none", "ble", "power"
+PREAMBLES = (PREAMBLE_NONE, PREAMBLE_BLE, PREAMBLE_POWER)
+
+
+@dataclass(frozen=True)
+class AutoOptions:
+    """The automated mode's prelude knobs, all resolved before any BLE contact.
+
+    Defaults reproduce the original behaviour exactly: reset, no wait, no
+    preamble. Equality against AutoOptions() is how parse_mode detects "a knob
+    was passed" when rejecting them for set/check/restore.
+    """
+
+    delay: float = 0.0
+    preamble: str = PREAMBLE_NONE
+    skip_reset: bool = False
+
 
 VERDICTS = (
     "PERSISTS             -- still in force, unchanged",
@@ -501,28 +587,97 @@ async def neutralize(client: IDotMatrixClient, acks: AckLog) -> None:
     await acks.settle_and_report("neutralize", sent_at)
 
 
+async def interrupt_ble(client: IDotMatrixClient) -> None:
+    """The BLE disconnect/reconnect interruption -- ONE definition.
+
+    Both the row loop and --preamble call this, so a preamble interruption is
+    byte-identical to the one a row performs. If these ever diverge, the
+    preamble stops answering the question it exists to answer.
+    """
+    await client.disconnect()
+    await asyncio.sleep(BLE_GAP_SECONDS)
+    await client.connect()
+    await asyncio.sleep(SETTLE_SECONDS)
+
+
+async def interrupt_power(client: IDotMatrixClient, acks: AckLog, label: str) -> None:
+    """The software power off/on interruption -- ONE definition. See interrupt_ble."""
+    sent_at = time.perf_counter()
+    await client.common.turn_off()
+    await asyncio.sleep(POWER_OFF_SECONDS)
+    await client.common.turn_on()
+    await asyncio.sleep(SETTLE_SECONDS)
+    await acks.settle_and_report(label, sent_at)
+
+
 def print_verdict_menu(row: Row) -> None:
     print(f"  WHEN IT HELD  : {row.look}", flush=True)
     print(f"  WHEN IT RESET : {row.reset_look}", flush=True)
     for verdict in VERDICTS:
         print(f"    {verdict}", flush=True)
+    if row.extra_question:
+        print(f"    ?? {row.extra_question}", flush=True)
 
 
 # --- mode: automated (columns 1 and 2) --------------------------------------
 
-async def run_automated(client: IDotMatrixClient, acks: AckLog) -> None:
-    print(f"automated run: {len(AUTOMATED_ROWS)} rows x "
+async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row, ...],
+                        options: "AutoOptions") -> None:
+    print(f"automated run: {len(rows)} row(s) x "
           f"(BLE disconnect/reconnect, software power off/on)", flush=True)
-    try:
-        sent_at = time.perf_counter()
-        await client.common.reset()   # 04 00 03 80, VERIFIED non-destructive
-        await asyncio.sleep(4)
-        await acks.settle_and_report("reset", sent_at)
-    except Exception as ex:
-        print(f"  reset FAILED (continuing): {ex!r}", flush=True)
+    print(f"rows to run, in order: {', '.join(r.key for r in rows)}", flush=True)
+    print(f"prelude: reset={'SKIPPED' if options.skip_reset else 'yes'}  "
+          f"delay={options.delay:.0f}s  preamble={options.preamble}", flush=True)
+
+    if options.skip_reset:
+        # --no-reset asks the bigger question: is the shadow about common.reset()
+        # at all, or about the FIRST content pushed on ANY fresh connection?
+        print("\n*** --no-reset: common.reset() SKIPPED. The prelude is a clock baseline "
+              "only, on a connection that has been re-initialised by nothing. ***", flush=True)
+        try:
+            sent_at = time.perf_counter()
+            await client.clock.show()
+            await acks.settle_and_report("clock baseline (no reset)", sent_at)
+        except Exception as ex:
+            print(f"  clock baseline FAILED (continuing): {ex!r}", flush=True)
+    else:
+        try:
+            sent_at = time.perf_counter()
+            await client.common.reset()   # 04 00 03 80, VERIFIED non-destructive
+            await asyncio.sleep(4)
+            await acks.settle_and_report("reset", sent_at)
+        except Exception as ex:
+            print(f"  reset FAILED (continuing): {ex!r}", flush=True)
+
+    if options.delay:
+        # Quiet time only: no sends, no disconnect, no power cycle. That is the
+        # point -- it isolates ELAPSED TIME from the re-initialisation a
+        # preceding row would also supply. Answer, 2026-07-27: time alone does
+        # NOTHING (--delay 120 gif still died). See the RESET SHADOW section.
+        print(f"\nwaiting {options.delay:.0f}s before the first row "
+              f"(no commands sent during the wait) ...", flush=True)
+        await asyncio.sleep(options.delay)
+
+    if options.preamble != PREAMBLE_NONE:
+        # One interruption, fired BEFORE any row establishes content, using the
+        # row loop's own interruption code. Splits the two events a rescuing
+        # preceding row performs together.
+        print(f"\n-- PREAMBLE ({options.preamble}): a PREAMBLE, NOT a row interruption. "
+              f"No row content exists yet; this fires before the first row establishes "
+              f"anything, purely to re-initialise the device.", flush=True)
+        try:
+            if options.preamble == PREAMBLE_BLE:
+                await interrupt_ble(client)
+                print(f"  transport: {client.snapshot()!r}", flush=True)
+            else:
+                await interrupt_power(client, acks, "preamble power off/on")
+            print(f"-- PREAMBLE ({options.preamble}) complete; rows start now --", flush=True)
+        except Exception as ex:
+            print(f"  PREAMBLE FAILED -- the run's premise is void, read results with care: {ex!r}",
+                  flush=True)
 
     try:
-        for row in AUTOMATED_ROWS:
+        for row in rows:
             try:
                 print(f"\n=== ROW {row.key}: {row.label}", flush=True)
                 await neutralize(client, acks)
@@ -535,10 +690,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog) -> None:
 
                 # --- column 1: BLE disconnect / reconnect
                 print(f"  -- INTERRUPTION 1: BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
-                await client.disconnect()
-                await asyncio.sleep(BLE_GAP_SECONDS)
-                await client.connect()
-                await asyncio.sleep(SETTLE_SECONDS)
+                await interrupt_ble(client)
                 print(f"  transport: {client.snapshot()!r}", flush=True)
                 print(f"  WATCH ({WATCH_SECONDS}s) AFTER RECONNECT -- verdict for "
                       f"{row.key} x BLE reconnect:", flush=True)
@@ -551,12 +703,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog) -> None:
                           "state, so the cell is meaningless. The mains column covers it.", flush=True)
                     continue
                 print(f"  -- INTERRUPTION 2: software power off for {POWER_OFF_SECONDS}s, then on", flush=True)
-                sent_at = time.perf_counter()
-                await client.common.turn_off()
-                await asyncio.sleep(POWER_OFF_SECONDS)
-                await client.common.turn_on()
-                await asyncio.sleep(SETTLE_SECONDS)
-                await acks.settle_and_report(f"{row.key} power off/on", sent_at)
+                await interrupt_power(client, acks, f"{row.key} power off/on")
                 print(f"  WATCH ({WATCH_SECONDS}s) AFTER POWER ON -- verdict for "
                       f"{row.key} x software power cycle:", flush=True)
                 print_verdict_menu(row)
@@ -666,29 +813,106 @@ async def run_restore(client: IDotMatrixClient, acks: AckLog) -> None:
 
 # --- entry point ------------------------------------------------------------
 
-def parse_mode(argv: list[str]) -> tuple[str, Row | None]:
-    """Mode selection, done before the device is touched so a typo cannot
-    half-arm a state or leave an eco window behind."""
-    modes = "no argument (automated), set [state], check, restore"
+def take_option(argv: list[str], name: str, hint: str) -> tuple[list[str], str | None]:
+    """Pulls `name VALUE` out of argv wherever it sits, returning the rest."""
+    if name not in argv:
+        return argv, None
+    index = argv.index(name)
+    if index + 1 >= len(argv):
+        print(f"{name} needs a value, e.g. {hint}", flush=True)
+        raise SystemExit(2)
+    return argv[:index] + argv[index + 2:], argv[index + 1]
+
+
+def take_flag(argv: list[str], name: str) -> tuple[list[str], bool]:
+    """Pulls a valueless flag out of argv wherever it sits."""
+    if name not in argv:
+        return argv, False
+    return [arg for arg in argv if arg != name], True
+
+
+def take_auto_options(argv: list[str]) -> tuple[list[str], "AutoOptions"]:
+    """Pulls the automated mode's knobs out of argv, returning the rest.
+
+    All three exist to dissect the RESET SHADOW (see the module docstring).
+    A preceding row rescues a doomed upload by supplying THREE things at once --
+    elapsed time, a BLE reconnect, and a software power cycle -- so each knob
+    supplies exactly one of them, alone:
+
+        --delay N               elapsed time alone   (answered: does nothing)
+        --preamble ble|power    one interruption alone, before any row
+        --no-reset              removes the reset itself, to ask whether the
+                                shadow was ever about common.reset() at all
+    """
+    argv, raw_delay = take_option(argv, "--delay", "--delay 120")
+    argv, raw_preamble = take_option(argv, "--preamble", f"--preamble {PREAMBLE_BLE}")
+    argv, skip_reset = take_flag(argv, "--no-reset")
+
+    delay = 0.0
+    if raw_delay is not None:
+        try:
+            delay = float(raw_delay)
+        except ValueError:
+            delay = -1.0
+        if delay < 0:
+            print(f"--delay must be a non-negative number of seconds, got {raw_delay!r}", flush=True)
+            raise SystemExit(2)
+
+    preamble = PREAMBLE_NONE
+    if raw_preamble is not None:
+        if raw_preamble not in PREAMBLES:
+            print(f"unrecognized --preamble {raw_preamble!r}; accepted: {', '.join(PREAMBLES)}",
+                  flush=True)
+            raise SystemExit(2)
+        preamble = raw_preamble
+
+    return argv, AutoOptions(delay=delay, preamble=preamble, skip_reset=skip_reset)
+
+
+def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "AutoOptions"]:
+    """Mode selection and, for the automated mode, the row filter and knobs.
+
+    Done before the device is touched so a typo cannot half-arm a state, leave
+    an eco window behind, or burn a twelve-minute run on the wrong rows.
+    """
+    modes = ("no argument (all automated rows), "
+             "[--delay N] [--preamble ble|power] [--no-reset] <row> [<row> ...], "
+             "set [state], check, restore")
     states = ", ".join(row.key for row in ROWS)
+    automated_keys = tuple(row.key for row in AUTOMATED_ROWS)
+    argv, options = take_auto_options(argv)
     if not argv:
-        return "auto", None
+        return "auto", None, AUTOMATED_ROWS, options
 
     mode = argv[0]
+    if mode in ("check", "restore", "set") and options != AutoOptions():
+        print(f"--delay / --preamble / --no-reset apply to the automated mode only, not {mode}",
+              flush=True)
+        raise SystemExit(2)
     if mode in ("check", "restore"):
         if len(argv) > 1:
             print(f"{mode} takes no further arguments; modes: {modes}", flush=True)
             raise SystemExit(2)
-        return mode, None
+        return mode, None, (), AutoOptions()
     if mode == "set":
         key = argv[1] if len(argv) > 1 else "combo"
         if len(argv) > 2 or key not in ROWS_BY_KEY:
             print(f"unrecognized state {key!r}; states: {states}", flush=True)
             raise SystemExit(2)
-        return "set", ROWS_BY_KEY[key]
+        return "set", ROWS_BY_KEY[key], (), AutoOptions()
 
-    print(f"unrecognized mode {mode!r}; modes: {modes}", flush=True)
-    raise SystemExit(2)
+    # Anything else is a row filter for the automated mode: keys in the order
+    # given, REPEATS KEPT. `gif gif` runs the GIF row, then runs it again after
+    # the first one's interruption cycle -- that repeat is the discriminator for
+    # the reset-shadow finding, so deduping here would silently delete the
+    # experiment (it did, 2026-07-27). `combo` is a set-mode-only row and is
+    # still not accepted here.
+    unknown = [key for key in argv if key not in automated_keys]
+    if unknown:
+        print(f"unrecognized row/mode {unknown}; rows: {', '.join(automated_keys)}", flush=True)
+        print(f"modes: {modes}", flush=True)
+        raise SystemExit(2)
+    return "auto", None, tuple(ROWS_BY_KEY[key] for key in argv), options
 
 
 def load_handoff() -> dict:
@@ -700,16 +924,20 @@ def load_handoff() -> dict:
     return json.loads(HANDOFF_PATH.read_text(encoding="utf-8"))
 
 
-async def main(mode: str, row: Row | None) -> None:
+async def main(mode: str, row: Row | None, rows: tuple[Row, ...], options: AutoOptions) -> None:
     record = load_handoff() if mode == "check" else {}
     print(f"mode: {mode}", flush=True)
+    if mode == "auto":
+        print(f"rows selected: {', '.join(r.key for r in rows)}", flush=True)
+        print(f"delay: {options.delay:.0f}s   preamble: {options.preamble}   "
+              f"reset: {'SKIPPED (--no-reset)' if options.skip_reset else 'yes'}", flush=True)
     print("connecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, SCREEN) as client:
         acks = AckLog()
         unsubscribe = client.add_response_listener(acks.record)
         try:
             if mode == "auto":
-                await run_automated(client, acks)
+                await run_automated(client, acks, rows, options)
             elif mode == "set":
                 assert row is not None  # parse_mode guarantees it for this mode
                 await run_set(client, acks, row)
