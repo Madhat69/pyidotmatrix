@@ -193,6 +193,14 @@ boundary still OPEN.
 capabilities.py's experimental.schedule_set_theme entry is updated with the
 day-bit and PNG results; the window-boundary claim from 2026-07-12 ("ended a
 minute early") is left as-is pending the redesign.
+
+RESOLVED 2026-07-27 by the redesigned probe: probes/probe_p5b_window_boundary.py
+answered the boundary question this phase could not. The end minute is
+INCLUSIVE, and Schedule evaluates on minute ticks rather than continuously
+(see that probe's own RESULT block for the readout). The 2026-07-12
+"ended a minute early" reading is OVERTURNED, not confirmed -- it was an
+artifact of the minute-tick evaluation, not a real exclusive boundary.
+capabilities.py's experimental.schedule_set_theme entry reflects this.
 """
 
 import asyncio

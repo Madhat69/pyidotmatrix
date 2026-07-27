@@ -152,11 +152,48 @@ USAGE
 preceding `arm` measures nothing. The mode is printed at startup so a
 mis-typed argument cannot be mistaken for a result.
 
-RESULT (2026-07-__): pending -- NOT RUN tonight. Multi-slot alarm behavior
-(Q1-Q4) remains entirely unmapped; this stays an open item in
-docs/PROBE_PLAN.md rather than a closed one. Do not infer an outcome from
-adjacent probes -- P6 is the only source for these questions and no other
-probe tonight exercised two Timer slots at once.
+RESULT (2026-07-27): CLOSED. All four questions answered, across the default
+Q1-Q3 sequence, the isolated `q3` mode, the `arm`/`check` power-cycle pair,
+and the `collide-colour`/`collide-order` follow-up modes added to break the
+slot/order/colour confound.
+
+  * Q1 -- PER-SLOT, INDEPENDENT, ORDERED. Slot 0 (red, buzzer=True) fired red
+    WITH the beep at 12:02; slot 1 (blue, buzzer=False) fired blue SILENTLY
+    at 12:03. Both slots fire, in armed-time order.
+  * Q2 (overlapping 60s/10s windows) was exercised in the default sequence
+    but no verified, attributed readout was carried forward from that phase
+    this pass -- do not cite an outcome for the original 60s-vs-10s overlap
+    question from this run.
+  * Q3 -- PARTIAL DISARM, reproduced twice in the isolated `q3` mode from a
+    fresh reset. `timer_close` clears the closed slot's CONTENT but leaves
+    its SCHEDULE and BUZZER armed: closing slot 0 (armed for 12:02, red,
+    buzzer) left the buzzer firing and BLUE (slot 1's content) displayed at
+    12:02, not red and not silence. The identical arming sequence without
+    the close produced RED at 12:02, isolating the close as the cause. This
+    is a HALF-RIGHT correction of the old "does not disarm" reading, not a
+    reversal of it -- timer_close does something, just not what its name
+    implies. See capabilities.py's experimental.timer_close entry.
+  * Q4 -- FLASH-PERSISTENT. `arm` -> physical power-cycle -> `check`: both
+    slots fired again unprompted with their payloads intact (red+beep at
+    12:34, blue at 12:35). GlanceOS can rely on device-side alarm storage
+    across a power-cycle rather than re-arming on every reconnect.
+  * Collision (new, beyond the original Q1-Q4 set): with `collide-colour`
+    and `collide-order`, the HIGHER SLOT INDEX wins the display in every one
+    of four index x order x colour combinations tried. Both buzzers still
+    sound in a collision; the loser's content never reaches the panel at
+    all rather than being overwritten -- its close-ack read status 3
+    ("still had content, never consumed") against the winner's status 0
+    ("fired and consumed"). Design rule for GlanceOS M7 Stage 4: put the
+    alarm meant to be SEEN in the higher slot index.
+  * STATE-ECHO VOCABULARY CORRECTED: this run's close-acks read 3 (had
+    content) and 0 (empty/consumed) -- NOT the "3 = had content, 1 =
+    empty/unsaved" pairing this probe's own comments and the 2026-07-12
+    session assumed. That status-1 reading has not been reproduced and
+    should not be relied on; 0, not 1, is the current best evidence for
+    "empty/consumed".
+
+capabilities.py's experimental.timer_close and experimental.timer_set entries
+are updated with this run's results.
 """
 
 import asyncio
@@ -187,7 +224,7 @@ LABEL_SECONDS = 4  # scoreboard hold: phase label AND phase boundary
 PERSIST_A_MINUTE = clock_time(12, 34)
 PERSIST_B_MINUTE = clock_time(12, 35)
 
-MODES = ("default", "arm", "check")
+MODES = ("default", "arm", "check", "q3", "collide-colour", "collide-order")
 
 
 def select_mode(argv: list[str]) -> str:
@@ -272,6 +309,19 @@ async def main(mode: str) -> None:
     elif mode == "check":
         print("  reconnects after a power-cycle and reports what survived. No device reset is", flush=True)
         print("  sent in this mode -- resetting would destroy the thing being measured.", flush=True)
+    elif mode == "q3":
+        print("  Q3 ALONE, from a fresh reset. The default run's Q3 came third, after two rounds", flush=True)
+        print("  of arming the same slots, so accumulated device state confounded it.", flush=True)
+        print("  *** DO NOT PIPE THIS RUN THROUGH grep OR ANY FILTER. *** The timer_close state", flush=True)
+        print("  echo is an ack line and is the only arm-state readback the device offers; the", flush=True)
+        print("  last run's echoes were destroyed by a filtered pipe. Tee to a file instead.", flush=True)
+    elif mode in ("collide-colour", "collide-order"):
+        print("  Q2 follow-up: blue content has won every collision so far, but blue has always", flush=True)
+        print("  been slot 1 AND the second upload -- slot index, upload order and colour are", flush=True)
+        print("  confounded. These two modes break one confound each. Both slots buzz, so this", flush=True)
+        print("  also answers whether two armed buzzers give one beep or two.", flush=True)
+        print("  *** DO NOT PIPE THIS RUN THROUGH grep OR ANY FILTER. *** The arm and close state", flush=True)
+        print("  echoes are ack lines; a filtered pipe destroyed them once already. Tee instead.", flush=True)
     else:
         print("  full Q1-Q3 sequence (~10 min). No power-cycle involved; see `arm`/`check` for Q4.", flush=True)
 
@@ -379,6 +429,62 @@ async def main(mode: str) -> None:
                 print("  content survived the power-cycle. A buzzer with NO image => the schedule", flush=True)
                 print("  survived but the payload did not. Clock throughout => alarms are RAM-only.", flush=True)
                 await sleep_until(offset, fake_datetime(12, 35, 20), "both armed minutes elapsed")
+
+            elif mode == "q3":
+                # --- Q3 in isolation -----------------------------------------
+                # The reset above is this mode's whole point: nothing has armed
+                # these slots since, so a fire here cannot be leftover state.
+                await label_phase(3, 1, "ISOLATED Q3 -- close slot 0, leave slot 1 -- EXPECT blue ONLY")
+                offset = spoof_offset(fake_datetime(12, 1, 0))
+                await set_rtc(offset, "q3 base")
+                closed_target = await arm(SLOT_A, clock_time(12, 2), timer.DURATION_10S, True, red_gif)
+                armed.append(closed_target)
+                armed.append(await arm(SLOT_B, clock_time(12, 3), timer.DURATION_10S, False, blue_gif))
+
+                print("\n  *** STATE ECHO FOLLOWS -- DO NOT FILTER THE ACK LINES ***", flush=True)
+                print("  status 3 = slot 0 HAD CONTENT SAVED, 1 = empty/unsaved.", flush=True)
+                await send_and_report(f"timer_close(slot {SLOT_A}) -- STATE ECHO",
+                                      client.experimental.timer_close(closed_target))
+
+                print("  WATCH: SILENCE at 12:02 then BLUE at 12:03 => close is PER-SLOT and works.", flush=True)
+                print("  RED+beep at 12:02 => close does not disarm. Nothing at either minute =>", flush=True)
+                print("  close is GLOBAL.", flush=True)
+                await sleep_until(offset, fake_datetime(12, 3, 40), "both armed minutes elapsed")
+
+            elif mode == "collide-colour":
+                # --- which wins a collision: slot/order, or the colour? ------
+                # Payloads SWAPPED versus every previous run: slot 0 is BLUE and
+                # armed first, slot 1 is RED and armed second. Same duration, so
+                # neither can win on window length.
+                await label_phase(4, 1, "COLLIDE/COLOUR -- slot0=BLUE first, slot1=RED second, same minute")
+                offset = spoof_offset(fake_datetime(12, 1, 0))
+                await set_rtc(offset, "collide-colour base")
+                armed.append(await arm(SLOT_A, clock_time(12, 2), timer.DURATION_10S, True, blue_gif))
+                armed.append(await arm(SLOT_B, clock_time(12, 2), timer.DURATION_10S, True, red_gif))
+
+                print("\n  WATCH 12:02 -- both slots fire at the same minute, both buzzers armed.", flush=True)
+                print("  RED displayed  => the winner is the SLOT INDEX or the UPLOAD ORDER, not", flush=True)
+                print("  the colour (blue was never special). BLUE displayed => COLOUR matters.", flush=True)
+                print("  AND COUNT THE BEEPS: one beep or two? Two armed buzzers have never been", flush=True)
+                print("  tested together.", flush=True)
+                await sleep_until(offset, fake_datetime(12, 2, 40), "the collision minute elapsed")
+
+            elif mode == "collide-order":
+                # --- slot index versus upload order --------------------------
+                # Colours back to normal (slot 0 red, slot 1 blue) but the UPLOAD
+                # ORDER is reversed: slot 1 first, slot 0 second. Whichever wins
+                # here separates "higher slot index" from "last upload".
+                await label_phase(5, 1, "COLLIDE/ORDER -- slot1=BLUE first, slot0=RED second, same minute")
+                offset = spoof_offset(fake_datetime(12, 1, 0))
+                await set_rtc(offset, "collide-order base")
+                armed.append(await arm(SLOT_B, clock_time(12, 2), timer.DURATION_10S, True, blue_gif))
+                armed.append(await arm(SLOT_A, clock_time(12, 2), timer.DURATION_10S, True, red_gif))
+
+                print("\n  WATCH 12:02 -- both slots fire at the same minute, both buzzers armed.", flush=True)
+                print("  RED (slot 0, the LATER upload) displayed  => LAST UPLOAD WINS.", flush=True)
+                print("  BLUE (slot 1, the EARLIER upload) displayed => HIGHER SLOT INDEX WINS.", flush=True)
+                print("  AND COUNT THE BEEPS: one beep or two?", flush=True)
+                await sleep_until(offset, fake_datetime(12, 2, 40), "the collision minute elapsed")
 
             else:
                 # --- Q1: do both fire, in what order? ------------------------
