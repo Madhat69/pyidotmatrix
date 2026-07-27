@@ -110,7 +110,21 @@ STYLES: tuple[tuple[int, str], ...] = (
     (clock_protocol.STYLE_RGB_CORNERS, "STYLE_RGB_CORNERS (never sent before)"),
 )
 
-SEQUENCES = {"sweep": "all eight styles, in wire order 0..7, ~10 s each, unlabelled"}
+# RED, not white, for the colour-attribution sweep. White is useless for asking
+# WHERE the colour argument lands, because a white-digits-on-black face and a
+# white-background-with-black-digits face are both "white and black" to a tired
+# operator -- which is how STYLE_COLOR was first read. A saturated hue makes
+# "red digits" and "red background" impossible to confuse.
+RED = (255, 0, 0)
+
+# Which colour each sequence sweeps with. Everything else about the run is
+# identical, so colour is the only variable between them.
+SEQUENCE_COLOURS = {"sweep": WHITE, "sweep-red": RED}
+
+SEQUENCES = {
+    "sweep": "all eight styles, in wire order 0..7, ~10 s each, unlabelled, colour WHITE",
+    "sweep-red": "the same eight styles, colour RED -- asks WHERE the colour argument lands",
+}
 
 
 def print_usage() -> None:
@@ -138,7 +152,7 @@ def select_sequence(argv: list[str]) -> str:
     return argv[0]
 
 
-def print_visual_script() -> None:
+def print_visual_script(colour_name: str) -> None:
     """EVERY visual of the run, in order, printed before any BLE contact.
 
     Exhaustive on purpose, INCLUDING the states that are only setup. An operator
@@ -158,9 +172,13 @@ def print_visual_script() -> None:
     print("     panel at any point -- a label would be a native-mode command and would", flush=True)
     print("     wreck the very thing being measured. The panel stays in clock mode the", flush=True)
     print("     whole time and only the STYLE ARGUMENT changes underneath it.", flush=True)
-    print("     Colour is held at WHITE for all eight, date and 24h on, so style is the", flush=True)
-    print("     only variable. A face that looks like a bright panel with DARK digits is", flush=True)
-    print("     a real, distinct face (that is what STYLE_COLOR does), not a fault.", flush=True)
+    print(f"     Colour is held at {colour_name} for all eight, date and 24h on, so style", flush=True)
+    print("     is the only variable WITHIN a run. Comparing the two sequences is what", flush=True)
+    print("     answers WHERE the colour lands: 2026-07-28's sweep-red showed RED DIGITS", flush=True)
+    print("     on all eight and NO background fill anywhere, so the colour argument", flush=True)
+    print("     colours the DIGITS -- including STYLE_COLOR, whose 'white BACKGROUND with", flush=True)
+    print("     black digit cutouts' reading came from a label-contaminated probe and is", flush=True)
+    print("     falsified. Do not reinstate it without a red-equivalent reproduction.", flush=True)
     print("  2. AFTER THE SWEEP: the panel is left on style 0, ordinary white face. That", flush=True)
     print("     final face is cleanup, NOT a ninth measurement.", flush=True)
     print("", flush=True)
@@ -176,7 +194,7 @@ def print_visual_script() -> None:
 
 async def main(sequence: str) -> None:
     print(f"sequence: {sequence} -- {SEQUENCES[sequence]}", flush=True)
-    print_visual_script()
+    print_visual_script("RED" if SEQUENCE_COLOURS[sequence] == RED else "WHITE")
     print("\nconnecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, SCREEN) as client:
         # NEVER cleared: each phase reports the slice since its own mark, so a
@@ -192,7 +210,7 @@ async def main(sequence: str) -> None:
                       flush=True)
                 sent_at = time.perf_counter()
                 try:
-                    await client.clock.show(style=style, color=WHITE)
+                    await client.clock.show(style=style, color=SEQUENCE_COLOURS[sequence])
                 except Exception as ex:
                     print(f"      SEND FAILED: {ex!r} (continuing -- the face on the panel is "
                           f"still the PREVIOUS style, note the gap)", flush=True)
