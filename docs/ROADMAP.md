@@ -57,13 +57,13 @@ conventions above):
 | Graffiti (partial updates) | ✅ | delta path proven; "mirror" byte is a documented firmware quirk |
 | Images (adapt + show) | ✅ | SDK-side pipeline solid; no dithering/gamma yet (§6) |
 | GIF (upload + native playback) | ✅ | chunked handshake proven; 64-frame/2 s SDK-side caps |
-| Clock (native) | ✅ | 8 styles; ticks on RTC through disconnects; never flash-persists |
+| Clock (native) | ✅ | all 8 styles verified distinct (6 and 7 animate); `color` sets the DIGIT colour on every style, no background fill anywhere; ticks on RTC through disconnects; never flash-persists |
 | Text (native) | ✅ **verified** | full saga 2026-07-20: the “NACK” was our own ack misparse (fixed); `sendTextTo3232` ported — render A/B proved the generic packet TRUNCATES on 32×32 while the 32×32 variant renders fully; packet speed byte measured (100 = smoothest marquee) |
-| Effects / color | ✅ *(simplified)* | works; APK has a richer command (real speed/saturation) unported |
-| Countdown / stopwatch / scoreboard | ⚠ | source-confirmed, not yet hardware-verified |
+| Effects / color | ✅ | activation and animation speed both verified (byte 5, 2026-07-25); the APK's chunked framing stays unported and inert |
+| Countdown / stopwatch / scoreboard | ✅ | hardware-verified 2026-07-21; stopwatch start-after-pause restarts from zero |
 | Alarm (Timer slots) | ✅ | chunked upload + GIF/image content + buzzer proven live |
 | Weekly schedule | ⚠ | upload + firing proven; week-bit mapping and PNG content unverified |
-| Music sync | ⚠ | kept for parity; app itself doesn't use it |
+| Music sync | ✅ | the real path is host-streamed rhythm levels at ~10 Hz (verified 2026-07-25); the device-side `send_image_rhythm` stays inert |
 | Eco / device settings | ⚠ | source-confirmed; screen-timeout family dead on 32×32 |
 | Experimental namespace | ❓/⚠ | verify_password, time-indicator, delete-device-data (destructive) |
 | Simulator | ✅ *(partial fidelity)* | framebuffer semantics faithful; no ack/DIY-mode modeling yet (§7) |
@@ -375,14 +375,21 @@ must survive into the public docs (Protocol Notes / Firmware Notes):
 3. **Chunked uploads**: 4096-byte chunks, per-chunk StatusAck
    (1=next, 3=saved, 0=failed), duplicates possible, single-chunk uploads jump
    straight to SAVED.
-4. **Persistence is per mode kind** (effect/color persist; clock/DIY never), and
-   *how a link ends matters*: clean disconnect reverts DIY in ~2 s, abrupt loss
-   freezes the last frame indefinitely, and a mode-2 quit parks a kept frame
-   that survives clean disconnects.
+4. **Persistence splits into two classes.** *Config-class* state (brightness,
+   RTC, eco, alarms, schedules) commits to flash on any connection and
+   survives even a physical power cut. *Display-class* state — which content
+   the panel is showing — commits **lazily**, so content written and
+   disconnected-from within seconds is lost silently despite a successful ack;
+   it survives given either enough dwell or a prior reconnect in the same
+   process. Recovery is *re-activate, not re-transfer* (`gif.activate_stored()`).
+   *How a link ends* also matters: clean disconnect reverts DIY in ~2 s, abrupt
+   loss freezes the last frame indefinitely, and a mode-2 quit parks a kept
+   frame that survives clean disconnects.
 5. **Endianness**: every multi-byte Timer/Schedule header field is little-endian
    on the wire (the decompile's `short2Bytes` appears BE but call sites swap).
 6. **Known firmware rejections on 32×32**: generic text packet; screen-timeout
-   family (no ack, no effect); graffiti mirror=3.
+   family (no ack, no effect); graffiti header byte 3, which admits only the
+   value `1` (`2` nacks, `0`/`3`/`4` are acked and silently swallowed).
 7. Windows/WinRT: post-resume the stack can claim connected+services-resolved
    while the GATT session is dead — a robust consumer forces reconnect on
    first write failure (the SDK transport now self-heals this).
@@ -513,7 +520,7 @@ Known variation axes (all evidence 32×32 unless noted):
 | Screen-timeout family unsupported on this 32×32 | probe 2026-07-12 |
 | `set_time_indicator` "doesn't work" on some models (bytes identical in current APK) | lab note + APK |
 | Graffiti byte-3 semantics (legacy/firmware quirk) | probe 2026-07-12 |
-| Persistence-by-mode-kind table | probes 2026-07-17 |
+| Lazy display-state persistence (config-class vs display-class split) | probes 2026-07-12, 07-17, 07-27/28 |
 
 **Strategy recommendation:** a static, versioned **capability table** in the SDK
 (`capabilities(ScreenSize/model) -> frozenset[Capability]`), consulted by
@@ -813,23 +820,66 @@ and 2 = vertical mirror, confirmed by single-pixel discriminators. An earlier
 same-night "byte4=2 recolors two commands back" reading was falsified by that
 discriminator — symmetric probe layouts had made mirroring mimic recoloring
 3/3; the correction is recorded in the probes and capability table.
-`build_set_pixels` now pins byte 3 and exposes `move_type`. *Post-addendum
-finding:* the vendor app's effect-speed dial DOES change animation speed live
-on this panel, while our effect byte-5 and `set_speed` are both proven inert —
-real speed control rides an unmapped wire path (suspect: the bespoke chunked
-effect framing, whose sub-header budget the decompile leaves ambiguous; our
-port of it is device-ignored). **Next lab step: Android HCI snoop capture of
-the app's dial traffic.** *M3 remaining:* the effect-speed wire path (HCI
-snoop), byte-4 values 3/4, and the verify_password probe (sequenced last).
+`build_set_pixels` now pins byte 3 and exposes `move_type`.
+
+*Status 2026-07-28 — M3 is COMPLETE except the deliberately-last password
+work.* The two items that were still open on 2026-07-21 are both closed:
+
+- **Effect speed — CLOSED 2026-07-25.** The P1 HCI capture proved the app
+  never sends `common.set_speed` at all (dead code in the vendor ecosystem);
+  the dial re-sends the *whole* effect command with a new **byte 5**. Byte 5
+  replayed from this SDK slowed and restored the animation, and a five-point
+  sweep gave a monotonic curve, moving `effect.speed` **KNOWN_BROKEN →
+  VERIFIED**. The 2026-07-21 "speed is inert" reading was an instrumentation
+  bug — our builder's malformed length byte — not a device behaviour. There is
+  no unmapped speed wire path; that hypothesis is retired.
+- **Graffiti byte-4 values 3/4 — CLOSED 2026-07-25.** The byte-4 map is
+  COMPLETE (PROBE_PLAN P3): only 1 (HORIZONTAL_MIRROR) and 2
+  (VERTICAL_MIRROR) carry firmware semantics; 0 and 3–7 all draw plain. The
+  ERASE hypothesis for byte4=4 is FALSIFIED — the APK's `DiyImageMoveType`
+  names describe app-side paint-tool behaviour, not firmware behaviour. No
+  further byte-4 probes are planned.
+
+*M3 remaining:* **the `verify_password` probe only**, and by the maintainer
+ruling above it stays sequenced last across the entire roadmap — after M4–M6.
+Nothing else in M3 is waiting on hardware.
 
 **SDK-M4 — Documentation**
 The §12 list, items 1–8. *Accept: a newcomer goes zero→image-on-panel from docs
 alone; every capability has a status tag.*
 
+*Status 2026-07-28 — ✅ CLOSED.* All nine §12 items exist and are current:
+standalone README with capability table and link map; `docs/getting-started.md`
+(discovery→connect→first image); `docs/hardware-compatibility.md` (full table +
+how to contribute results); `docs/protocol-notes.md` (acks, chunking,
+persistence, endianness, streaming); `docs/architecture.md`;
+`docs/api-reference.md`; `examples/` with a runnable file per capability;
+`docs/firmware-notes.md` + `docs/reverse-engineering/`; and `CONTRIBUTING.md`
+including the probe-safety and ⚠→✅ graduation process. Both acceptance
+criteria are met — the zero→image path is `getting-started.md` §4, and every
+capability carries a `CapabilityStatus` tag rendered into the compatibility
+table. Item 6 is hand-curated rather than autodoc-generated, which is a
+deliberate choice (ROADMAP §12 asked for autodoc; a curated page proved more
+useful for a protocol this quirky) — revisit only if it starts drifting from
+the source. Release Process, listed alongside Contributing in item 9, is M7
+work and is tracked there.
+
 **SDK-M5 — Developer tooling**
 CI (lint/mypy/pytest matrix) · examples/ · simulator export + ack emulation ·
 optional CLI · CONTRIBUTING + probe checklist. *Accept: CI green badge; simulator
 can run the upload handshake in tests.*
+
+*Status 2026-07-28 — ⚠ MOSTLY DONE, two items open.* Landed:
+`.github/workflows/ci.yml` (lint/mypy/pytest matrix, badge live in the
+README); `examples/` (eight runnable scripts + index); `CONTRIBUTING.md` with
+the probe checklist; and a CLI does exist in the shape of
+`pyidotmatrix-btsnoop`, the packet-capture analysis tool. **Still open:**
+(a) the simulator's `to_image()`/`save_png()` export (§7) and its ack
+emulation — `SimulatorDisplay` reproduces measured device *timing* via
+`emulate_timing=True` but does not emulate the fa03 ack stream, so the second
+acceptance criterion ("simulator can run the upload handshake in tests") is
+NOT met; (b) a device-control CLI, if one is wanted at all — the optional item
+was never scoped, and `pyidotmatrix-btsnoop` does not cover it.
 
 **SDK-M6 — API freeze**
 Deprecation policy in effect · 0.9 release candidate on PyPI · call for testers
