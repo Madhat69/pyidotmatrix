@@ -258,7 +258,7 @@ GlanceOS actually needs is the SAFE sustained envelope:
 Cost: ~25 min mostly unattended (panel shows a test pattern; operator can
 leave). Directly feeds GlanceOS animated-scene design + an SDK streaming doc.
 
-## P5 — Weekly Schedule verification via RTC spoofing  ⚠ PARTIAL 2026-07-27
+## P5 — Weekly Schedule verification via RTC spoofing  ✅ CLOSED 2026-07-27
 
 Same trick that mapped the Timer week bits in minutes. Schedule differs from
 Timer: it DOES apply patch_week(), and the 2026-07-12 session left the end
@@ -285,13 +285,46 @@ probe that labels the boundary crossing itself (e.g. a scoreboard tick or a
 distinct visual marker at the moment the RTC crosses the window's end
 minute) rather than relying on one long silent watch.
 
-## P6 — Multi-slot alarms (GlanceOS M7 Stage 4 groundwork)
+**CLOSED (2026-07-27, P5b):** `probes/probe_p5b_window_boundary.py` ran the
+redesigned control/test pair and answered the boundary question. Schedule is
+evaluated on MINUTE TICKS, not continuously: jumping the RTC directly into
+the middle of the armed window fired nothing until the device's own clock
+naturally rolled over to the next minute. THE END MINUTE IS INCLUSIVE -- a
+[12:10, 12:12] window covers 12:10, 12:11 and 12:12, closed by 12:13. This
+OVERTURNS the 2026-07-12 "ended a minute early" / minute-exclusive reading,
+which was an artifact of the same minute-tick evaluation, not a real
+exclusive boundary. No further P5 probes planned; see capabilities.py's
+experimental.schedule_set_theme entry for the full account.
+
+## P6 — Multi-slot alarms (GlanceOS M7 Stage 4 groundwork)  ✅ CLOSED 2026-07-27
 
 Arm slots 0 and 1 for adjacent minutes (RTC-spoofed, DURATION_10S): both
 fire? In order? What happens when a fire window overlaps another slot's
 start? Does `timer_close` on slot 0 leave slot 1 armed? Do armed slots
 survive a device power-cycle?
 Cost: ~10 min. Defines the alarm UX GlanceOS can safely offer.
+
+**CLOSED (2026-07-27):** `probes/probe_p6_alarms.py` ran the default Q1-Q3
+sequence, an isolated `q3` mode, the `arm`/`check` physical power-cycle pair,
+and two added collision modes (`collide-colour`, `collide-order`). Q1:
+two independently armed slots BOTH fire, in order, with per-slot buzzer
+(slot 0 red+beep, slot 1 blue silent). Q3: `timer_close` is a PARTIAL
+disarm -- it clears the closed slot's content but leaves its schedule and
+buzzer armed (reproduced twice in isolation), which HALF-RETRACTS the old
+"does not disarm" reading rather than confirming or fully overturning it.
+Q4: alarms are FLASH-PERSISTENT -- both slots and their payloads survived a
+physical power-cycle. New beyond the original four questions: when two
+slots collide on the same minute, the HIGHER SLOT INDEX always wins the
+display (four index x order x colour combinations, same winner every time);
+both buzzers still sound, and the loser's content is never displayed rather
+than overwritten. The state-echo status vocabulary is also corrected: this
+run's close-acks read 3 (had content) and 0 (empty/consumed), not the
+"3 / 1" pairing the probe's own comments and the 2026-07-12 session assumed
+-- that status-1 reading has not been reproduced. Q2 (the original
+60s-vs-10s overlapping-window question) was exercised in the default
+sequence, but no attributed readout survived into this documentation pass;
+do not cite an outcome for it from this run. Full account in capabilities.py's
+experimental.timer_close and experimental.timer_set entries.
 
 ## P7 — Quick odds and ends (batch into any session's tail)  ✅ CLOSED 2026-07-27
 
@@ -404,7 +437,7 @@ interrupted native uploads do not poison the frame pipeline. The
 still-unreproduced item (see capabilities.py's display.visual_transients
 entry).
 
-## P11 — Persistence and reset matrix
+## P11 — Persistence and reset matrix  ⚠ PARTIAL 2026-07-27 (automated columns closed)
 
 Turn the existing P6/P7 persistence checks into one explicit matrix. For every
 state below, test BLE disconnect/reconnect, software power off/on, and physical
@@ -420,6 +453,27 @@ requires a new command.
 
 Cost: ~20 min. Supplies reliable reconnect documentation and tells the SDK when
 it must invalidate DIY mode or restore caller-visible state.
+
+**PARTIAL (2026-07-27):** `probes/probe_p11_persistence.py` ran both automated
+columns -- BLE disconnect/reconnect (~6s) and software power off/on (~5s) --
+across every row (clock, DIY frame, fullscreen colour, GIF, text, effect,
+flip, brightness, eco, power). Both columns are CLOSED: only the DIY frame is
+volatile (resets to clock on both interruptions); every native mode held.
+Cross-validates brightness's "persists until the next command", eco's
+"autonomous device state", and the P12 sequence-5 finding that DIY re-entry is
+required after a software power off/on. GlanceOS consequence: after any
+reconnect or power blip the panel shows the clock and the caller must re-push
+a frame -- no native mode covers for it. An unexplained, reproducible defect
+surfaced in the same run: a GIF uploaded immediately after `common.reset()`,
+with no other row preceding it, fails to persist across either automated
+interruption, while the identical GIF preceded by any other row (even an
+inert one) survives; see capabilities.py's display.persistence_matrix entry
+and the P19 follow-up below. **STILL OPEN:** the PHYSICAL power-cycle column
+(pulling mains power at the wall) has not been run for this matrix's rows --
+P6's Q4 physical power-cycle covered Timer alarms only, not this matrix.
+Timer/Schedule slots also remain out of scope for this probe by design (see
+its docstring's NOT COVERED note -- those live in the `experimental`
+namespace). See P19 below for the queued physical-column follow-up.
 
 ## P12 — Command-order and display-mode state machine  ⚠ PARTIAL 2026-07-27
 
@@ -566,7 +620,65 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
+## P19 — Second-pass follow-ups (queued 2026-07-27)
 
+Six items surfaced by the second 2026-07-27 recording pass that need
+dedicated panel time. Each is self-contained; batch into any session's tail
+the way P7 bundled its odds and ends.
+
+1. **Separate elapsed-time from re-initialisation for the GIF/reset
+   conditional.** P11's persistence matrix (capabilities.py's
+   display.persistence_matrix) found a GIF uploaded immediately after
+   `common.reset()`, with NO other row preceding it, dies across a
+   reconnect -- but the identical GIF preceded by any other row, even an
+   inert `clock` row that changes no mode, survives. Whether the rescuing
+   factor is elapsed wall time since the reset, or the intervening BLE
+   disconnect/reconnect and power cycle the preceding row itself
+   contributes, is unknown. Needs `probe_p11_persistence.py`'s row filter
+   changed to allow repeated row keys (it currently dedupes, which defeated
+   a `gif gif` attempt) and/or a post-reset settle-delay knob.
+   Cost: ~10 min, reuses P11's machinery.
+2. **Sweep all eight clock styles.** `clock.style_select` is sampled at only
+   2 of 8 values (styles 0 and 3), both looked identical to the operator,
+   and the entry is a KNOWN_BROKEN candidate on thin evidence. A dedicated
+   sweep of styles 1, 2, 4, 5, 6, 7 (`protocol/clock.py`) is needed, with
+   background colour and digit colour distinguished explicitly -- STYLE_COLOR
+   is now known to colour the background with black digit cutouts, not the
+   digits, and any style probe that conflates the two will silently repeat
+   that misreading. Cost: ~10 min.
+3. **Watch one static clock face for several minutes, undisturbed.** Tests
+   whether the clock face cycles colour on its own over time -- the last
+   standing candidate for the unexplained magenta digits seen in an early
+   P17 run, now that eco, clock style, the default colour argument, and
+   low-brightness channel dropout have all been excluded (2026-07-27, see
+   capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
+   Send no commands once the face is up. Cost: ~5 min, mostly unattended.
+4. **Label-free rerun of the countdown/chronograph branch.** P7's
+   countdown-pause / chronograph-start sequence did NOT reproduce the
+   2026-07-20 "paused countdown hijacks chronograph" report, but the
+   probe's own author predicted in advance that the scoreboard phase labels
+   used to narrate each step are themselves native-mode commands that could
+   clear the shared timer state before the interaction under test ever ran.
+   Rerun the identical sequence with zero scoreboard/display calls between
+   the countdown pause and the chronograph commands before recording the
+   independence claim as settled either way. Cost: ~5 min.
+5. **A valid fullscreen-colour persistence test.** P7 phase 9's result is
+   void: it assumed a BLE reconnect repaints nothing, but the P1 HCI capture
+   shows the connect handshake sends a clock style command, so a clock face
+   after reconnect could be the host's own repaint rather than the device
+   losing the colour. Needs a test that either observes across the
+   interruption gap without reconnecting, or suppresses/detects the
+   handshake's clock-style command so a genuine device-side loss can be told
+   apart from a host repaint. Cost: ~10 min.
+6. **P11's physical power-cycle column.** The automated BLE-reconnect and
+   software-power-cycle columns of the persistence matrix are complete (see
+   capabilities.py's display.persistence_matrix); the physical power-cycle
+   column (pulling mains power at the wall) has not been run for this
+   matrix's rows. P6's Q4 physical power-cycle covered Timer alarms only,
+   not display/brightness/eco state. Use the operator workflow
+   `probe_p11_persistence.py` already documents (`set` / power-cycle at the
+   wall / `check` / `restore`). Cost: ~15 min, operator must be present to
+   pull power.
 
 
 
