@@ -363,11 +363,15 @@ handshake is the vendor app's, observed only in the app's traffic; our
 `IDotMatrixClient.connect()` sends no such thing (verified against
 `client.py`/`transport/ble.py`). Phase 9's observation stands: magenta set,
 12s disconnect/reconnect, panel showed the clock, nothing we sent explains it.
-Caveat: phase 9 runs immediately after that probe's own `common.reset()`
-cleanup, which is now one of three unexplained instances of a "reset shadow"
-where content set soon after a reset fails to survive an interruption (see
-capabilities.py's display.persistence_matrix and color.show entries). Not
-solved; a retest of phase 9 without a preceding reset is queued below.
+Caveat, corrected 2026-07-27: this caveat previously read phase 9 as one of
+three instances of a "reset shadow", because phase 9 runs immediately after
+that probe's own `common.reset()` cleanup. **The reset is not the variable.**
+`--no-reset` died identically and the finding was renamed the
+**first-connection shadow** (see capabilities.py's display.persistence_matrix
+and P19 item 1 below). What phase 9 shares with those runs is that its magenta
+was pushed on the FIRST BLE connection of its process, with no intervening
+reconnect. Not solved; a retest of phase 9 after an intervening reconnect is
+queued below.
 
 ---
 
@@ -496,11 +500,15 @@ consequence: after a BLE reconnect the panel shows the clock and the caller
 must re-push a frame -- no native mode covers for it; whether a bare software
 power cycle carries the same consequence for DIY is unresolved pending the
 void cell's re-run. An unexplained, reproducible defect surfaced in the same
-run, now one of THREE instances of a "reset shadow": a GIF uploaded
-immediately after `common.reset()`, with no other row preceding it, fails to
-persist across either automated interruption, while the identical GIF
-preceded by any other row (even an inert one) survives; see capabilities.py's
-display.persistence_matrix entry and the P19 follow-up below. **STILL OPEN:**
+run and was chased to a result the same evening: originally recorded as a
+"reset shadow", it is now the **first-connection shadow** -- display /
+current-mode state uploaded on the FIRST BLE connection of a client session
+renders, acks SAVED, and is silently gone at the next reconnect or power
+event, while one intervening BLE disconnect/reconnect makes everything
+uploaded afterwards durable. `common.reset()` is NOT involved (`--no-reset`
+died twice); see capabilities.py's display.persistence_matrix entry for the
+seven-run evidence table and the P19 follow-up below for the one discriminator
+still unrun. **STILL OPEN:**
 the PHYSICAL power-cycle column (pulling mains power at the wall) has not
 been run for this matrix's rows -- P6's Q4 physical power-cycle covered Timer
 alarms only, not this matrix. Timer/Schedule slots also remain out of scope
@@ -669,21 +677,40 @@ command-byte discovery into initialization, persistence, transfer, and recovery.
 Eight items needing dedicated panel time. Each is self-contained; batch into
 any session's tail the way P7 bundled its odds and ends. Items 1, 5, 6 were
 corrected in the 2026-07-27 review pass; items 7-8 are new from that pass.
+Items 1 and 5 were corrected AGAIN later the same day, when the "reset shadow"
+they both referred to was disproven in its reset-specific form and renamed the
+first-connection shadow.
 
-1. **Separate elapsed-time from re-initialisation for the "reset shadow".**
-   Broader than originally scoped: this is now THREE unexplained instances,
-   not just the GIF case -- a GIF uploaded immediately after `common.reset()`
-   dies across a reconnect (2 runs) while the same GIF preceded by any other
-   row, even inert `clock`, survives (2 runs); and P7 phase 9's magenta
-   fullscreen colour, set shortly after that phase's own `common.reset()`
-   cleanup, also died on reconnect (capabilities.py's display.
-   persistence_matrix and color.show entries). Whether the rescuing factor is
-   elapsed wall time since the reset, or an intervening re-initialisation
-   (BLE reconnect/power cycle), is unknown. `probe_p11_persistence.py` now
-   SUPPORTS this test (repeated row keys, `gif gif`, and a `--delay N`
-   settle knob) -- the follow-up is to RUN `gif gif` and `--delay 120 gif`
-   and record which one rescues the row. Cost: ~10 min, reuses P11's
-   machinery.
+1. **The first-connection shadow: run `--preamble power gif`.** ANSWERED AND
+   REPLACED 2026-07-27. This item used to ask whether the rescuing factor for
+   the "reset shadow" was elapsed wall time or an intervening
+   re-initialisation. Both halves of that framing are now settled, and the
+   finding is renamed: `common.reset()` is not involved at all (`--no-reset
+   gif` died identically, twice), and elapsed time does nothing (`--delay 120
+   gif` died after 120s of silence). What is not durable is display /
+   current-mode state uploaded on the **first BLE connection of a client
+   session**; one intervening BLE disconnect/reconnect makes everything
+   uploaded afterwards durable. Seven GIF-row runs separated cleanly on that
+   one column -- full table in capabilities.py's display.persistence_matrix
+   entry, which also records the scope limit (alarms armed on a first
+   connection DID survive a physical power cycle, so this is not "nothing
+   survives a first connection") and the still-open mechanism.
+
+   **The one discriminator left is `probe_p11_persistence.py --preamble power
+   gif` (~103 s).** `--preamble power` does `turn_off`/`turn_on` over the SAME
+   BLE connection, with no disconnect, so it separates the two candidate
+   mechanisms:
+
+   - **SURVIVES** => the shadow is device-side display state and any
+     re-initialisation lifts it. Mitigation becomes cheap and low-risk: a
+     `turn_off`/`turn_on` in a caller's startup handshake.
+   - **DIES** => the shadow is bound to the BLE SESSION specifically, not to
+     device display state. Mitigation then needs a real disconnect/reconnect
+     cycle at startup, which is materially more disruptive.
+
+   This run decides which mitigation is even on the table, so it should
+   precede any architecture decision, and no mitigation belongs in the driver
+   until it has been made. Cost: ~2 min, reuses P11's machinery.
 2. **Sweep all eight clock styles.** `clock.style_select` is sampled at only
    2 of 8 values (styles 0 and 3), both looked identical to the operator,
    and the entry is a KNOWN_BROKEN candidate on thin evidence. A dedicated
@@ -708,18 +735,19 @@ corrected in the 2026-07-27 review pass; items 7-8 are new from that pass.
    Rerun the identical sequence with zero scoreboard/display calls between
    the countdown pause and the chronograph commands before recording the
    independence claim as settled either way. Cost: ~5 min.
-5. **A fullscreen-colour persistence retest WITHOUT a preceding reset.**
-   CORRECTED SCOPE: P7 phase 9's result is genuine, not void -- the earlier
-   voiding assumed our own reconnect repaints the clock via a handshake seen
-   in the P1 HCI capture, but that handshake is the vendor app's own,
-   observed only in the app's traffic; `IDotMatrixClient.connect()` sends no
-   such thing (verified against `client.py`/`transport/ble.py`; see
-   capabilities.py's color.show entry). The open question now is item 1's
-   reset shadow, not a host repaint: phase 9's magenta was set shortly after
-   a `common.reset()`. Re-run the same scenario (magenta, disconnect,
-   reconnect) with NO preceding reset, well clear in time from any prior
-   reset, to separate genuine device-side colour volatility from the reset
-   shadow. Cost: ~10 min.
+5. **A fullscreen-colour persistence retest AFTER an intervening reconnect.**
+   CORRECTED SCOPE, twice: P7 phase 9's result is genuine, not void -- the
+   earlier voiding assumed our own reconnect repaints the clock via a
+   handshake seen in the P1 HCI capture, but that handshake is the vendor
+   app's own, observed only in the app's traffic; `IDotMatrixClient.connect()`
+   sends no such thing (verified against `client.py`/`transport/ble.py`; see
+   capabilities.py's color.show entry). The open question is now item 1's
+   **first-connection shadow**, not a host repaint and not a reset: phase 9's
+   magenta was pushed on the first BLE connection of its process. Re-run the
+   same scenario (magenta, disconnect, reconnect) with an intervening
+   disconnect/reconnect BEFORE the magenta is set, to separate genuine
+   device-side colour volatility from the first-connection shadow. Cost:
+   ~10 min.
 6. **P11's physical power-cycle column, AND the DIY x software-power-cycle
    void cell.** The BLE-reconnect column of the persistence matrix is
    complete; the software-power-cycle column has one VOID cell (DIY) from a

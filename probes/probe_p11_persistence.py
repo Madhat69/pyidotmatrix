@@ -199,45 +199,73 @@ and exits 2 before any BLE contact. The three prelude knobs -- `--delay N`,
 `--preamble ble|power`, `--no-reset` -- apply to the automated mode only and
 are rejected for set/check/restore. They may appear in any position.
 
-THE RESET SHADOW
-----------------
-CONFIRMED 2026-07-27. Content pushed to the panel shortly after common.reset()
-RENDERS CORRECTLY, ACKS NORMALLY, and IS NOT DURABLE: it vanishes at the next
-disconnect or power event, with nothing in the ack stream indicating a problem.
-GIF row, one fixture, one session:
+THE FIRST-CONNECTION SHADOW
+---------------------------
+CONFIRMED 2026-07-27, and RENAMED: this section previously read THE RESET
+SHADOW and blamed common.reset(). That framing is DISPROVEN -- `--no-reset gif`
+died identically, twice, so the reset is not involved at all.
 
-    upload ~15 s after reset, quiet                  -> DIES     3 runs
-    upload ~120 s after reset, QUIET (--delay 120)   -> DIES     1 run
-    upload ~75-90 s after reset, AFTER an interruption -> SURVIVES 3 runs
-        (the full sweep; `clock gif`; row 2 of `gif gif`)
+What is not durable is DISPLAY / CURRENT-MODE STATE UPLOADED ON THE FIRST BLE
+CONNECTION OF A CLIENT SESSION. It renders correctly, it acks normally
+(StatusAck ... status=3, SAVED), and it is silently gone at the next BLE
+reconnect or software power cycle -- the panel returns to the clock, with
+nothing in the ack stream indicating a problem. ONE intervening BLE
+disconnect/reconnect within the same client session makes everything uploaded
+afterwards durable.
 
-ELAPSED TIME IS IRRELEVANT -- two minutes of silence changed nothing, while a
-6 s BLE disconnect changed everything. An intervening RE-INITIALISATION is what
-lifts the shadow. Note that an inert preceding row (`clock`, which changes no
-mode) rescues it just as well as a mode-changing one, so it is the interruption
-the row performs, not the content it sets.
+Every GIF-row run of the 2026-07-27 session -- seven runs, one fixture:
 
-This unifies three previously unrelated oddities: the isolated GIF deaths here,
-P7 phase 9's magenta reverting on reconnect (set right after that phase's own
-common.reset()), and probably this probe's DIY row. It matters beyond the lab:
-common.reset() is the driver's remedy for a stuck panel and the daemon's
-recovery paths reset and then push, so that content is guaranteed to vanish at
-the first reconnect, silently.
+    run                  reset?  preceding row?  BLE reconnect first?  outcome
+    gif (x2)             yes     no              no                    DIED
+    --delay 120 gif      yes     no              no                    DIED
+    --no-reset gif (x2)  NO      no              no                    DIED
+    full row sweep       yes     yes             yes                   SURVIVED
+    clock gif            yes     yes             yes                   SURVIVED
+    --preamble ble gif   yes     NO              YES                   SURVIVED
 
-STILL OPEN, and what each knob asks:
+Perfect separation on exactly one column: whether a BLE disconnect/reconnect
+had happened earlier in the same process. RULED OUT as the operative factor:
+common.reset() (`--no-reset` died twice -- this is the correction that forces
+the rename); ELAPSED TIME (`--delay 120` died after 120 s of silence); and A
+PRECEDING ROW or the mode change it performs (`--preamble ble` had no preceding
+row and survived, so the rescuing factor is the reconnect itself, not anything
+a row sets). The `--no-reset` result was re-run with no variables changed and
+reproduced exactly.
 
-    --preamble ble gif    WHICH interruption lifts it? Every rescuing run so far
-    --preamble power gif  performed BOTH a BLE reconnect and a power cycle, so
-                          they are confounded. Either one surviving identifies a
-                          sufficient event; both surviving means any re-init
-                          works; NEITHER surviving means the rescuing factor is
-                          something else in the preceding row and this model
-                          needs revisiting.
-    --no-reset gif        Was it ever about common.reset()? If content pushed on
-                          a FRESH CONNECTION with no reset shows the same
-                          shadow, the finding is much larger: the FIRST content
-                          pushed after ANY connection is non-durable until
-                          something re-initialises the device.
+"First connection of a CLIENT SESSION", not of the device's power session:
+every run above is a separate OS process with a fresh client, against a panel
+the previous run had connected to and disconnected from minutes earlier. Having
+been connected by someone else recently does NOT lift the shadow.
+
+NOT "everything written on a first connection is volatile". ALARMS ARE
+UNAFFECTED: P6 Q4 armed both alarm slots in their own process -- therefore on a
+first connection -- and after a PHYSICAL power cycle both fired with payloads
+intact (red+beep 12:34, blue 12:35). The shadow is confined to display /
+current-mode state; alarm and schedule flash writes commit normally on a first
+connection.
+
+MECHANISM: OPEN. interrupt_ble calls client.disconnect() then client.connect()
+-- the SAME connect() used for the initial connection, and IDotMatrixClient.
+connect() only awaits BleTransport.connect() (no clock command, no set_time),
+so these are not two different client code paths at the API level. A read of
+transport/ble.py closes the one remaining suspicion on our side: connect() does
+NOT branch on a cached BLEDevice. Discovery runs only when no MAC was given,
+this probe always passes one, and every call builds a fresh BleakClient and
+re-subscribes identically. Nothing in our stack distinguishes the two
+connections, and the mechanism stays unexplained.
+
+THE ONE DISCRIMINATOR STILL UNRUN: `--preamble power gif` (~103 s). It performs
+turn_off / turn_on over the SAME BLE connection, with no disconnect.
+
+    SURVIVES => the shadow is device-side display state and ANY
+                re-initialisation lifts it; a turn_off/turn_on in a caller's
+                startup handshake would be a cheap, low-risk mitigation.
+    DIES     => the shadow is bound to the BLE SESSION specifically, not to
+                device display state, and only a real disconnect/reconnect
+                cycle lifts it -- materially more disruptive to arrange.
+
+That single run decides which mitigation is even on the table, so nothing
+belongs in the driver until it has been made.
 
 The preamble deliberately calls the row loop's own interrupt_ble /
 interrupt_power, so a preamble interruption is byte-identical to a row's.
@@ -630,8 +658,10 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
           f"delay={options.delay:.0f}s  preamble={options.preamble}", flush=True)
 
     if options.skip_reset:
-        # --no-reset asks the bigger question: is the shadow about common.reset()
-        # at all, or about the FIRST content pushed on ANY fresh connection?
+        # --no-reset asked whether the shadow was about common.reset() at all or
+        # about the FIRST content pushed on ANY fresh connection. ANSWERED
+        # 2026-07-27: the latter -- this died twice, identically to the runs that
+        # did reset. Kept as the reproduction path for that result.
         print("\n*** --no-reset: common.reset() SKIPPED. The prelude is a clock baseline "
               "only, on a connection that has been re-initialised by nothing. ***", flush=True)
         try:
@@ -653,7 +683,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
         # Quiet time only: no sends, no disconnect, no power cycle. That is the
         # point -- it isolates ELAPSED TIME from the re-initialisation a
         # preceding row would also supply. Answer, 2026-07-27: time alone does
-        # NOTHING (--delay 120 gif still died). See the RESET SHADOW section.
+        # NOTHING (--delay 120 gif still died). See THE FIRST-CONNECTION SHADOW.
         print(f"\nwaiting {options.delay:.0f}s before the first row "
               f"(no commands sent during the wait) ...", flush=True)
         await asyncio.sleep(options.delay)
@@ -834,15 +864,18 @@ def take_flag(argv: list[str], name: str) -> tuple[list[str], bool]:
 def take_auto_options(argv: list[str]) -> tuple[list[str], "AutoOptions"]:
     """Pulls the automated mode's knobs out of argv, returning the rest.
 
-    All three exist to dissect the RESET SHADOW (see the module docstring).
-    A preceding row rescues a doomed upload by supplying THREE things at once --
-    elapsed time, a BLE reconnect, and a software power cycle -- so each knob
-    supplies exactly one of them, alone:
+    All three exist to dissect THE FIRST-CONNECTION SHADOW (see the module
+    docstring). A preceding row rescues a doomed upload by supplying THREE
+    things at once -- elapsed time, a BLE reconnect, and a software power cycle
+    -- so each knob supplies exactly one of them, alone:
 
         --delay N               elapsed time alone   (answered: does nothing)
         --preamble ble|power    one interruption alone, before any row
+                                (ble: answered, it rescues; power: still unrun,
+                                and it is the finding's open discriminator)
         --no-reset              removes the reset itself, to ask whether the
                                 shadow was ever about common.reset() at all
+                                (answered: it never was -- hence the rename)
     """
     argv, raw_delay = take_option(argv, "--delay", "--delay 120")
     argv, raw_preamble = take_option(argv, "--preamble", f"--preamble {PREAMBLE_BLE}")
@@ -903,10 +936,10 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
 
     # Anything else is a row filter for the automated mode: keys in the order
     # given, REPEATS KEPT. `gif gif` runs the GIF row, then runs it again after
-    # the first one's interruption cycle -- that repeat is the discriminator for
-    # the reset-shadow finding, so deduping here would silently delete the
-    # experiment (it did, 2026-07-27). `combo` is a set-mode-only row and is
-    # still not accepted here.
+    # the first one's interruption cycle -- that repeat is the discriminator
+    # for the first-connection-shadow finding, so deduping here would silently
+    # delete the experiment (it did, 2026-07-27). `combo` is a set-mode-only
+    # row and is still not accepted here.
     unknown = [key for key in argv if key not in automated_keys]
     if unknown:
         print(f"unrecognized row/mode {unknown}; rows: {', '.join(automated_keys)}", flush=True)
