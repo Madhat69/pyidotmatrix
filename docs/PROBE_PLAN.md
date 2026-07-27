@@ -726,8 +726,8 @@ batch into any session's tail the way P7 bundled its odds and ends.
    current-mode pointer was lost, and the SDK's recovery guidance becomes
    RE-ACTIVATE, DO NOT RE-TRANSFER. Confirms (or kills) the
    pointer-not-payload hypothesis.
-3. **G3 — sweep all eight clock styles.** `probe_p19_g3_clock_styles.py`
-   (~4 min). `clock.style_select` sits at UNKNOWN on 2 of 8 values (styles 0
+3. **G3 — sweep all eight clock styles.** `probe_p19_g3_clock_styles.py sweep`
+   (~90 s). `clock.style_select` sits at UNKNOWN on 2 of 8 values (styles 0
    and 3, which looked identical to the operator) and cannot ship that way.
    The sweep is deliberately UNLABELLED: a scoreboard or text label between
    phases is itself a native-mode command and would switch modes out from
@@ -736,8 +736,9 @@ batch into any session's tail the way P7 bundled its odds and ends.
    colour and digit colour must be distinguished explicitly in whatever is
    recorded -- STYLE_COLOR colours the BACKGROUND with black digit cutouts,
    and any reading that conflates the two silently repeats P17b's misreading.
-4. **G4 — set_time acks with an armed schedule theme.** `probe_p19_g4_settime_
-   acks.py` (~2 min). P14 recorded that no command family it tested was ever
+4. **G4 — set_time acks with an armed schedule theme.**
+   `probe_p19_g4_settime_acks.py full` (~2 min). P14 recorded that no command
+   family it tested was ever
    silent; P5 saw `set_time` draw ZERO acks three times running with a
    schedule theme armed, at the same 2.0 s settle. Arm a theme, jump the RTC
    three times counting acks, disarm, repeat as a control. Settles whether

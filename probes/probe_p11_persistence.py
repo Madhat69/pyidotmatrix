@@ -187,6 +187,7 @@ USAGE
     python probes/probe_p11_persistence.py --preamble ble gif    # one BLE re-init first
     python probes/probe_p11_persistence.py --preamble power gif  # one power cycle first
     python probes/probe_p11_persistence.py --no-reset gif     # no common.reset() at all
+    python probes/probe_p11_persistence.py shadow-recover     # pointer-or-payload, ~3 min
     python probes/probe_p11_persistence.py set                # arm `combo`, then exit
     python probes/probe_p11_persistence.py set gif            # arm one named state
     python probes/probe_p11_persistence.py check              # after the power-cycle
@@ -197,7 +198,8 @@ power. Repeats are KEPT and run again in place. `combo` is a set-mode row only
 and is not accepted as a filter. An unrecognized key prints the accepted keys
 and exits 2 before any BLE contact. The three prelude knobs -- `--delay N`,
 `--preamble ble|power`, `--no-reset` -- apply to the automated mode only and
-are rejected for set/check/restore. They may appear in any position.
+are rejected for set/check/restore/shadow-recover. They may appear in any
+position.
 
 THE FIRST-CONNECTION SHADOW
 ---------------------------
@@ -258,7 +260,34 @@ payload and died identically; P10 found stored GIF content intact through
 interruptions; config-class writes commit fine on first connections. Prediction:
 after a shadowed GIF dies to the clock, gif.activate_stored() on the
 POST-reconnect session brings it back with no re-upload. That is what the
-queued `shadow-recover` mode tests.
+`shadow-recover` mode tests.
+
+THE `shadow-recover` MODE
+------------------------
+DOES THE SHADOW KILL ONLY THE CURRENT-MODE POINTER, WHILE THE STORED PAYLOAD
+SURVIVES UNDERNEATH IT? One run, on a fresh client, with NO common.reset():
+
+    1. upload the 4-corner hop GIF   -> WATCH: the hop (shadowed content)
+    2. BLE disconnect / reconnect    -> WATCH: expected the CLOCK (the kill)
+    3. gif.activate_stored(), on the POST-reconnect session, with the SAME
+       bytes and NO re-upload        -> WATCH: does the hop come back?
+    4. BLE disconnect / reconnect    -> WATCH: this session is UNSHADOWED now,
+                                        so the hop is expected to be durable
+
+    Step 3 HOP RETURNS  => pointer-not-payload CONFIRMED. The shadow drops the
+                           current-mode pointer and leaves the stored gif in
+                           flash. SDK recovery guidance becomes RE-ACTIVATE, DO
+                           NOT RE-TRANSFER -- a ~1 s single-chunk CRC hit
+                           instead of a whole upload.
+    Step 3 STAYS CLOCK  => the payload went with the pointer (or the CRC slot
+                           was cleared); recovery needs a real re-upload, and
+                           activate_stored is no use after a shadow kill.
+                           activate_stored's own return value is printed and
+                           is the second half of this reading: False means the
+                           device did not recognize the CRC at all.
+    Step 4 HOP HOLDS    => the ordinary unshadowed durability result, and the
+                           control that says step 3's restore was real rather
+                           than a repaint that would have died on its own.
 
 CONSISTENT-WITH (inferred topology, not proof): the 2026-07-17 persistence
 probes had fullscreen colour survive THREE DAYS including power cycles, in all
@@ -296,7 +325,7 @@ startup handshake would buy nothing. The only known lift is a genuine throwaway
 connect / disconnect / reconnect at startup, which is a workaround for a
 mechanism nobody understands; it should wait on the `shadow-recover` result,
 since re-activating stored content is a far cheaper recovery if the
-pointer-not-payload hypothesis holds (queued `shadow-recover` mode).
+pointer-not-payload hypothesis holds -- which is what `shadow-recover` measures.
 
 The preamble deliberately calls the row loop's own interrupt_ble /
 interrupt_power, so a preamble interruption is byte-identical to a row's.
@@ -866,6 +895,105 @@ async def run_check(client: IDotMatrixClient, acks: AckLog, record: dict) -> Non
     print("looking. When you are done:  python probes/probe_p11_persistence.py restore", flush=True)
 
 
+# --- mode: shadow-recover (pointer or payload?) -----------------------------
+
+SHADOW_RECOVER_HOP = ("a small WHITE block hopping CLOCKWISE around the four corners "
+                      "(top-left -> top-right -> bottom-right -> bottom-left) on a dim GREEN "
+                      "field, 4 fps")
+
+
+def print_shadow_recover_script() -> None:
+    """EVERY visual of the run, in order, before any BLE contact.
+
+    Exhaustive including the states that are merely setup. An operator who is
+    not told about a baseline sees their first frame contradict their brief and
+    stops trusting the rest of the run -- that is the single biggest cause of a
+    wasted panel session in this lab.
+    """
+    print("", flush=True)
+    print("=== shadow-recover: WHAT YOU WILL SEE, IN ORDER =============================", flush=True)
+    print("  0. BEFORE ANYTHING: whatever the panel is showing right now is LEFT ALONE.", flush=True)
+    print("     No reset, no clock command, no brightness change -- the whole point is", flush=True)
+    print("     that the GIF is the FIRST thing this client session puts on the panel.", flush=True)
+    print(f"  1. THE HOP ({WATCH_SECONDS}s): {SHADOW_RECOVER_HOP}.", flush=True)
+    print("     This is the shadowed content: uploaded on the FIRST BLE connection.", flush=True)
+    print(f"  2. A ~{BLE_GAP_SECONDS}s GAP while the link is down. The panel keeps showing", flush=True)
+    print("     whatever it was showing; nothing is sent during the gap.", flush=True)
+    print(f"  3. AFTER RECONNECT ({WATCH_SECONDS}s): EXPECTED the ordinary CLOCK FACE -- the", flush=True)
+    print("     shadow killing the hop. If the hop is still there, the shadow did not", flush=True)
+    print("     bite this run and everything after step 3 is void; say so.", flush=True)
+    print(f"  4. AFTER activate_stored ({WATCH_SECONDS}s): THE QUESTION. Does the hop come", flush=True)
+    print("     BACK, with no re-upload? Hop = the stored payload survived and only the", flush=True)
+    print("     mode pointer died. Still the clock = the payload went too.", flush=True)
+    print(f"  5. A second ~{BLE_GAP_SECONDS}s GAP, then AFTER RECONNECT ({WATCH_SECONDS}s):", flush=True)
+    print("     this session is UNSHADOWED by now, so whatever step 4 left up is", flush=True)
+    print("     expected to still be there. This is the control on step 4.", flush=True)
+    print("  6. RESTORE: power on, unflipped, brightness 100, eco off, and the CLOCK.", flush=True)
+    print("     That final clock is cleanup, NOT a result.", flush=True)
+    print("=============================================================================", flush=True)
+
+
+async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
+    """Pointer-or-payload: after the shadow kills a GIF, can it be re-ACTIVATED?
+
+    Deliberately sends NOTHING before the upload -- no reset, no clock baseline
+    -- because any earlier command would be the first display state of the
+    session instead of the GIF, and the reconnect would then be killing that.
+    """
+    gif_bytes = build_test_gif()
+    print(f"\nfixture: {len(gif_bytes)}B, the same 4-corner hop the gif row uses.", flush=True)
+    print("nothing has been sent to the panel yet -- the upload below is this session's "
+          "FIRST command.", flush=True)
+
+    try:
+        print("\n=== STEP 1: upload the hop on the FIRST connection (no reset, no baseline)",
+              flush=True)
+        sent_at = time.perf_counter()
+        await client.gif.upload_bytes(gif_bytes)
+        await acks.settle_and_report("gif upload", sent_at)
+        print(f"  WATCH ({WATCH_SECONDS}s) BASELINE -- you should now see: {SHADOW_RECOVER_HOP}",
+              flush=True)
+        await asyncio.sleep(WATCH_SECONDS)
+
+        print(f"\n=== STEP 2: BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
+        await interrupt_ble(client)
+        print(f"  transport: {client.snapshot()!r}", flush=True)
+        print(f"  WATCH ({WATCH_SECONDS}s) -- EXPECTED: {CLOCK_LOOK}, i.e. the shadow killed the "
+              f"hop. Still hopping => the shadow did NOT bite; the rest of this run is void.",
+              flush=True)
+        await asyncio.sleep(WATCH_SECONDS)
+
+        print("\n=== STEP 3: gif.activate_stored() with the SAME bytes -- NO re-upload", flush=True)
+        sent_at = time.perf_counter()
+        recognized = await client.gif.activate_stored(gif_bytes)
+        print(f"  activate_stored returned {recognized!r} "
+              f"(True = the device recognized its stored CRC)", flush=True)
+        await acks.settle_and_report("activate_stored", sent_at)
+        print(f"  WATCH ({WATCH_SECONDS}s) -- THE QUESTION: is the hop BACK?", flush=True)
+        print("    HOP        -- the stored payload SURVIVED the shadow; only the current-mode "
+              "pointer died. Recovery = re-activate, not re-transfer.", flush=True)
+        print("    CLOCK      -- the payload went with the pointer; activate_stored is no use "
+              "after a shadow kill.", flush=True)
+        await asyncio.sleep(WATCH_SECONDS)
+
+        print(f"\n=== STEP 4: control -- BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect",
+              flush=True)
+        await interrupt_ble(client)
+        print(f"  transport: {client.snapshot()!r}", flush=True)
+        print(f"  WATCH ({WATCH_SECONDS}s) -- this session has reconnected twice now, so it is "
+              f"UNSHADOWED. Whatever step 3 left up is expected to STILL BE THERE; if it "
+              f"vanished, step 3's restore was not durable and says nothing about recovery.",
+              flush=True)
+        await asyncio.sleep(WATCH_SECONDS)
+    finally:
+        print("\nrestoring neutral state ...", flush=True)
+        try:
+            await neutralize(client, acks)
+        except Exception as ex:
+            print(f"  RESTORE FAILED -- check the panel by hand (eco, flip, brightness): {ex!r}",
+                  flush=True)
+
+
 # --- mode: restore ----------------------------------------------------------
 
 async def run_restore(client: IDotMatrixClient, acks: AckLog) -> None:
@@ -944,7 +1072,7 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
     """
     modes = ("no argument (all automated rows), "
              "[--delay N] [--preamble ble|power] [--no-reset] <row> [<row> ...], "
-             "set [state], check, restore")
+             "shadow-recover, set [state], check, restore")
     states = ", ".join(row.key for row in ROWS)
     automated_keys = tuple(row.key for row in AUTOMATED_ROWS)
     argv, options = take_auto_options(argv)
@@ -952,11 +1080,11 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
         return "auto", None, AUTOMATED_ROWS, options
 
     mode = argv[0]
-    if mode in ("check", "restore", "set") and options != AutoOptions():
+    if mode in ("check", "restore", "set", "shadow-recover") and options != AutoOptions():
         print(f"--delay / --preamble / --no-reset apply to the automated mode only, not {mode}",
               flush=True)
         raise SystemExit(2)
-    if mode in ("check", "restore"):
+    if mode in ("check", "restore", "shadow-recover"):
         if len(argv) > 1:
             print(f"{mode} takes no further arguments; modes: {modes}", flush=True)
             raise SystemExit(2)
@@ -994,6 +1122,8 @@ def load_handoff() -> dict:
 async def main(mode: str, row: Row | None, rows: tuple[Row, ...], options: AutoOptions) -> None:
     record = load_handoff() if mode == "check" else {}
     print(f"mode: {mode}", flush=True)
+    if mode == "shadow-recover":
+        print_shadow_recover_script()
     if mode == "auto":
         print(f"rows selected: {', '.join(r.key for r in rows)}", flush=True)
         print(f"delay: {options.delay:.0f}s   preamble: {options.preamble}   "
@@ -1010,6 +1140,8 @@ async def main(mode: str, row: Row | None, rows: tuple[Row, ...], options: AutoO
                 await run_set(client, acks, row)
             elif mode == "check":
                 await run_check(client, acks, record)
+            elif mode == "shadow-recover":
+                await run_shadow_recover(client, acks)
             else:
                 await run_restore(client, acks)
         finally:
