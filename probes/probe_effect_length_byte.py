@@ -48,7 +48,21 @@ which is itself a data point (2026-07-21 says they did).
 Baseline clock, then four phases, each a 10s countdown + 10s watch, each
 wrapped so one failure cannot end the run. Cleanup: clock.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-26): INCONCLUSIVE, superseded. Operator-reported pace ranked
+P2 > P1 > P4 > P3 -- i.e. at BOTH declared lengths, speed 5 appeared FASTER
+than speed 100, the opposite of the 2026-07-25 group A reading. P2 (old
+length, speed 5) drew no ack in this run's report; P1/P3/P4 each acked
+[05 00 03 02 01]. Taken at face value this would mean either the length byte
+inverts the speed field or the field is not a speed at all -- but see
+probes/probe_effect_length_byte2.py and probes/probe_effect_speed_sweep.py:
+the design fault run 3 identified is that this run's four phases ran back to
+back with NO clock reset between them, so phases 2-4 each landed on an
+already-running effect instead of a fresh mode entry, which is now the
+leading explanation for the inverted pace reading. Run 3's five-point sweep
+(with a clock reset before every phase) found byte 5 responds monotonically
+as a real speed field, higher = faster, at both declared lengths, and that
+result is what stands in capabilities.py (effect.speed). This run's own
+readings should be treated as void rather than reused.
 """
 
 import asyncio
