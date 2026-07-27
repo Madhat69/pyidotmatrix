@@ -40,8 +40,12 @@ nacks under load are load-shedding the app ignores), and the clock flags
 (0x80 = show_date, 0x40 = hour24, low 3 bits = style). Smaller finds: the DIY
 frame path accepts an RGBA **PNG** payload under our exact 9-byte header
 (acked `[05 00 00 00 01]`); the paint eraser is just `#000000` with `move=0`,
-and only single-pixel 10-byte commands ever appeared; the connect handshake is
-merely CCCD subscribe + `set_time` + clock style; a device ID string
+and only single-pixel 10-byte commands ever appeared; **the vendor app's own**
+connect handshake is merely CCCD subscribe + `set_time` + clock style -- this
+is the app's behavior, observed only in the app's own traffic; our
+`IDotMatrixClient.connect()` sends none of it (see `color.show` in
+capabilities.py for the 2026-07-27 correction of a claim that conflated the
+two). A device ID string
 `"TR2306R007-15"` is readable at ATT handle 0x0007; and `set_time` drew a
 9-byte reply `[09 00 01 80 04 0f 01 03 00]` that `parse_response` ignores
 (len == 5 requirement deliberately unchanged).
@@ -348,11 +352,22 @@ Power-state semantics CLOSED: commands sent to a powered-off panel are still
 accepted and execute invisibly into an unseen framebuffer; `turn_on` reveals
 that resulting framebuffer rather than restoring the prior mode or resetting
 to the clock (capabilities.py's common.set_power entry). The countdown/
-chronograph shared-state mapping and the fullscreen-colour persistence
-recheck were exercised by this run's phases 3-9 but a verified per-step
-readout was not carried forward into this documentation pass; treat those
-two items as still needing a citation-worthy result before relying on them
-beyond the existing 2026-07-20 caveats already in capabilities.py.
+chronograph shared-state mapping (phases 3-8) was exercised but a verified
+per-step readout was not carried forward into this documentation pass; treat
+it as still needing a citation-worthy result beyond the existing 2026-07-20
+caveats in capabilities.py's chronograph.set_mode entry. **Phase 9 (fullscreen-
+colour persistence) IS recorded, corrected 2026-07-27:** an earlier pass this
+same day wrongly voided phase 9's result on the theory that our own reconnect
+repaints the clock via a handshake seen in the P1 HCI capture -- that
+handshake is the vendor app's, observed only in the app's traffic; our
+`IDotMatrixClient.connect()` sends no such thing (verified against
+`client.py`/`transport/ble.py`). Phase 9's observation stands: magenta set,
+12s disconnect/reconnect, panel showed the clock, nothing we sent explains it.
+Caveat: phase 9 runs immediately after that probe's own `common.reset()`
+cleanup, which is now one of three unexplained instances of a "reset shadow"
+where content set soon after a reset fails to survive an interruption (see
+capabilities.py's display.persistence_matrix and color.show entries). Not
+solved; a retest of phase 9 without a preceding reset is queued below.
 
 ---
 
@@ -437,7 +452,7 @@ interrupted native uploads do not poison the frame pipeline. The
 still-unreproduced item (see capabilities.py's display.visual_transients
 entry).
 
-## P11 — Persistence and reset matrix  ⚠ PARTIAL 2026-07-27 (automated columns closed)
+## P11 — Persistence and reset matrix  ⚠ PARTIAL 2026-07-27 (BLE-reconnect column closed; software-power-cycle column has one void cell)
 
 Turn the existing P6/P7 persistence checks into one explicit matrix. For every
 state below, test BLE disconnect/reconnect, software power off/on, and physical
@@ -455,27 +470,45 @@ Cost: ~20 min. Supplies reliable reconnect documentation and tells the SDK when
 it must invalidate DIY mode or restore caller-visible state.
 
 **PARTIAL (2026-07-27):** `probes/probe_p11_persistence.py` ran both automated
-columns -- BLE disconnect/reconnect (~6s) and software power off/on (~5s) --
-across every row (clock, DIY frame, fullscreen colour, GIF, text, effect,
-flip, brightness, eco, power). Both columns are CLOSED: only the DIY frame is
-volatile (resets to clock on both interruptions); every native mode held.
-Cross-validates brightness's "persists until the next command", eco's
-"autonomous device state", and the P12 sequence-5 finding that DIY re-entry is
-required after a software power off/on. GlanceOS consequence: after any
-reconnect or power blip the panel shows the clock and the caller must re-push
-a frame -- no native mode covers for it. An unexplained, reproducible defect
-surfaced in the same run: a GIF uploaded immediately after `common.reset()`,
-with no other row preceding it, fails to persist across either automated
-interruption, while the identical GIF preceded by any other row (even an
-inert one) survives; see capabilities.py's display.persistence_matrix entry
-and the P19 follow-up below. **STILL OPEN:** the PHYSICAL power-cycle column
-(pulling mains power at the wall) has not been run for this matrix's rows --
-P6's Q4 physical power-cycle covered Timer alarms only, not this matrix.
-Timer/Schedule slots also remain out of scope for this probe by design (see
+columns -- BLE disconnect/reconnect (~6s), then software power off/on (~5s)
+chained onto whatever the first interruption left in force -- across every
+row (clock, DIY frame, fullscreen colour, GIF, text, effect, flip, brightness,
+eco, power). The DIY frame resets to the clock on the BLE-reconnect column;
+every native mode held there. **CORRECTION, methodology flaw:** the DIY row's
+software-power-cycle CELL IS VOID, not a second confirmation of volatility --
+the probe establishes each row's state once and does not re-arm it between
+the two interruptions, so for DIY (the only row that already lost the first
+interruption) the second interruption only re-observed the clock the first
+one had already produced. Every other row's chained result is still valid,
+since their state survived interruption 1 and was genuinely there to be
+power-cycled. Do not trust the DIY x software-power-cycle cell until it is
+re-run with the state re-armed in between (queued below). Cross-validates
+brightness's "persists until the next command" and eco's "autonomous device
+state". CORRECTED cross-reference to P12 (see docs/PROBE_PLAN.md's P12
+section and capabilities.py's display.invalidate_diy_mode): "DIY re-entry is
+required after a software power off/on" is WRONG as a blanket rule -- a clean
+P12 sequence-5 rerun with nothing sent while the panel was dark found the DIY
+frame survived the power cycle with no re-entry needed. The earlier
+green-only result traced to an invisible scoreboard command sent while the
+screen was dark, which left a native mode live at power-on; re-entry tracks
+whether a native mode is actively live, not the power cycle itself. GlanceOS
+consequence: after a BLE reconnect the panel shows the clock and the caller
+must re-push a frame -- no native mode covers for it; whether a bare software
+power cycle carries the same consequence for DIY is unresolved pending the
+void cell's re-run. An unexplained, reproducible defect surfaced in the same
+run, now one of THREE instances of a "reset shadow": a GIF uploaded
+immediately after `common.reset()`, with no other row preceding it, fails to
+persist across either automated interruption, while the identical GIF
+preceded by any other row (even an inert one) survives; see capabilities.py's
+display.persistence_matrix entry and the P19 follow-up below. **STILL OPEN:**
+the PHYSICAL power-cycle column (pulling mains power at the wall) has not
+been run for this matrix's rows -- P6's Q4 physical power-cycle covered Timer
+alarms only, not this matrix. Timer/Schedule slots also remain out of scope
+for this probe by design (see
 its docstring's NOT COVERED note -- those live in the `experimental`
 namespace). See P19 below for the queued physical-column follow-up.
 
-## P12 — Command-order and display-mode state machine  ⚠ PARTIAL 2026-07-27
+## P12 — Command-order and display-mode state machine  ✅ CLOSED 2026-07-27
 
 Run deliberate transition sequences rather than testing modes in isolation:
 
@@ -492,15 +525,26 @@ countdown/chronograph interaction from P7 as the time-mode branch.
 Cost: ~10 min. Unblocks automatic mode invalidation in the client and prevents
 callers from needing undocumented knowledge of device state.
 
-**Progress (2026-07-27):** `probes/probe_p12_mode_state_machine.py` ran, but
-a verified, attributed per-sequence readout (which reclaim pairs landed RED
-vs. GREEN, whether sequence 4's paused-countdown/chronograph hijack
-reproduced, whether sequence 2's graffiti painted through onto the native
-clock) is not carried forward into this documentation pass. **STILL OPEN:**
-the whole five-sequence state machine, including the specific question of
-which native modes require `display.invalidate_diy_mode()` before the next
-full frame lands. Re-run and record the operator's colour/count readout per
-sequence before treating any of P12's five questions as answered.
+**CLOSED (2026-07-27):** `probes/probe_p12_mode_state_machine.py` was rebuilt
+one-sequence-per-invocation (the original multi-sequence version produced an
+unfollowable run twice) and all five sequences ran, each with an attributed
+operator readout. Full result in the probe's own RESULT block and in
+capabilities.py's display.invalidate_diy_mode entry. HEADLINE: the real
+question is not "does DIY mode need re-entry", it is "is a native mode still
+actively drawing" -- a naive frame is never rejected or silently swallowed at
+the protocol level, it renders, and what happens next depends on whether
+something else still owns the framebuffer. Re-entry required after TEXT (lost
+a repaint race, not swallowed), GIF+EFFECT (the effect operates on the live
+framebuffer and dragged the injected frame into its own animation), and the
+TIMER BRANCH (native modes repaint only their own dirty regions). No re-entry
+needed after CLOCK+GRAFFITI or after a clean POWER OFF/ON. Sequence 2's own
+separate result: graffiti sent onto a running native clock does NOT composite
+over it, it forces a mode switch -- the daemon's delta-path assumption is
+only safe once the panel is already in the pixel/DIY framebuffer. Sequence
+5's result corrects the earlier "DIY re-entry is required after power
+off/on" reading (see capabilities.py's display.persistence_matrix): that
+result traced to an invisible scoreboard command sent while the screen was
+dark, not to the power cycle itself.
 
 ## P13 — Non-destructive validation-boundary sweep
 
@@ -620,24 +664,26 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
-## P19 — Second-pass follow-ups (queued 2026-07-27)
+## P19 — Second-pass follow-ups (queued 2026-07-27, corrected 2026-07-27)
 
-Six items surfaced by the second 2026-07-27 recording pass that need
-dedicated panel time. Each is self-contained; batch into any session's tail
-the way P7 bundled its odds and ends.
+Eight items needing dedicated panel time. Each is self-contained; batch into
+any session's tail the way P7 bundled its odds and ends. Items 1, 5, 6 were
+corrected in the 2026-07-27 review pass; items 7-8 are new from that pass.
 
-1. **Separate elapsed-time from re-initialisation for the GIF/reset
-   conditional.** P11's persistence matrix (capabilities.py's
-   display.persistence_matrix) found a GIF uploaded immediately after
-   `common.reset()`, with NO other row preceding it, dies across a
-   reconnect -- but the identical GIF preceded by any other row, even an
-   inert `clock` row that changes no mode, survives. Whether the rescuing
-   factor is elapsed wall time since the reset, or the intervening BLE
-   disconnect/reconnect and power cycle the preceding row itself
-   contributes, is unknown. Needs `probe_p11_persistence.py`'s row filter
-   changed to allow repeated row keys (it currently dedupes, which defeated
-   a `gif gif` attempt) and/or a post-reset settle-delay knob.
-   Cost: ~10 min, reuses P11's machinery.
+1. **Separate elapsed-time from re-initialisation for the "reset shadow".**
+   Broader than originally scoped: this is now THREE unexplained instances,
+   not just the GIF case -- a GIF uploaded immediately after `common.reset()`
+   dies across a reconnect (2 runs) while the same GIF preceded by any other
+   row, even inert `clock`, survives (2 runs); and P7 phase 9's magenta
+   fullscreen colour, set shortly after that phase's own `common.reset()`
+   cleanup, also died on reconnect (capabilities.py's display.
+   persistence_matrix and color.show entries). Whether the rescuing factor is
+   elapsed wall time since the reset, or an intervening re-initialisation
+   (BLE reconnect/power cycle), is unknown. `probe_p11_persistence.py` now
+   SUPPORTS this test (repeated row keys, `gif gif`, and a `--delay N`
+   settle knob) -- the follow-up is to RUN `gif gif` and `--delay 120 gif`
+   and record which one rescues the row. Cost: ~10 min, reuses P11's
+   machinery.
 2. **Sweep all eight clock styles.** `clock.style_select` is sampled at only
    2 of 8 values (styles 0 and 3), both looked identical to the operator,
    and the entry is a KNOWN_BROKEN candidate on thin evidence. A dedicated
@@ -662,23 +708,47 @@ the way P7 bundled its odds and ends.
    Rerun the identical sequence with zero scoreboard/display calls between
    the countdown pause and the chronograph commands before recording the
    independence claim as settled either way. Cost: ~5 min.
-5. **A valid fullscreen-colour persistence test.** P7 phase 9's result is
-   void: it assumed a BLE reconnect repaints nothing, but the P1 HCI capture
-   shows the connect handshake sends a clock style command, so a clock face
-   after reconnect could be the host's own repaint rather than the device
-   losing the colour. Needs a test that either observes across the
-   interruption gap without reconnecting, or suppresses/detects the
-   handshake's clock-style command so a genuine device-side loss can be told
-   apart from a host repaint. Cost: ~10 min.
-6. **P11's physical power-cycle column.** The automated BLE-reconnect and
-   software-power-cycle columns of the persistence matrix are complete (see
-   capabilities.py's display.persistence_matrix); the physical power-cycle
-   column (pulling mains power at the wall) has not been run for this
-   matrix's rows. P6's Q4 physical power-cycle covered Timer alarms only,
-   not display/brightness/eco state. Use the operator workflow
-   `probe_p11_persistence.py` already documents (`set` / power-cycle at the
-   wall / `check` / `restore`). Cost: ~15 min, operator must be present to
-   pull power.
+5. **A fullscreen-colour persistence retest WITHOUT a preceding reset.**
+   CORRECTED SCOPE: P7 phase 9's result is genuine, not void -- the earlier
+   voiding assumed our own reconnect repaints the clock via a handshake seen
+   in the P1 HCI capture, but that handshake is the vendor app's own,
+   observed only in the app's traffic; `IDotMatrixClient.connect()` sends no
+   such thing (verified against `client.py`/`transport/ble.py`; see
+   capabilities.py's color.show entry). The open question now is item 1's
+   reset shadow, not a host repaint: phase 9's magenta was set shortly after
+   a `common.reset()`. Re-run the same scenario (magenta, disconnect,
+   reconnect) with NO preceding reset, well clear in time from any prior
+   reset, to separate genuine device-side colour volatility from the reset
+   shadow. Cost: ~10 min.
+6. **P11's physical power-cycle column, AND the DIY x software-power-cycle
+   void cell.** The BLE-reconnect column of the persistence matrix is
+   complete; the software-power-cycle column has one VOID cell (DIY) from a
+   methodology flaw -- the row's state was never re-armed between the two
+   interruptions, so the cell only re-observed the clock the BLE reconnect
+   had already produced (see capabilities.py's display.persistence_matrix).
+   Re-run the DIY row alone with its state re-established between
+   INTERRUPTION 1 and INTERRUPTION 2 to fill that cell honestly. Separately,
+   the PHYSICAL power-cycle column (pulling mains power at the wall) has not
+   been run for this matrix's rows at all -- P6's Q4 physical power-cycle
+   covered Timer alarms only, not display/brightness/eco state. Use the
+   operator workflow `probe_p11_persistence.py` already documents (`set` /
+   power-cycle at the wall / `check` / `restore`). Cost: ~15 min total,
+   operator must be present to pull power.
+7. **Probe whether an effect can be fed caller-supplied framebuffer content.**
+   P12 sequence 3 (2026-07-27, capabilities.py's display.invalidate_diy_mode)
+   found the running rainbow effect visibly DRAGGED a naive injected frame
+   into its own falling animation, rather than simply overwriting it -- the
+   effect operates on the LIVE framebuffer, not a private buffer. Speculative
+   and UNPROBED: write a frame, start an effect, and see whether the effect
+   animates the caller's own pixels rather than its built-in palette. Not a
+   capability until tested. Cost: ~10 min.
+8. **P11's DIY row methodology check for other rows.** The void-cell finding
+   in item 6 was specific to DIY because it was the only row that already
+   lost the BLE-reconnect column; confirm no other row's software-power-cycle
+   result is similarly compromised by reviewing whether any other row's
+   BLE-reconnect column was ambiguous (partial persistence, RESUMES vs.
+   PERSISTS uncertainty) before fully trusting the rest of the matrix.
+   Cost: ~5 min, desk review, no panel time.
 
 
 
