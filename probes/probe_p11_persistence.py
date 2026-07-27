@@ -207,30 +207,65 @@ died identically, twice, so the reset is not involved at all.
 
 What is not durable is DISPLAY / CURRENT-MODE STATE UPLOADED ON THE FIRST BLE
 CONNECTION OF A CLIENT SESSION. It renders correctly, it acks normally
-(StatusAck ... status=3, SAVED), and it is silently gone at the next BLE
-reconnect or software power cycle -- the panel returns to the clock, with
-nothing in the ack stream indicating a problem. ONE intervening BLE
-disconnect/reconnect within the same client session makes everything uploaded
-afterwards durable.
+(StatusAck ... status=3, SAVED), and it is silently LOST AT THE NEXT BLE
+RECONNECT -- the panel returns to the clock, with nothing in the ack stream
+indicating a problem. ONE intervening BLE disconnect/reconnect within the same
+client session makes everything uploaded afterwards durable.
 
-Every GIF-row run of the 2026-07-27 session -- seven runs, one fixture:
+A DYING RUN YIELDS EXACTLY ONE MEASUREMENT (methodology correction, operator-
+caught): once INTERRUPTION 1 has killed the content, INTERRUPTION 2 is looking
+at a clock that was already on screen, so that cell is VOID -- the same
+void-cell flaw the DIY row hit in the matrix proper. Earlier write-ups here said
+"clock after BOTH interruptions"; that overstated the evidence. It is also why
+the claim is now "lost at the next BLE RECONNECT" and not "...or power cycle":
+the power-cycle half was never separately measured on a dying run.
 
-    run                  reset?  preceding row?  BLE reconnect first?  outcome
-    gif (x2)             yes     no              no                    DIED
-    --delay 120 gif      yes     no              no                    DIED
-    --no-reset gif (x2)  NO      no              no                    DIED
-    full row sweep       yes     yes             yes                   SURVIVED
-    clock gif            yes     yes             yes                   SURVIVED
-    --preamble ble gif   yes     NO              YES                   SURVIVED
+Every shadow run of the 2026-07-27 session -- ten runs:
+
+    run                    reset?  preceding row?  BLE reconnect first?  outcome
+    gif (x2)               yes     no              no                    DIED
+    --delay 120 gif        yes     no              no                    DIED
+    --no-reset gif (x2)    NO      no              no                    DIED
+    --preamble power gif   yes     no              no (power blink only) DIED
+    --no-reset color       NO      no              no                    DIED
+    full row sweep         yes     yes             yes                   SURVIVED
+    clock gif              yes     yes             yes                   SURVIVED
+    --preamble ble gif     yes     NO              YES                   SURVIVED
 
 Perfect separation on exactly one column: whether a BLE disconnect/reconnect
 had happened earlier in the same process. RULED OUT as the operative factor:
 common.reset() (`--no-reset` died twice -- this is the correction that forces
-the rename); ELAPSED TIME (`--delay 120` died after 120 s of silence); and A
+the rename); ELAPSED TIME (`--delay 120` died after 120 s of silence); A
 PRECEDING ROW or the mode change it performs (`--preamble ble` had no preceding
 row and survived, so the rescuing factor is the reconnect itself, not anything
-a row sets). The `--no-reset` result was re-run with no variables changed and
-reproduced exactly.
+a row sets); DEVICE-SIDE RE-INITIALISATION (`--preamble power` blinks the panel
+dark and back over the SAME link and does not lift it, so the shadow is bound to
+the BLE SESSION, not to display state the device could re-initialise); and
+GIF-SPECIFIC MACHINERY (`--no-reset color` is a plain mode set -- no chunked
+upload, no flash write, no payload at all -- and died the same way, so what dies
+is the CURRENT-MODE POINTER, broadly across display state). The `--no-reset`
+result was re-run with no variables changed and reproduced exactly.
+
+THE ORGANIZING MODEL: CONFIG-CLASS device state (RTC, alarms, schedules) commits
+durably on ANY connection, the first included. DISPLAY-CLASS state (the
+current-mode pointer) is SESSION-GATED: durable only when set on connection >= 2
+of the client session. Brightness's class is unknown until `--no-reset
+brightness` runs.
+
+POINTER-NOT-PAYLOAD, HYPOTHESIS: the shadow may kill only the current-mode
+POINTER, leaving stored/flash payload intact underneath. Colour has no stored
+payload and died identically; P10 found stored GIF content intact through
+interruptions; config-class writes commit fine on first connections. Prediction:
+after a shadowed GIF dies to the clock, gif.activate_stored() on the
+POST-reconnect session brings it back with no re-upload. That is what the
+queued `shadow-recover` mode tests.
+
+CONSISTENT-WITH (inferred topology, not proof): the 2026-07-17 persistence
+probes had fullscreen colour survive THREE DAYS including power cycles, in all
+likelihood pushed on a first connection with nothing reconnecting for days.
+Read with runs 9 and 10, the kill event sharpens to: shadowed content survives
+elapsed time and power events, and dies when a NEW BLE CONNECTION IS
+ESTABLISHED.
 
 "First connection of a CLIENT SESSION", not of the device's power session:
 every run above is a separate OS process with a fresh client, against a panel
@@ -254,18 +289,14 @@ this probe always passes one, and every call builds a fresh BleakClient and
 re-subscribes identically. Nothing in our stack distinguishes the two
 connections, and the mechanism stays unexplained.
 
-THE ONE DISCRIMINATOR STILL UNRUN: `--preamble power gif` (~103 s). It performs
-turn_off / turn_on over the SAME BLE connection, with no disconnect.
-
-    SURVIVES => the shadow is device-side display state and ANY
-                re-initialisation lifts it; a turn_off/turn_on in a caller's
-                startup handshake would be a cheap, low-risk mitigation.
-    DIES     => the shadow is bound to the BLE SESSION specifically, not to
-                device display state, and only a real disconnect/reconnect
-                cycle lifts it -- materially more disruptive to arrange.
-
-That single run decides which mitigation is even on the table, so nothing
-belongs in the driver until it has been made.
+MITIGATION: none is in the driver, and the cheap one is off the table.
+`--preamble power gif` was the discriminator -- turn_off / turn_on over the SAME
+BLE connection, no disconnect -- and it DIED, so a power blink in a caller's
+startup handshake would buy nothing. The only known lift is a genuine throwaway
+connect / disconnect / reconnect at startup, which is a workaround for a
+mechanism nobody understands; it should wait on the `shadow-recover` result,
+since re-activating stored content is a far cheaper recovery if the
+pointer-not-payload hypothesis holds (queued `shadow-recover` mode).
 
 The preamble deliberately calls the row loop's own interrupt_ble /
 interrupt_power, so a preamble interruption is byte-identical to a row's.
@@ -275,13 +306,15 @@ one row is about 60-75 s, so `gif gif` is about 3 minutes, `--preamble ble gif`
 about 100 s and `--no-reset gif` about 85 s. Re-testing a single row used to
 cost the whole run, which is why the filter exists.
 
-RESULT (2026-07-__): pending -- NOT RUN tonight. The full persistence matrix
-(clock/DIY/colour/GIF/text/effect/flip/brightness/eco x BLE reconnect/
-software power/physical power-cycle) remains open. No other probe tonight
-substitutes for this one -- P17/P17b establish eco's autonomous-device-state
-result under a BLE disconnect specifically (recorded in capabilities.py's
-eco.set_mode entry), but the rest of the P11 matrix, including every row
-under a physical power-cycle, is still unmeasured.
+RESULT (2026-07-27): both automated columns ran, every row. On the BLE-reconnect
+column only the DIY frame reset to the clock; every native mode held. READ THOSE
+CELLS AS UNSHADOWED RESULTS -- the sweep arms its rows in sequence, so from the
+second row onwards each state was established on connection >= 2 of the process,
+out of the first-connection shadow. The clock control row is additionally
+vacuous as a shadow test (a clock dying to a clock is undetectable). The DIY x
+software-power-cycle cell is VOID (the state was never re-armed between the two
+interruptions); the PHYSICAL power-cycle column is unrun for every row. Full
+account in capabilities.py's display.persistence_matrix.
 """
 
 import asyncio
@@ -871,8 +904,9 @@ def take_auto_options(argv: list[str]) -> tuple[list[str], "AutoOptions"]:
 
         --delay N               elapsed time alone   (answered: does nothing)
         --preamble ble|power    one interruption alone, before any row
-                                (ble: answered, it rescues; power: still unrun,
-                                and it is the finding's open discriminator)
+                                (ble: answered, it rescues; power: answered, it
+                                does NOT -- a same-connection power blink leaves
+                                the shadow in place)
         --no-reset              removes the reset itself, to ask whether the
                                 shadow was ever about common.reset() at all
                                 (answered: it never was -- hence the rename)

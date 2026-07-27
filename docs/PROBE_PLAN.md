@@ -363,15 +363,19 @@ handshake is the vendor app's, observed only in the app's traffic; our
 `IDotMatrixClient.connect()` sends no such thing (verified against
 `client.py`/`transport/ble.py`). Phase 9's observation stands: magenta set,
 12s disconnect/reconnect, panel showed the clock, nothing we sent explains it.
-Caveat, corrected 2026-07-27: this caveat previously read phase 9 as one of
-three instances of a "reset shadow", because phase 9 runs immediately after
-that probe's own `common.reset()` cleanup. **The reset is not the variable.**
-`--no-reset` died identically and the finding was renamed the
-**first-connection shadow** (see capabilities.py's display.persistence_matrix
-and P19 item 1 below). What phase 9 shares with those runs is that its magenta
-was pushed on the FIRST BLE connection of its process, with no intervening
-reconnect. Not solved; a retest of phase 9 after an intervening reconnect is
-queued below.
+**Phase 9 is now RESOLVED (2026-07-27), and it turns out to be the
+first-connection shadow's earliest sighting.** This caveat read two wrong ways
+before that: first as a "reset shadow" (phase 9 runs immediately after that
+probe's own `common.reset()` cleanup), then as an open choice between genuine
+device-side colour volatility and the shadow. The reset is not the variable
+(`--no-reset` died identically). The colour-volatility branch is dead too: run
+10 of the shadow series, `--no-reset color`, is phase 9's scenario reproduced
+under control -- fullscreen colour, first connection, disconnect/reconnect --
+and it died the same way, while the persistence matrix's colour row, armed
+UNSHADOWED on connection >=2, held across the identical interruption. Colour is
+durable when it is set out of shadow. The phase-9 retest that used to be queued
+below is **cancelled**; see capabilities.py's color.show and
+display.persistence_matrix entries.
 
 ---
 
@@ -478,7 +482,13 @@ columns -- BLE disconnect/reconnect (~6s), then software power off/on (~5s)
 chained onto whatever the first interruption left in force -- across every
 row (clock, DIY frame, fullscreen colour, GIF, text, effect, flip, brightness,
 eco, power). The DIY frame resets to the clock on the BLE-reconnect column;
-every native mode held there. **CORRECTION, methodology flaw:** the DIY row's
+every native mode held there. **Read every cell as an UNSHADOWED result:** the
+sweep arms its rows in sequence, so from the second row onwards each state was
+established on connection >=2 of the process, out of the first-connection
+shadow described below -- "GIF held" here and "GIF died" there are both true and
+describe different conditions. The clock control row is additionally vacuous as
+a shadow test, since a clock face dying back to the clock face is
+undetectable. **CORRECTION, methodology flaw:** the DIY row's
 software-power-cycle CELL IS VOID, not a second confirmation of volatility --
 the probe establishes each row's state once and does not re-arm it between
 the two interruptions, so for DIY (the only row that already lost the first
@@ -503,12 +513,17 @@ void cell's re-run. An unexplained, reproducible defect surfaced in the same
 run and was chased to a result the same evening: originally recorded as a
 "reset shadow", it is now the **first-connection shadow** -- display /
 current-mode state uploaded on the FIRST BLE connection of a client session
-renders, acks SAVED, and is silently gone at the next reconnect or power
-event, while one intervening BLE disconnect/reconnect makes everything
-uploaded afterwards durable. `common.reset()` is NOT involved (`--no-reset`
-died twice); see capabilities.py's display.persistence_matrix entry for the
-seven-run evidence table and the P19 follow-up below for the one discriminator
-still unrun. **STILL OPEN:**
+renders, acks SAVED, and is silently lost **at the next BLE reconnect**, while
+one intervening BLE disconnect/reconnect makes everything uploaded afterwards
+durable. `common.reset()` is NOT involved (`--no-reset` died twice), a
+same-connection power blink does NOT lift it (`--preamble power` died), and it
+is not GIF-specific (`--no-reset color` died with no payload in play). Note
+also that a dying run yields exactly ONE measurement: once the reconnect has
+killed the content, the second interruption only re-reads a clock that was
+already up. See capabilities.py's display.persistence_matrix entry for the
+ten-run evidence table, the config-class / display-class model, and the
+pointer-not-payload hypothesis; P19 below carries the confirm probes.
+**STILL OPEN:**
 the PHYSICAL power-cycle column (pulling mains power at the wall) has not
 been run for this matrix's rows -- P6's Q4 physical power-cycle covered Timer
 alarms only, not this matrix. Timer/Schedule slots also remain out of scope
@@ -674,109 +689,108 @@ command-byte discovery into initialization, persistence, transfer, and recovery.
 
 ## P19 — Second-pass follow-ups (queued 2026-07-27, corrected 2026-07-27)
 
-Eight items needing dedicated panel time. Each is self-contained; batch into
-any session's tail the way P7 bundled its odds and ends. Items 1, 5, 6 were
-corrected in the 2026-07-27 review pass; items 7-8 are new from that pass.
-Items 1 and 5 were corrected AGAIN later the same day, when the "reset shadow"
-they both referred to was disproven in its reset-specific form and renamed the
-first-connection shadow.
+Re-cut 2026-07-27 after the post-audit pass on the first-connection shadow. Two
+of the original eight items are now closed and are recorded here as closed
+rather than deleted, so nobody re-queues them; the rest is split into a queue
+with probes already written and a deferred tail. Each item is self-contained;
+batch into any session's tail the way P7 bundled its odds and ends.
 
-1. **The first-connection shadow: run `--preamble power gif`.** ANSWERED AND
-   REPLACED 2026-07-27. This item used to ask whether the rescuing factor for
-   the "reset shadow" was elapsed wall time or an intervening
-   re-initialisation. Both halves of that framing are now settled, and the
-   finding is renamed: `common.reset()` is not involved at all (`--no-reset
-   gif` died identically, twice), and elapsed time does nothing (`--delay 120
-   gif` died after 120s of silence). What is not durable is display /
-   current-mode state uploaded on the **first BLE connection of a client
-   session**; one intervening BLE disconnect/reconnect makes everything
-   uploaded afterwards durable. Seven GIF-row runs separated cleanly on that
-   one column -- full table in capabilities.py's display.persistence_matrix
-   entry, which also records the scope limit (alarms armed on a first
-   connection DID survive a physical power cycle, so this is not "nothing
-   survives a first connection") and the still-open mechanism.
+**Answered / cancelled — do not re-run:**
 
-   **The one discriminator left is `probe_p11_persistence.py --preamble power
-   gif` (~103 s).** `--preamble power` does `turn_off`/`turn_on` over the SAME
-   BLE connection, with no disconnect, so it separates the two candidate
-   mechanisms:
+- **`--preamble power gif`, the shadow's last discriminator.** RUN, and it
+  DIED: a `turn_off`/`turn_on` over the SAME BLE connection does not lift the
+  shadow, so the shadow is bound to the BLE SESSION and the cheap power-blink
+  mitigation is off the table. Only a genuine disconnect/reconnect lifts it.
+  Full account, with the ten-run table, in capabilities.py's
+  display.persistence_matrix.
+- **The P7 phase-9 fullscreen-colour retest.** CANCELLED. `--no-reset color`
+  ran phase 9's scenario from the other direction and died, and the unshadowed
+  matrix colour row held, so phase 9 is the shadow and colour volatility is
+  dead as a hypothesis. Re-running it would only re-answer an answered
+  discriminator. See capabilities.py's color.show.
 
-   - **SURVIVES** => the shadow is device-side display state and any
-     re-initialisation lifts it. Mitigation becomes cheap and low-risk: a
-     `turn_off`/`turn_on` in a caller's startup handshake.
-   - **DIES** => the shadow is bound to the BLE SESSION specifically, not to
-     device display state. Mitigation then needs a real disconnect/reconnect
-     cycle at startup, which is materially more disruptive.
+**Tonight's queue (operator at the panel; probes pre-authored):**
 
-   This run decides which mitigation is even on the table, so it should
-   precede any architecture decision, and no mitigation belongs in the driver
-   until it has been made. Cost: ~2 min, reuses P11's machinery.
-2. **Sweep all eight clock styles.** `clock.style_select` is sampled at only
-   2 of 8 values (styles 0 and 3), both looked identical to the operator,
-   and the entry is a KNOWN_BROKEN candidate on thin evidence. A dedicated
-   sweep of styles 1, 2, 4, 5, 6, 7 (`protocol/clock.py`) is needed, with
-   background colour and digit colour distinguished explicitly -- STYLE_COLOR
-   is now known to colour the background with black digit cutouts, not the
-   digits, and any style probe that conflates the two will silently repeat
-   that misreading. Cost: ~10 min.
-3. **Watch one static clock face for several minutes, undisturbed.** Tests
-   whether the clock face cycles colour on its own over time -- the last
-   standing candidate for the unexplained magenta digits seen in an early
-   P17 run, now that eco, clock style, the default colour argument, and
-   low-brightness channel dropout have all been excluded (2026-07-27, see
-   capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
-   Send no commands once the face is up. Cost: ~5 min, mostly unattended.
-4. **Label-free rerun of the countdown/chronograph branch.** P7's
-   countdown-pause / chronograph-start sequence did NOT reproduce the
-   2026-07-20 "paused countdown hijacks chronograph" report, but the
-   probe's own author predicted in advance that the scoreboard phase labels
-   used to narrate each step are themselves native-mode commands that could
-   clear the shared timer state before the interaction under test ever ran.
-   Rerun the identical sequence with zero scoreboard/display calls between
-   the countdown pause and the chronograph commands before recording the
-   independence claim as settled either way. Cost: ~5 min.
-5. **A fullscreen-colour persistence retest AFTER an intervening reconnect.**
-   CORRECTED SCOPE, twice: P7 phase 9's result is genuine, not void -- the
-   earlier voiding assumed our own reconnect repaints the clock via a
-   handshake seen in the P1 HCI capture, but that handshake is the vendor
-   app's own, observed only in the app's traffic; `IDotMatrixClient.connect()`
-   sends no such thing (verified against `client.py`/`transport/ble.py`; see
-   capabilities.py's color.show entry). The open question is now item 1's
-   **first-connection shadow**, not a host repaint and not a reset: phase 9's
-   magenta was pushed on the first BLE connection of its process. Re-run the
-   same scenario (magenta, disconnect, reconnect) with an intervening
-   disconnect/reconnect BEFORE the magenta is set, to separate genuine
-   device-side colour volatility from the first-connection shadow. Cost:
-   ~10 min.
-6. **P11's physical power-cycle column, AND the DIY x software-power-cycle
-   void cell.** The BLE-reconnect column of the persistence matrix is
-   complete; the software-power-cycle column has one VOID cell (DIY) from a
-   methodology flaw -- the row's state was never re-armed between the two
-   interruptions, so the cell only re-observed the clock the BLE reconnect
-   had already produced (see capabilities.py's display.persistence_matrix).
-   Re-run the DIY row alone with its state re-established between
-   INTERRUPTION 1 and INTERRUPTION 2 to fill that cell honestly. Separately,
-   the PHYSICAL power-cycle column (pulling mains power at the wall) has not
-   been run for this matrix's rows at all -- P6's Q4 physical power-cycle
-   covered Timer alarms only, not display/brightness/eco state. Use the
-   operator workflow `probe_p11_persistence.py` already documents (`set` /
-   power-cycle at the wall / `check` / `restore`). Cost: ~15 min total,
-   operator must be present to pull power.
-7. **Probe whether an effect can be fed caller-supplied framebuffer content.**
-   P12 sequence 3 (2026-07-27, capabilities.py's display.invalidate_diy_mode)
-   found the running rainbow effect visibly DRAGGED a naive injected frame
-   into its own falling animation, rather than simply overwriting it -- the
-   effect operates on the LIVE framebuffer, not a private buffer. Speculative
-   and UNPROBED: write a frame, start an effect, and see whether the effect
-   animates the caller's own pixels rather than its built-in palette. Not a
-   capability until tested. Cost: ~10 min.
-8. **P11's DIY row methodology check for other rows.** The void-cell finding
-   in item 6 was specific to DIY because it was the only row that already
-   lost the BLE-reconnect column; confirm no other row's software-power-cycle
-   result is similarly compromised by reviewing whether any other row's
-   BLE-reconnect column was ambiguous (partial persistence, RESUMES vs.
-   PERSISTS uncertainty) before fully trusting the rest of the matrix.
-   Cost: ~5 min, desk review, no panel time.
+1. **G1 — brightness's class.** `probe_p11_persistence.py --no-reset
+   brightness` (~85 s). The config-class / display-class split (see
+   capabilities.py's display.persistence_matrix) predicts config-class state
+   commits durably on a first connection; brightness is the one state whose
+   side of the split is unknown. A DIED reading puts brightness on the
+   display-class side and means every caller pinning brightness once at
+   startup is wrong.
+2. **G2 — shadow-recover: does the shadow kill the pointer or the payload?**
+   `probe_p11_persistence.py shadow-recover` (~3 min). Uploads the 4-corner
+   hop GIF on a first connection, lets the reconnect kill it, then calls
+   `gif.activate_stored()` on the post-reconnect session: if the hop comes
+   back with no re-upload, the stored payload survived and only the
+   current-mode pointer was lost, and the SDK's recovery guidance becomes
+   RE-ACTIVATE, DO NOT RE-TRANSFER. Confirms (or kills) the
+   pointer-not-payload hypothesis.
+3. **G3 — sweep all eight clock styles.** `probe_p19_g3_clock_styles.py`
+   (~4 min). `clock.style_select` sits at UNKNOWN on 2 of 8 values (styles 0
+   and 3, which looked identical to the operator) and cannot ship that way.
+   The sweep is deliberately UNLABELLED: a scoreboard or text label between
+   phases is itself a native-mode command and would switch modes out from
+   under the test, so the operator watches eight unannounced faces and reports
+   how many were visually distinct and where the changes fell. Background
+   colour and digit colour must be distinguished explicitly in whatever is
+   recorded -- STYLE_COLOR colours the BACKGROUND with black digit cutouts,
+   and any reading that conflates the two silently repeats P17b's misreading.
+4. **G4 — set_time acks with an armed schedule theme.** `probe_p19_g4_settime_
+   acks.py` (~2 min). P14 recorded that no command family it tested was ever
+   silent; P5 saw `set_time` draw ZERO acks three times running with a
+   schedule theme armed, at the same 2.0 s settle. Arm a theme, jump the RTC
+   three times counting acks, disarm, repeat as a control. Settles whether
+   armed schedule state suppresses acks -- which decides whether a
+   `response=True` await on `set_time` can hang a caller (see
+   capabilities.py's common.ack_timing and common.set_time).
+5. **Passive: the magenta watch.** Leave a static clock face up and glance at
+   it occasionally through the session. Tests whether the face cycles colour
+   on its own over time -- the last standing candidate for the unexplained
+   magenta digits from an early P17 run, now that eco, clock style, the
+   default colour argument, and low-brightness channel dropout are all
+   excluded (capabilities.py's eco.lowlight_no_colour_shift and
+   clock.style_select). Send no commands once the face is up.
+
+**Deferred tail (unchanged, no probe written):**
+
+- **P11's physical power-cycle column.** Pulling mains power at the wall has
+  not been run for any of this matrix's rows -- P6's Q4 physical power-cycle
+  covered Timer alarms only. Use the `set` / power-cycle / `check` / `restore`
+  operator workflow `probe_p11_persistence.py` already documents. ~15 min,
+  operator must be present.
+- **The DIY row re-test for the void cell.** Re-run the DIY row alone with its
+  state re-established BETWEEN interruption 1 and interruption 2, so the
+  software-power-cycle cell measures something. While there, confirm no other
+  row's chained cell is compromised the same way (desk review: was any other
+  row's BLE-reconnect reading ambiguous?).
+- **An interruption-order knob for P11**, so a row can be power-cycled before
+  it is BLE-interrupted rather than always after. That is the general fix for
+  the void-cell class of flaw, of which the DIY cell and the dying shadow runs
+  are both instances.
+- **Optional: an HCI capture of connection 1 versus connection 2.** The
+  shadow's mechanism is unexplained and nothing in our stack distinguishes the
+  two connections (verified against `client.py`/`transport/ble.py`). A capture
+  is the only remaining way to see whether the DEVICE distinguishes them.
+- **Label-free rerun of the countdown/chronograph branch.** P7's
+  countdown-pause / chronograph-start sequence did NOT reproduce the
+  2026-07-20 "paused countdown hijacks chronograph" report, but the probe's
+  own author predicted in advance that the scoreboard phase labels narrating
+  each step are themselves native-mode commands that could clear the shared
+  timer state before the interaction under test ever ran. Rerun with zero
+  scoreboard/display calls between the countdown pause and the chronograph
+  commands before recording the independence claim as settled either way. Same
+  label hazard G3 is designed around. ~5 min.
+- **Effect-feeding.** P12 sequence 3 found the running rainbow effect visibly
+  DRAGGED a naive injected frame into its own falling animation rather than
+  overwriting it -- the effect operates on the LIVE framebuffer. Speculative
+  and UNPROBED: write a frame, start an effect, and see whether the effect
+  animates the caller's own pixels rather than its built-in palette. Not a
+  capability until tested. ~10 min.
+
+**Password probes remain LAST-OF-ALL** and are not part of any queue above:
+`set_password` / `verify_password` carry a lockout risk with no known factory
+reset.
 
 
 
