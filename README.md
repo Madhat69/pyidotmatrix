@@ -64,9 +64,9 @@ Requires Python 3.12–3.14. BLE via [bleak](https://github.com/hbldh/bleak)
 | Text (device-rendered, per-panel-size builders) | ✅ verified on 32×32 |
 | Alarms (Timer slots: GIF + PNG content, buzzer, week-day mask) | ✅ incl. week-bit mapping |
 | Eco (scheduled dim) · screen flip | ✅ |
-| Effects / color | ✅ activation; ⚠ the vendor app's speed dial works but its wire path is unmapped |
+| Effects / color | ✅ incl. animation speed (effect byte 5, verified 2026-07-25) |
 | Weekly schedule | ⚠ partially verified |
-| Music sync | ✖ acked but no visible behavior on the reference panel |
+| Music sync | ✅ host-streamed rhythm levels render; ✖ the device-side `send_image_rhythm` path |
 | freeze / set_speed / time indicator | ✖ acked, proven inert on the reference panel |
 
 ✅ hardware-verified · ⚠ experimental / partially mapped · ✖ known-broken on
@@ -152,9 +152,16 @@ ack = await client.await_device_ack(common.build_set_brightness(60))
 ```
 
 **Protocol truth worth knowing:** an ack confirms *receipt*, not *effect* —
-the device can accept a command and not act on it. The SDK documents these
-cases rather than hiding them (see [Protocol Notes](docs/protocol-notes.md)
-and ROADMAP §4).
+the device can accept a command and not act on it. The inverse happens too:
+`common.set_time` works and never acks at all, so this client sends it
+fire-and-forget. The SDK documents these cases rather than hiding them (see
+[Protocol Notes](docs/protocol-notes.md) and ROADMAP §4).
+
+**The other one worth knowing:** the panel commits its *displayed* mode to
+flash lazily. Write content and disconnect a few seconds later and it reverts
+— acked, successful, gone. Dwell, or reconnect once before the real write; and
+recover a lost GIF with `gif.activate_stored()` rather than re-uploading. Full
+rules: [Protocol Notes § Persistence](docs/protocol-notes.md#persistence-and-durability).
 
 ### Lifecycle & observability
 

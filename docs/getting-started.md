@@ -75,8 +75,15 @@ async def main():
 
 Each call above *replaces* what's on screen — the device has one active mode
 at a time (clock, text, effect, or DIY framebuffer). That's a firmware
-property, not an SDK limitation; see
-[Protocol Notes § Persistence](protocol-notes.md#persistence-is-per-mode-kind).
+property, not an SDK limitation.
+
+One surprise worth knowing on day one: **exiting the `async with` block
+immediately after a write can lose the content you just wrote.** The panel
+commits its displayed mode to flash lazily, so a clean disconnect a few
+seconds later reverts it to whatever was persisted before — acked, successful,
+and gone. Leave the connection open for a while, or reconnect once before the
+real write. Full rules and the recovery path:
+[Protocol Notes § Persistence](protocol-notes.md#persistence-and-durability).
 
 ## 5. Rejections are loud by default
 

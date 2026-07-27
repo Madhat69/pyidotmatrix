@@ -20,10 +20,14 @@ not that it did what you asked.** Two hardware-confirmed ways this bites:
   stays in whatever mode it was in. Mode 1 (clear) always takes.
 - Several commands are acked and then simply do nothing observable on the
   reference panel: `common.freeze_screen`, `common.set_speed`,
-  `effect.speed` values other than the historical default,
   `experimental.set_time_indicator`, `music_sync.send_image_rhythm`. See the
   [Hardware Compatibility table](hardware-compatibility.md) for the specific
   evidence behind each.
+- The inverse also happens: **`common.set_time` works and never acks at all.**
+  Zero acks across seven RTC jumps, with schedules armed and unarmed alike, so
+  the SDK sends it fire-and-forget rather than paying a 2 s ack timeout on
+  every call. Don't wait on an ack for it, and don't read the silence as
+  failure.
 
 Treat every acked-but-unverified feature as "the device didn't complain,"
 not "the device did it." This SDK does not hide or compensate for these gaps
@@ -70,21 +74,84 @@ the same handshake: split into 4096-byte outer chunks, send one, wait for its
   chunk; the upload loop drains a stale queued ack before sending the next
   chunk so a duplicate never gets mistaken for the next chunk's response.
 
-## Persistence is per mode kind
+## Persistence and durability
 
-What survives a disconnect (or the whole connection dying) depends on *which*
-mode was active, not on anything the SDK controls:
+Two kinds of device state live behind the same connection, and they persist by
+completely different rules. Confusing them is the easiest way to silently lose
+content you believe you wrote.
+
+### Config-class state — durable immediately
+
+Brightness, the RTC (`common.set_time`), eco windows, alarms (Timer slots) and
+weekly schedules are **flash-backed and committed on any connection**. They
+survive a clean disconnect, a software power cycle, and a physical mains power
+cut — an unplugged panel boots back with the brightness it was last given and
+fires the alarms it was last armed with. Set them once at startup; nothing
+needs to protect them.
+
+Config-class state is also *inherited*: a fresh client can connect to a panel
+already carrying an eco window or an armed alarm that it never set and cannot
+read back.
+
+### Display-class state — lazily persisted, and losable
+
+Which content the panel is *showing* (clock, GIF, text, fullscreen colour,
+effect, DIY frame) is held in RAM when first written and committed to flash
+**lazily**. A clean BLE disconnect makes the device revert to its **last
+persisted** mode — usually the clock.
+
+**The practical rule: if you write content and disconnect immediately, expect
+to lose it.** The write is acked, the SDK reports success, and the panel
+reverts anyway. There is no error to catch and nothing the driver can do about
+it.
+
+Content survives a disconnect if **either** of the following holds. Each is
+independently sufficient; neither is required.
+
+- **Dwell** — enough time has passed since the write. Content ~8 s old dies
+  reliably; content 90 s old survives. The threshold lies somewhere between
+  and has not been bisected, so don't design against a precise number.
+- **A prior disconnect/reconnect earlier in the same session** — a client that
+  has already reconnected once protects everything it writes afterwards, even
+  only ~8 s later. Reproduced twice; the mechanism is unexplained. The effect
+  is per-process: another process's earlier reconnect does not help you.
+
+If a program must write and hand off quickly, a throwaway
+connect/disconnect/reconnect before the real write is the cheap mitigation.
+Otherwise, dwell.
+
+Multiple clients *can* share a panel without one stealing the other's content,
+but the reason is dwell, not ownership — there is no per-client scoping in
+this firmware.
+
+### Recovery: re-activate, don't re-transfer
+
+When a GIF is lost this way, **only the current-mode pointer is gone — the
+stored payload is not**. The device still holds the upload and recognizes its
+CRC:
+
+```python
+await client.gif.activate_stored(gif_bytes)   # True — restored, nothing transferred
+```
+
+You hand it the same bytes only so the device can match their CRC; nothing is
+re-uploaded. The caveat is that this only works for content
+with a re-activate path; a parked DIY frame has no equivalent command, so a
+lost frame has to be re-sent.
+
+### Per-mode notes
 
 | Mode kind | Survives clean disconnect | Survives power-cycle |
 |---|---|---|
-| Effect | ✅ | ✅ (flash-persists — observed surviving 3 days) |
-| Fullscreen color | ✅ | ✅ (flash-persists) |
-| Clock | ❌ (reverts) | ❌ |
+| Effect | ✅ once persisted | ✅ (observed surviving 3 days) |
+| Fullscreen color | ✅ once persisted | ✅ |
+| GIF / text | ✅ once persisted; otherwise recoverable with `activate_stored()` | payload ✅, mode pointer follows the lazy rule |
+| Clock | reverts to the clock — undetectable either way | ❌ |
 | DIY framebuffer | ❌ (reverts in ~2 s) — **unless** quit mode 2 (keep-frame) was used, in which case the kept frame survives a clean disconnect | ❌ (never) |
 
-*How* a connection ends also matters: a clean disconnect reverts an
-unparked DIY frame within about 2 seconds; an abrupt link loss (radio drop,
-crash) freezes the last frame on screen indefinitely instead.
+*How* a connection ends also matters: a clean disconnect reverts an unparked
+DIY frame within about 2 seconds; an abrupt link loss (radio drop, crash)
+freezes the last frame on screen indefinitely instead.
 
 ## Endianness
 

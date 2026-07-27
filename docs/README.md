@@ -20,7 +20,7 @@ a dated, evidence-graded record of how the hardware actually behaves.
 
 | Page | What's in it |
 |---|---|
-| [Protocol Notes](protocol-notes.md) | The doctrine every ⚠/✖-tagged feature is measured against: acks confirm receipt not effect, write-with-response as flow control, chunked-upload handshakes, per-mode persistence, endianness, Windows/WinRT resilience, and streaming/performance (the ~1.75 fps DIY-frame render cap, write-without-response, `write_size_override`). |
+| [Protocol Notes](protocol-notes.md) | The doctrine every ⚠/✖-tagged feature is measured against: acks confirm receipt not effect, write-with-response as flow control, chunked-upload handshakes, the config-class/display-class persistence split (and why content can vanish after a clean disconnect), endianness, Windows/WinRT resilience, and streaming/performance (the ~1.75 fps DIY-frame render cap, write-without-response, `write_size_override`). |
 | [Hardware Compatibility](hardware-compatibility.md) | The full capability table — every command's verification status, evidence, and which panel it was tested on — plus how to extend it with your own hardware. |
 | [Firmware Notes](firmware-notes.md) | What's known (and not known) to vary across panel sizes and firmware revisions. |
 | [Reverse-engineering notes](reverse-engineering/) | The decompiled-APK analysis behind the protocol findings above: byte layouts, source citations, and which claims are hardware-confirmed vs. hypothesis. Start with its own [index](reverse-engineering/README.md). |

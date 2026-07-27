@@ -245,6 +245,24 @@ assertions/preview, and `emulate_timing=True` reproduces the measured
 device costs (1.5 s per full frame, 20 ms per pixel command) without
 hardware.
 
+### Frame geometry contract
+
+Hardware-proven on the reference 32×32 (2026-07-24) and guaranteed by this
+SDK, so you can lay out pixels without probing for orientation:
+
+- **`show_frame(rgb)` is row-major with a top-left origin.** Byte index
+  `(y * width + x) * 3` is the pixel at `(x, y)`; `(0, 0)` is the top-left
+  corner of the panel as you look at it.
+- **Channel order is RGB** — red first, no swap, no BGR variant.
+- **`set_pixels()` and `graffiti.set_pixels()` share the frame's coordinate
+  space exactly.** An `(x, y)` delta lands on the same physical pixel as the
+  same `(x, y)` inside a full frame; there is no offset or axis flip between
+  the two paths.
+- **`common.set_screen_flipped(True)` is a 180° rotation applied at render
+  time**, and it applies equally to DIY frames, graffiti deltas and native
+  modes. Commands always stay in canonical unflipped space — never
+  pre-rotate coordinates to compensate.
+
 `BleDisplay` also exposes two DIY-mode-entry knobs beyond the protocol:
 `set_entry_clear(clear: bool)` (choose the clear/no-clear DIY entry mode for
 the *next* entry) and `invalidate_diy_mode()` (tell it something else — a

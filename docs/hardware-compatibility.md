@@ -32,11 +32,12 @@ capability("text.show").evidence    # the probe/date/source behind that status
 
 | Capability | Status | Panel | Notes |
 |---|---|---|---|
-| `display.show_frame` | ✅ | 32×32 | Full-frame DIY upload; ~1.5 s device processing, ack is flow control. Device **renders** full frames at a hard ~1.75 fps cap regardless of send rate (streaming benchmark 2026-07-20). Also accepts an encoded **PNG** payload under the same 9-byte header (HCI capture 2026-07-25, untested by us). |
+| `display.show_frame` | ✅ | 32×32 | Full-frame DIY upload; ~1.5 s device processing, ack is flow control. Device **renders** full frames at a hard ~1.75 fps cap regardless of send rate (streaming benchmark 2026-07-20). Geometry contract proven 2026-07-24: row-major, top-left origin, RGB channel order, and screen flip is a 180° rotation applied at render (frames, graffiti and native modes alike). Also accepts an encoded **PNG** payload under the same 9-byte header (HCI capture 2026-07-25, untested by us). |
 | `display.write_without_response` | ✅ | 32×32 | Honored by the reference panel — unacked frames render. Firmware-variant caveat: ignored on LumiSync's unit. |
-| `display.set_pixels` | ✅ | 32×32 | Graffiti delta path, ~20 ms unacked, ≤255 px/command. |
+| `display.set_pixels` | ✅ | 32×32 | Graffiti delta path, ~20 ms unacked, ≤255 px/command. Shares the full-frame coordinate space exactly. |
 | `display.diy_entry_no_clear` | ✖ | 32×32 | DIY entry mode 3 silently fails to take over an active effect/clock state — device acks anyway. |
 | `display.diy_quit_keep_frame` | ✅ | 32×32 | Quit mode 2 parks a kept frame that survives clean disconnect, not power-cycle. |
+| `display.persistence_matrix` | ✅ | 32×32 | Displayed mode commits to flash **lazily** — content written and disconnected-from within ~8 s is lost silently; 90 s survives, threshold unbisected. A prior reconnect in the same process also protects it. Config-class state (brightness, RTC, alarms, eco) is unaffected. |
 
 ## Native modes
 
@@ -45,19 +46,20 @@ capability("text.show").evidence    # the probe/date/source behind that status
 | `chronograph.set_mode` | ✅ | 32×32 | Stopwatch counts up; start-after-pause restarts from zero rather than resuming. Shares device-side state with countdown. |
 | `countdown.set_mode` | ✅ | 32×32 | 30 s countdown ran and auto-returned to clock at zero; runs autonomously on device. |
 | `clock.show` | ✅ | 32×32 | Ticks on RTC through disconnects; **not** flash-persisted. |
+| `clock.style_select` | ✅ | 32×32 | **All eight styles verified 2026-07-28** — visually distinct faces, matching the app's set. The `color` argument colours the **digits** on every style; there is no background-fill behaviour on any style, `STYLE_COLOR` included (an earlier background claim was falsified and deleted). Styles 6 and 7 **animate** (blinking / heartbeat). |
 | `scoreboard.show` | ✅ | 32×32 | Two scores rendered correctly on panel. |
 | `eco.set_mode` | ✅ | 32×32 | Scheduled dimming visibly dimmed the panel; disable restored brightness. |
 | `color.show` | ✅ | 32×32 | Fullscreen color flash-persists across power-cycle (survived 3 days observed). |
 | `graffiti.set_pixels` | ✅ | 32×32 | Ack-silent by design — the transport never awaits an ack for it. The app's paint eraser is just a draw of `#000000` with `move=0` (HCI capture 2026-07-25). |
-| `graffiti.move_type` | ✅ | 32×32 | Byte 4: 1 = horizontal mirror, 2 = vertical mirror (draws pixels plus a mirrored copy). 0/3 draw plainly; 4 unresolved. |
+| `graffiti.move_type` | ✅ | 32×32 | Byte 4 map **complete** (2026-07-25): only 1 (horizontal mirror) and 2 (vertical mirror) carry firmware semantics — they draw the pixels plus a mirrored copy. 0 and 3–7 all draw plain. The ERASE hypothesis for value 4 is falsified; the APK's `DiyImageMoveType` names describe app-side paint-tool behaviour, not firmware behaviour. |
 | `graffiti.byte3_required_one` | ✅ | 32×32 | Byte 3 must be `1`; `2` is nacked, `0`/`3`/`4` are acked-and-silently-swallowed. |
 | `effect.show` | ✅ | 32×32 | Effect mode activates live at the historical speed byte (90). |
-| `effect.speed` | ✖ | 32×32 | Real speed field exists at byte 5, every value accepted, but 1 vs 255 showed **no** observable rate difference. Mechanism app-confirmed 2026-07-25 (HCI capture): the app's dial re-sends the *whole* effect command with a new byte 5. Stays ✖ until our retest passes. |
+| `effect.speed` | ✅ | 32×32 | **Byte 5 is the real speed field** (2026-07-25). The HCI capture showed the app's dial re-sending the whole effect command with a new byte 5, and a five-point sweep from this SDK produced a monotonic rate curve. The earlier ✖ traced to our builder's malformed length byte, not to the device. |
 | `effect.show_chunked` | ✖ | 32×32 | Vendor app's bespoke chunked effect framing acked but no effect appeared; `show()` is the working path. |
-| `music_sync.set_mic_type` | ⚠ | 32×32 | Acked on hardware with no visible change of its own (unobservable in isolation). |
+| `music_sync.set_mic_type` | ✅ | 32×32 | The corrected **six**-byte frame is device-accepted and visibly selects a different visualization for the same level stream (2026-07-25). Only value `1` has been sent; what other values select is unobserved. |
 | `music_sync.send_image_rhythm` | ✖ | 32×32 | Fully acked, no dancing figure appeared, clock face stuttered during the stream. |
 | `music_sync.stop_rhythm` | ⚠ | 32×32 | Acked; nothing to observe stopping since `send_image_rhythm` never rendered. |
-| `music_sync.rhythm_levels` | ⚠ | — | The music screen's real path: the phone streams 16 level bytes at ~10 Hz, unacked (HCI capture 2026-07-25). Capture-exact bytes, never run against our panel. |
+| `music_sync.rhythm_levels` | ✅ | 32×32 | The music screen's real path: the host streams 16 level bytes at ~10 Hz, unacked. Rendered on our panel cold from the clock with no mode entry (2026-07-25). Per-band → pixel mapping still unmapped. |
 
 ## Text
 
@@ -70,13 +72,13 @@ capability("text.show").evidence    # the probe/date/source behind that status
 
 | Capability | Status | Panel | Notes |
 |---|---|---|---|
-| `gif.upload_file` | ✅ | 32×32 | Chunked upload + native playback; `optimize=True` required. |
+| `gif.upload_file` | ✅ | 32×32 | Chunked upload + native playback; `optimize=True` required. `gif.activate_stored()` recovers a GIF lost to lazy display-state persistence with **no re-transfer** — the stored payload survives, only the current-mode pointer is lost, and the device matches the CRC of the same bytes (2026-07-28). Re-activate, don't re-upload. |
 
 ## Device control (`common`)
 
 | Capability | Status | Panel | Notes |
 |---|---|---|---|
-| `common.set_brightness` | ✅ | 32×32 | 5–100% works; out-of-range values nacked by the device. |
+| `common.set_brightness` | ✅ | 32×32 | Firmware range is exactly 5–100; out-of-range values nack hard, no clamping. The response curve is **compressed**: usable dimming runs ~5 to ~42, and 50–100 are visually indistinguishable (lux-metered 2026-07-27). Config-class — applies immediately in every mode and survives disconnects, software power cycles and a physical mains power cut. |
 | `common.set_power` | ✅ | 32×32 | Power on/off exercised live. |
 | `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). **Ack-silent** — zero acks on 7 jumps, armed and unarmed schedule state alike (P19 G4, 2026-07-28) — so the SDK sends it fire-and-forget rather than paying the 2 s ack timeout on every call. |
 | `common.device_id_read` | ⚠ | 32×32 | Device ID string readable over GATT — our panel returned `TR2306R007-15` to the vendor app (HCI capture 2026-07-25). No SDK method reads it yet. |
@@ -97,8 +99,8 @@ capability("text.show").evidence    # the probe/date/source behind that status
 | `experimental.set_time_indicator` | ✖ | 32×32 | Acked on/off with nothing visible on the clock face. |
 | `experimental.delete_device_data` | ⚠ | — | Byte-identical across APK versions; **destructive**; never sent to hardware; requires `confirm=True`. |
 | `experimental.schedule_master_switch` | ⚠ | 32×32 | All 4 packed enable/buzzer values accepted; bit semantics untested. |
-| `experimental.timer_close` | ⚠ | 32×32 | Sent to hardware, but the ack is a state echo (0/1/3 from different states) — disarm effect unconfirmed. |
-| `experimental.timer_set` | ✅ | 32×32 | Chunked handshake proven; GIF content fires animated with buzzer. `CONTENT_IMAGE` wants an encoded **PNG** bytestream (confirmed — raw RGB saves but never renders). Week bitmask verified via RTC spoofing: `bit(d+1)` for weekday `d` (Monday=0), `bit0`=enable. |
+| `experimental.timer_close` | ✅ | 32×32 | **Partial disarm, reproduced twice 2026-07-27**: it clears the slot's *content* but leaves its schedule and buzzer armed — a closed slot still buzzes at its minute. The ack is a state echo (3 = had content and cleared, 0 = empty/already fired). |
+| `experimental.timer_set` | ✅ | 32×32 | Chunked handshake proven; GIF content fires animated with buzzer. `CONTENT_IMAGE` wants an encoded **PNG** bytestream (confirmed — raw RGB saves but never renders). Week bitmask verified via RTC spoofing: `bit(d+1)` for weekday `d` (Monday=0), `bit0`=enable. Alarms are flash-persistent — armed slots survive a **physical** power cut with payloads intact and fire after boot. On a same-minute collision the **higher slot index** wins the display while **both** buzzers fire; the loser's content never reaches the panel. |
 | `experimental.schedule_set_theme` | ✅ | 32×32 | GIF theme upload saved and fired inside its window. Image content is **PNG**, not raw RGB — a genuine asymmetry vs Timer. |
 
 ## How to extend this table
@@ -112,8 +114,9 @@ hardware probe on a panel we don't have is a first-class contribution (see
 2. **Run it against your panel** and record what actually happened, good or
    bad. A probe that proves a feature *doesn't* work is exactly as valuable
    as one that proves it does — several rows in this table exist because a
-   probe disproved an earlier assumption (`effect.speed`,
-   `common.freeze_screen`, `common.set_speed`).
+   probe overturned an earlier assumption in one direction or the other
+   (`common.freeze_screen` and `common.set_speed` fell to ✖; `effect.speed`
+   climbed back out of ✖ once the probe itself was fixed).
 3. **Add a byte-exact regression test** if the finding changes a builder's
    behavior.
 4. **Update the entry in `pyidotmatrix/capabilities.py`**, citing your probe
