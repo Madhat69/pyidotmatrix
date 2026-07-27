@@ -89,7 +89,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "app sent an 89-50-4e-47 RGBA 32x32 PNG under our exact 9-byte DIY header and the device "
         "acked it [05 00 00 00 01] -- so this path takes encoded PNG as well as the raw RGB "
         "buffer we send (same finding shape as timer CONTENT_IMAGE). Untested by us; our raw-RGB "
-        "path is unaffected.",
+        "path is unaffected. DIY PERSISTENCE CONFIRMED VOLATILE 2026-07-27 (P11 persistence "
+        "matrix, see display.persistence_matrix): a DIY frame resets to the clock across both a "
+        "BLE reconnect and a software power cycle, validating the client's existing assumption "
+        "that device-side DIY state does not survive a reconnect.",
     ),
     Capability(
         "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
@@ -127,6 +130,39 @@ _ENTRIES: tuple[Capability, ...] = (
         "(2-run probe 2026-07-18; ROADMAP.md section 3 Display).",
     ),
     Capability(
+        "display", "persistence_matrix", CapabilityStatus.VERIFIED, _S32,
+        "P11 PERSISTENCE MATRIX, automated columns COMPLETE 2026-07-27 (probes/probe_p11_"
+        "persistence.py): every row tested (clock, DIY frame, fullscreen colour, GIF, text, "
+        "effect, flip, brightness, eco, power) against BOTH a BLE disconnect/reconnect (~6s) "
+        "and a software power off/on (~5s) cycle. ONLY THE DIY FRAME IS VOLATILE -- it resets "
+        "to the clock on both interruptions. Every native mode (fullscreen colour, GIF, text, "
+        "effect, flip, brightness, eco) HELD across both. Cross-validates three other findings "
+        "from the same session: brightness persisting matches common.set_brightness's "
+        "'persists until the next brightness command'; eco persisting matches eco.set_mode's "
+        "'autonomous device state'; DIY dying matches the P12 state-machine run's finding that "
+        "DIY re-entry is required after a software power off/on (probes/probe_p12_mode_state_"
+        "machine.py sequence 5: the reclaim came back GREEN, not RED, because a naive "
+        "show_frame after turn_on was silently swallowed while still acking ACCEPTED -- treat "
+        "that single P12 sequence as corroborating, not as a closed result on its own, since "
+        "P12 as a whole is still only partially recorded). GLANCEOS CONSEQUENCE: after ANY "
+        "reconnect or power blip the panel shows the CLOCK and the caller MUST re-push a "
+        "frame -- no native mode covers for it, which is the rationale for a 60s keyframe and "
+        "a reconnect watchdog. STILL OPEN: the PHYSICAL power-cycle column (pulling mains "
+        "power at the wall) is NOT covered by this result for this matrix's rows -- P6's Q4 "
+        "physical power-cycle exercised Timer alarms only; queued in docs/PROBE_PLAN.md. OPEN "
+        "DEFECT SURFACE, same session, UNEXPLAINED: a GIF uploaded immediately after "
+        "common.reset(), with no other row preceding it, did NOT persist across either "
+        "automated interruption (reset to clock), reproduced twice; the identical GIF row "
+        "preceded by any other row -- even an inert one like `clock`, which changes no mode "
+        "-- SURVIVED, also reproduced twice. Whether the rescuing factor is elapsed time or "
+        "the intervening reconnect/power-cycle the preceding row itself contributes is "
+        "UNRESOLVED and needs a probe change (repeatable row keys and/or a settle-delay knob) "
+        "to separate them -- queued in docs/PROBE_PLAN.md. This matters because common.reset() "
+        "is the driver's own go-to for clearing a stuck state and GlanceOS's recovery paths do "
+        "exactly that -- a recovery sequence that resets, uploads a GIF, and then meets any "
+        "reconnect can silently return to the clock with no error raised anywhere.",
+    ),
+    Capability(
         "display", "visual_transients", CapabilityStatus.UNKNOWN, _S32,
         "TWO OBSERVED-BUT-UNREPRODUCED visual glitches, logged rather than explained, because "
         "each occurred with the BLE link otherwise healthy. (1) 2026-07-24, single-chunk GIF "
@@ -150,7 +186,25 @@ _ENTRIES: tuple[Capability, ...] = (
         "Stopwatch counts up on panel; start-after-pause RESTARTS from zero rather than "
         "resuming (probes/probe_chronograph_clean.py, 2026-07-21). Caveat: with a paused "
         "countdown pending, chronograph commands acted on THAT state instead (sweep 2 "
-        "2026-07-20) -- the native timer modes share device-side state.",
+        "2026-07-20) -- the native timer modes share device-side state. 2026-07-27 FOLLOW-UP "
+        "(P7, probes/probe_p7_odds_and_ends.py phases 3-8): a targeted sequence -- arm a "
+        "countdown from 5:00, pause it, then drive chronograph start/pause/resume/reset -- did "
+        "NOT reproduce the 2026-07-20 hijack: chronograph.start() produced an INDEPENDENT "
+        "stopwatch counting up from zero (seen at 14s), not a resumption of the paused "
+        "countdown. chronograph.pause() froze the count; chronograph.resume() CONTINUED FROM "
+        "THE FROZEN VALUE -- distinct from start(), which is MODE_START and always begins at "
+        "zero, so this is not a contradiction of the restart-from-zero finding above, just a "
+        "different command. chronograph.reset() zeroed it and it stayed at zero. CAVEAT, do "
+        "NOT treat the hijack as disproven: the probe's own author flagged in advance that the "
+        "scoreboard phase labels used to narrate each step are themselves native-mode commands "
+        "and could clear the shared timer state before the interaction under test ever ran -- "
+        "'suspect #1 if the hijack fails to reproduce.' It failed to reproduce. The "
+        "independence claim needs one LABEL-FREE rerun (no scoreboard/display calls between "
+        "the countdown pause and the chronograph commands) before it is recorded as settled "
+        "either way; this run only shows the hijack did not reproduce here, not that device "
+        "state is never shared. Unrelated finding from the same phase: common.reset() briefly "
+        "shows a RAINBOW pattern before the clock returns -- the device's flash/boot state "
+        "(see common.reset).",
     ),
     Capability(
         "countdown", "set_mode", CapabilityStatus.VERIFIED, _S32,
@@ -178,7 +232,22 @@ _ENTRIES: tuple[Capability, ...] = (
         "always painting the background, so the digit colour never had a "
         "chance to move independent of it. Any future style probe must "
         "distinguish background colour from digit colour explicitly, or it "
-        "will silently repeat this same misreading.",
+        "will silently repeat this same misreading. MAGENTA DIGIT ORIGIN "
+        "UNRESOLVED 2026-07-27 (P17/P17b follow-up): the magenta clock "
+        "digits seen in an earlier by-eye run remain UNEXPLAINED. Eco, the "
+        "clock style, the default colour argument (clock.show already "
+        "defaults to white (255,255,255)), and low-brightness channel "
+        "dropout are all now EXCLUDED (see eco.lowlight_no_colour_shift) -- "
+        "do not record this as resolved in either direction. Remaining "
+        "candidate: the clock face may cycle colour on its own over time; "
+        "untested (watch one static face for several minutes, undisturbed). "
+        "Also on file, deliberately unreconciled: in the P17b instrumented "
+        "run, phase 12's lux reading OSCILLATED between 32 and 48 on a "
+        "repeating cycle while phases 9 and 11 (different style/colour "
+        "settings) sat steady at 63-65 -- suggestive of the style animating, "
+        "but the operator reported no visible change at all during that "
+        "phase. The two observations have not been reconciled; keep both on "
+        "record rather than picking one.",
     ),
     Capability(
         "scoreboard", "show", CapabilityStatus.VERIFIED, _S32,
@@ -208,15 +277,42 @@ _ENTRIES: tuple[Capability, ...] = (
         "back and that silently overrides brightness it never touched. ECO DOES "
         "NOT ALTER COLOUR: with eco armed and active but pinned to "
         "eco_brightness=100 (so brightness could not confound the reading), the "
-        "clock face stayed white across eco-off/eco-on/eco-off; the magenta "
-        "digits seen in an earlier by-eye run were traced instead to the dim "
-        "brightness level itself, not to eco altering rendering (see clock."
-        "style_select).",
+        "clock face stayed white across eco-off/eco-on/eco-off. CORRECTION "
+        "2026-07-27: the magenta digits seen in an earlier by-eye run were NOT "
+        "traced to the dim brightness level after all -- see "
+        "eco.lowlight_no_colour_shift, which EXCLUDES that explanation. The "
+        "magenta digits' origin is UNRESOLVED; see clock.style_select.",
+    ),
+    Capability(
+        "eco", "lowlight_no_colour_shift", CapabilityStatus.VERIFIED, _S32,
+        "NO LOW-LIGHT COLOUR SHIFT 2026-07-27 (probes/probe_p17b_eco_isolation.py, colour + "
+        "lowlight modes): a full-white field held at brightness 100/20/10/5 showed NO colour "
+        "shift at any level. The RGB channels appear to share a single turn-on threshold "
+        "rather than dropping out independently at low brightness. Consequence: the night-mode "
+        "brightness recommendation (target 5-15, see common.set_brightness) stands with NO "
+        "colour caveat. This is also the evidence that RETRACTS the earlier claim, previously "
+        "recorded on eco.set_mode, that the magenta clock digits seen in an early P17 run were "
+        "'traced to the dim brightness level itself' -- that explanation is now EXCLUDED, not "
+        "confirmed. The magenta digits' origin remains genuinely unresolved; see "
+        "clock.style_select's magenta-digit-origin note.",
     ),
     Capability(
         "color", "show", CapabilityStatus.VERIFIED, _S32,
         "Fullscreen color flash-persists across power-cycle -- survived 3 days, 2026-07 "
-        "(persistence probes 2026-07-17; ROADMAP.md section 3 Display).",
+        "(persistence probes 2026-07-17; ROADMAP.md section 3 Display). P7 PHASE 9 IS VOID "
+        "2026-07-27 (probes/probe_p7_odds_and_ends.py): that phase tried to test "
+        "fullscreen-colour persistence across a 12s disconnect/reconnect (magenta -> "
+        "disconnect -> reconnect -> observed clock) on the assumption that 'the reconnect "
+        "itself sends nothing that would repaint it' -- but the P1 HCI capture established the "
+        "connect handshake actually sends CCCD subscribe + set_time + A CLOCK STYLE COMMAND, "
+        "so a clock face after reconnect could be OUR OWN repaint, not the device dropping the "
+        "colour. That run cannot answer fullscreen-colour persistence as designed. INDEPENDENT "
+        "CORROBORATION, same session (P11, see display.persistence_matrix): the persistence "
+        "matrix's fullscreen-colour row HELD across both an automated BLE reconnect and a "
+        "software power cycle -- separate evidence for the same claim that does not share P7 "
+        "phase 9's confound -- but a test that either observes across the gap without "
+        "reconnecting, or suppresses/detects the handshake's clock-style command, is still "
+        "queued in docs/PROBE_PLAN.md before treating this as closed beyond doubt.",
     ),
     Capability(
         "graffiti", "set_pixels", CapabilityStatus.VERIFIED, _S32,
@@ -535,7 +631,15 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "common", "reset", CapabilityStatus.VERIFIED, _S32,
-        "Used live 2026-07-18 to clear a stuck state (ROADMAP.md section 3 Device).",
+        "Used live 2026-07-18 to clear a stuck state (ROADMAP.md section 3 Device). BOOT/FLASH "
+        "STATE IDENTIFIED 2026-07-27 (P7, probes/probe_p7_odds_and_ends.py, the chronograph/"
+        "countdown branch): after a common.reset(), the panel briefly shows a RAINBOW pattern "
+        "before the clock returns -- the device's flash/boot state, useful as a visual landmark "
+        "for 'the device is mid-reset' in future probes. UNEXPLAINED, same session (see "
+        "display.persistence_matrix): a GIF uploaded immediately in reset()'s shadow, with no "
+        "intervening row/command, fails to persist across a later reconnect where the identical "
+        "upload preceded by any other command survives -- reset's aftermath is not yet fully "
+        "settled as a safe launchpad for an immediate upload.",
     ),
     Capability(
         "common", "ack_timing", CapabilityStatus.VERIFIED, _S32,
@@ -572,10 +676,26 @@ _ENTRIES: tuple[Capability, ...] = (
         "ROADMAP.md section 3 Alarms).",
     ),
     Capability(
-        "experimental", "timer_close", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "experimental", "timer_close", CapabilityStatus.VERIFIED, _S32,
         "Sent to hardware, but the ack is a state echo (statuses 0/1/3 observed from different "
-        "states), so the disarm effect is unconfirmed (probes/probe_timer_close.py; "
-        "ROADMAP.md section 3 Alarms).",
+        "states), so the disarm effect was long unconfirmed (probes/probe_timer_close.py; "
+        "ROADMAP.md section 3 Alarms). MECHANISM ESTABLISHED 2026-07-27 (P6, probes/probe_p6_"
+        "alarms.py, isolated `q3` mode, reproduced twice from a fresh reset): timer_close "
+        "clears the slot's CONTENT but leaves its SCHEDULE and BUZZER armed -- it is a PARTIAL "
+        "disarm, not a full one. Slot 0 was armed for 12:02 (red content, buzzer=True) and "
+        "closed; at 12:02 the buzzer still SOUNDED and the panel showed BLUE (slot 1's "
+        "content), not red and not silence. The identical arming sequence WITHOUT the close "
+        "produced RED at 12:02, so the close is the only variable and the effect is real. "
+        "RETRACTS the earlier framing above: 'timer_close does not disarm' was HALF RIGHT -- "
+        "it disarms the content, not the alarm. A caller relying on timer_close to fully "
+        "silence a slot will still get the buzzer. STATE-ECHO VOCABULARY CORRECTED, same "
+        "session: arm returns status 3 (SAVED); closing a slot that still holds content also "
+        "returns status 3 ('had content, now cleared'); closing an empty or already-fired slot "
+        "returns status 0 -- NOT the status 1 this claim rested on in the 2026-07-12 session "
+        "and in protocol/timer.py's build_timer_data_packets docstring. That status-1 reading "
+        "has not been reproduced this session; treat 0, not 1, as the current best evidence for "
+        "'empty/consumed' pending a direct re-check, since a single state-echo digit is exactly "
+        "the kind of thing easy to misread under the ack-timing bugs this lab has hit before.",
     ),
     Capability(
         "experimental", "timer_set", CapabilityStatus.VERIFIED, _S32,
@@ -588,7 +708,23 @@ _ENTRIES: tuple[Capability, ...] = (
         "(probes/probe_timer_weekbit.py): bit(d+1) for weekday d (Monday=0), bit0=enable; "
         "today-bit fired on the real day, went silent with the RTC spoofed to tomorrow, and "
         "tomorrow's bit fired under the spoof -- fire -> silence -> fire, mask evaluated "
-        "against the device RTC weekday. Fire signature: buzzer first, content ~1-2s later.",
+        "against the device RTC weekday. Fire signature: buzzer first, content ~1-2s later. "
+        "MULTI-SLOT BEHAVIOR MAPPED 2026-07-27 (P6, probes/probe_p6_alarms.py): two "
+        "independently armed slots BOTH fire, in armed-minute order -- slot 0 (red, "
+        "buzzer=True) fired red WITH the beep, slot 1 (blue, buzzer=False) fired blue "
+        "SILENTLY, one minute later; per-slot buzzer confirmed. ALARMS ARE FLASH-PERSISTENT: "
+        "arm -> physical power-cycle -> check reconnected with both slots firing again "
+        "unprompted, payloads intact (red+beep at 12:34, blue at 12:35) -- GlanceOS can rely "
+        "on device-side alarm storage rather than re-arming on every reconnect. COLLISION "
+        "RULE: when two slots are armed for the SAME minute, the HIGHER SLOT INDEX wins the "
+        "DISPLAY regardless of arming order or payload colour (four combinations of index x "
+        "order x colour tested, same winner every time). BOTH buzzers still sound in a "
+        "collision -- the loser's content simply never reaches the panel at all, it is not "
+        "overwritten: the loser's close-ack read status 3 ('still had content, never "
+        "consumed') while the winner's read status 0 ('fired and consumed'). Design rule for "
+        "GlanceOS M7 Stage 4: put the alarm meant to be SEEN in the higher slot index. See "
+        "experimental.timer_close for the disarm-semantics and state-echo-vocabulary "
+        "correction this same session produced.",
     ),
     Capability(
         "experimental", "schedule_set_theme", CapabilityStatus.VERIFIED, _S32,
@@ -602,9 +738,19 @@ _ENTRIES: tuple[Capability, ...] = (
         "source-traced encoding on hardware for the first time (Timer's own week-bit map does "
         "not call patch() and so never covered this). A PNG (CONTENT_IMAGE) theme rendered as "
         "a static image inside its window, resolving the last untested Schedule content path. "
-        "STILL OPEN: the window END-BOUNDARY question (inclusive vs. exclusive minute) did not "
-        "reach a clean read this run and needs the redesigned boundary probe queued in "
-        "docs/PROBE_PLAN.md.",
+        "WINDOW BOUNDARY RESOLVED 2026-07-27 (P5b, probes/probe_p5b_window_boundary.py, "
+        "control+test pair): Schedule is evaluated on MINUTE TICKS, not continuously. Jumping "
+        "the RTC directly to 12:11:30 -- inside the armed 12:10-12:12 window -- fired NOTHING; "
+        "content only appeared once the device's own clock naturally rolled over to the next "
+        "minute, 12:12:00. Landing mid-window via set_time therefore fires nothing on its own. "
+        "THE END MINUTE IS INCLUSIVE: content was up at that 12:12:00 tick, and a second run "
+        "that jumped 30s into the end minute (12:12:30) and then watched across the 12:13:00 "
+        "tick found nothing there -- the window covers 12:10, 12:11 and 12:12, and is closed "
+        "by 12:13. This OVERTURNS the 2026-07-12 'looks minute-exclusive' reading recorded "
+        "above: that observation was an artifact of the same minute-tick evaluation, not yet "
+        "understood at the time, not a genuinely exclusive boundary. Design consequence: a "
+        "[T, T+2min] Schedule window is a full 3 calendar minutes long, and content changes "
+        "are only ever visible at a minute rollover, never mid-minute.",
     ),
 )
 
