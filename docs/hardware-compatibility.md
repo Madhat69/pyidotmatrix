@@ -78,7 +78,7 @@ capability("text.show").evidence    # the probe/date/source behind that status
 |---|---|---|---|
 | `common.set_brightness` | ✅ | 32×32 | 5–100% works; out-of-range values nacked by the device. |
 | `common.set_power` | ✅ | 32×32 | Power on/off exercised live. |
-| `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). |
+| `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). **Ack-silent** — zero acks on 7 jumps, armed and unarmed schedule state alike (P19 G4, 2026-07-28) — so the SDK sends it fire-and-forget rather than paying the 2 s ack timeout on every call. |
 | `common.device_id_read` | ⚠ | 32×32 | Device ID string readable over GATT — our panel returned `TR2306R007-15` to the vendor app (HCI capture 2026-07-25). No SDK method reads it yet. |
 | `common.set_screen_flipped` | ✅ | 32×32 | Clock rendered upside down on `True`, righted on `False`. |
 | `common.freeze_screen` | ✖ | 32×32 | Acked, no observable effect in three separate tests. |

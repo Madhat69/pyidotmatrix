@@ -1,6 +1,7 @@
 """Tests that IDotMatrixClient wires feature namespaces to one shared transport."""
 
 import asyncio
+from datetime import datetime
 
 import pytest
 
@@ -709,6 +710,18 @@ async def test_graffiti_send_skips_the_ack_wait():
     transport.next_ack = _device_ack(5, 2, accepted=False)  # ignored: graffiti never awaits
     await client.graffiti.set_pixels((0, 255, 0), [(1, 1)])  # must not raise
     assert transport.ack_waits == []  # graffiti wrote directly, never awaited an ack
+
+
+async def test_set_time_is_fire_and_forget():
+    """set_time is unconditionally ack-silent on this panel (P19 G4, 2026-07-28:
+    zero acks on seven jumps, armed and unarmed), so it must never open an ack
+    wait -- doing so burns the transport's 2.0 s timeout on every call."""
+    client, transport = _client()
+    transport.next_ack = _device_ack(1, 128, accepted=False)  # would raise if awaited
+    await client.common.set_time(datetime(2026, 7, 28, 2, 33, 0))
+    assert transport.ack_waits == []  # never awaited an ack that does not come
+    (data, _response), = transport.writes
+    assert data[:4] == bytes([11, 0, 1, 128])
 
 
 # --- context manager + connect_to convenience (M2) --------------------------

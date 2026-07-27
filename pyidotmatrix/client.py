@@ -258,9 +258,9 @@ class _Feature:
         client's set_command_verification / verify_commands kwarg controls, the
         caller-facing fire-and-forget escape hatch). verify=True/False overrides
         it for this one call -- used internally to force fire-and-forget on the
-        two paths that must never open a pending ack wait (graffiti, which is
-        ack-silent, and verify_password, whose (5, 2) key collides with a
-        graffiti nack).
+        paths that must never open a pending ack wait (graffiti and set_time,
+        both genuinely ack-silent, and verify_password, whose (5, 2) key collides
+        with a graffiti nack).
 
         A StatusAck (Timer/Schedule/text upload family) is NEVER a rejection: a
         SAVED (status=3) reply is a success, and reading it as a nack is the
@@ -596,7 +596,19 @@ class CommonFeature(_Feature):
         await self._send(common.build_set_speed(speed))
 
     async def set_time(self, when: datetime) -> None:
-        await self._send(common.build_set_time(when))
+        """Syncs the device RTC.
+
+        Fire-and-forget (verify=False) deliberately: set_time is UNCONDITIONALLY
+        ACK-SILENT on this panel. P19 G4 (probes/probe_p19_g4_settime_acks.py,
+        2026-07-28) counted ZERO acks on all SEVEN jumps it made -- three with a
+        schedule theme armed, three with both slots disarmed and the master switch
+        off, plus a pre-arm jump -- at a 2.5 s settle with the ack list never read
+        early. Awaiting a reply that provably never arrives would burn the
+        transport's full _DEFAULT_ACK_TIMEOUT (2.0 s) on every call, and set_time
+        is typically a caller's FIRST write of every connection. Same discipline as
+        graffiti (genuinely ack-silent) and verify_password (ack-key collision).
+        """
+        await self._send(common.build_set_time(when), verify=False)
 
     async def set_joint(self, mode: int) -> None:
         await self._send(common.build_set_joint(mode))
