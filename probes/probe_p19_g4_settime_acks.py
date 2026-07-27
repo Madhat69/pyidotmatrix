@@ -94,7 +94,34 @@ The argument is mandatory and selects exactly one sequence. `full` is the run
 that answers the question; the single halves exist for a re-check of one side
 without paying for the other. Runtime ~2 min for `full`.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-28, `full`): THE THIRD BRANCH -- BOTH HALVES SILENT.
+
+    jump                    ARMED   CONTROL
+    J1 before the window      0        0
+    J2 inside the window      0        0
+    J3 after the window       0        0
+
+Plus the pre-arm jump this probe makes before arming anything: also 0. Seven
+observations, every one silent, at the 2.5 s settle with the ack list never read
+early and never cleared -- the instrumentation bug class that produced earlier
+false zero-ack findings is excluded by construction.
+
+THE ARMED-SCHEDULE HYPOTHESIS IS FALSIFIED. The control half was genuinely
+unarmed (both theme slots overwritten, StatusAck 3 each, master switch OFF) and
+set_time was silent there too. `set_time` simply never acks on this panel.
+
+P5's contrary two-ack reading is the lone outlier against these seven and is
+recorded as SUPERSEDED -- most probably an ack-attribution artifact, acks from
+neighbouring commands landing in its measurement window, which is the same
+failure class corrected elsewhere in that session. PROBABLE, not established.
+
+NOT a hang hazard: transport.await_device_ack returns None on a bounded timeout
+by design. But it cost the FULL _DEFAULT_ACK_TIMEOUT (2.0 s, transport/ble.py)
+on every call, and set_time is typically a caller's first write of every
+connection -- so every startup, reconnect and self-heal silently paid it.
+CONSEQUENCE, implemented: IDotMatrixClient.common.set_time is now fire-and-
+forget (verify=False), alongside graffiti and verify_password. Full account in
+capabilities.py's common.set_time and common.ack_timing.
 """
 
 import asyncio

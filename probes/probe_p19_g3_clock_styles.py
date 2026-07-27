@@ -45,13 +45,14 @@ not by timing them.
 
 CONSTANTS HELD FIXED, so style is the only variable
 ---------------------------------------------------
-colour WHITE, show_date True, hour24 True, and no brightness/flip/eco command
-anywhere in the run. Colour matters more than it looks: STYLE_COLOR (3) colours
-the BACKGROUND and renders the digits as black cutouts, so passing white to it
-paints a white background -- which is exactly how the P17b run misread this
-feature as "the digits were white throughout". If a phase looks like a solid
-bright panel with dark digits, that is a REAL and DISTINCT face, not a failure;
-say so.
+show_date True, hour24 True, and no brightness/flip/eco command anywhere in the
+run. The COLOUR is held fixed WITHIN a run and is the ONLY thing that differs
+BETWEEN the two sequences -- `sweep` runs white, `sweep-red` runs red -- which
+is what makes the pair able to answer WHERE the colour argument lands. Comparing
+them is the whole point of `sweep-red`: white is useless for that question,
+because a white-digits-on-black face and a white-background-with-black-digits
+face are both "white and black" to a tired operator, which is exactly how P17b
+misread this feature.
 
 ACK DISCIPLINE
 --------------
@@ -70,13 +71,54 @@ other probe starts from.
 
 USAGE
 -----
-    python probes/probe_p19_g3_clock_styles.py sweep
+    python probes/probe_p19_g3_clock_styles.py sweep      # all eight, colour WHITE
+    python probes/probe_p19_g3_clock_styles.py sweep-red  # the same eight, colour RED
 
-The argument is mandatory and selects exactly one sequence; `sweep` is the only
-one. Runtime ~90 s including connect. The operator must be able to watch the
-panel continuously from the moment the banner says the sweep is starting.
+The argument is mandatory and selects exactly one sequence. The two are
+identical in every respect except the colour argument, so colour is the only
+variable between them. Runtime ~90 s each including connect. The operator must
+be able to watch the panel continuously from the moment the banner says the
+sweep is starting.
 
-RESULT (2026-07-__): pending.
+RESULT (2026-07-28, `sweep`): ALL EIGHT STYLES ARE DISTINCT. Every style acked
+([05 00 06 01 01]) and the operator reported eight visually distinct faces --
+"all the faces from the app". clock.style_select goes UNKNOWN -> VERIFIED on all
+eight values; the candidate-KNOWN_BROKEN framing is deleted, not softened.
+
+P17b's contrary reading is VOID, and the reason is the methodological payload of
+this probe: its phases were separated by SCOREBOARD LABELS, which are native-mode
+commands, so the panel left and re-entered clock mode between phases and the
+style argument never got a clean test. This sweep was built unlabelled for
+exactly that reason and immediately produced the opposite result. (PROBABLE
+cause -- style clobbered by the mode switch vs. re-entry defaulting it was not
+isolated, and the corrected capability does not depend on which it is.)
+
+RESULT (2026-07-28, `sweep-red`): THE COLOUR ARGUMENT COLOURS THE DIGITS.
+Operator: ALL RED DIGITS, NO background fill anywhere, INCLUDING STYLE_COLOR (3).
+The "STYLE_COLOR paints the BACKGROUND with black digit cutouts" claim -- which
+came from the same voided P17b section, and which this probe's own docstring
+carried until now -- is FALSIFIED and deleted. The vendor app agrees
+independently: it exposes exactly ONE colour setting, it moves the DIGIT colour,
+and it has no background-colour option at all.
+
+WHY THAT CLAIM SURVIVED SO LONG, worth more than the fact: it was "corroborated"
+by lux. P17b's clock phases read 63-65 against a full white field's 65.8 --
+genuine physical evidence of a bright filled field. But a scoreboard label
+sitting on the panel produces exactly that reading. THE LUX CORROBORATED THE
+LABEL, NOT THE STYLE. Two instruments agreeing is not validation when both share
+a confound, and P17b's clock-style section is void as a BLOCK on that account.
+Residual: the white sweep was never re-read for style 3 after the red result, so
+"white behaves like red" is inferred, not observed. Any attempt to reinstate a
+background-fill claim needs a RED-equivalent reproduction, never a white one.
+
+RESULT (2026-07-28, G3c): STYLES 6 AND 7 ANIMATE -- STYLE_OUTLINES (6) and
+STYLE_RGB_CORNERS (7) show blinking pixels / a heartbeat, and their colours read
+slightly OFF from the app's for the same styles. First record of any clock style
+animating; the colour mismatch is noted, not chased. The going-in prediction that
+the two RGB_*-named styles would IGNORE the colour argument and free-run through
+hues -- which would have explained the early-P17 magenta digits outright -- was
+FALSIFIED: style 0 rendered red digits like every other style. Magenta remains
+open. Full account in capabilities.py's clock.style_select.
 """
 
 import asyncio
@@ -103,7 +145,8 @@ STYLES: tuple[tuple[int, str], ...] = (
     (clock_protocol.STYLE_RGB_SWIPE_OUTLINE, "STYLE_RGB_SWIPE_OUTLINE (previously tried)"),
     (clock_protocol.STYLE_CHRISTMAS_TREE, "STYLE_CHRISTMAS_TREE (never sent before)"),
     (clock_protocol.STYLE_CHECKERS, "STYLE_CHECKERS (never sent before)"),
-    (clock_protocol.STYLE_COLOR, "STYLE_COLOR (previously tried: white BACKGROUND, black digits)"),
+    (clock_protocol.STYLE_COLOR, "STYLE_COLOR (previously tried; colours the DIGITS, not the "
+                                 "background -- the background reading was P17b's, and is void)"),
     (clock_protocol.STYLE_HOURGLASS, "STYLE_HOURGLASS (never sent before)"),
     (clock_protocol.STYLE_ALARM_CLOCK, "STYLE_ALARM_CLOCK (never sent before)"),
     (clock_protocol.STYLE_OUTLINES, "STYLE_OUTLINES (never sent before)"),

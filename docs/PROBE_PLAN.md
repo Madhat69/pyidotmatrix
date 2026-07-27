@@ -656,24 +656,30 @@ no host attached; eco does NOT alter the clock's rendered colour. A
 follow-up open question surfaced by this same run: whether eco affects the
 clock's colour-CYCLING behavior over a longer window than these probes held
 (the colour phases here only ran ~25s each) is not fully excluded -- see the
-new follow-up below. Clock style selection also appeared inert across the
-two values tried (0 and 3); see the clock-style follow-up below. Full
-account in capabilities.py's common.set_brightness, eco.set_mode, and
-clock.style_select entries.
+new follow-up below. Full account in capabilities.py's
+common.set_brightness and eco.set_mode entries.
+
+**P17b's CLOCK-STYLE SECTION IS VOID AS A BLOCK (2026-07-28).** Its phases
+9-12 reported that style selection "appeared inert" and that STYLE_COLOR
+paints the background with black digit cutouts, and its lux figures for
+those phases were read as corroborating the second claim. P19 G3/G3b
+overturned both: all eight styles render as distinct faces, and the colour
+argument colours the DIGITS on every style. P17b separated those phases with
+scoreboard labels, which are themselves native-mode commands -- and a label
+on the panel produces exactly the near-full-panel lux reading that was taken
+as evidence of a filled background. The lux corroborated the label, not the
+style. Void the reading, the background claim, and those phases' lux figures
+together; the brightness/eco results above are unaffected (different
+phases, no style argument in play). See P19 below and
+capabilities.py's clock.style_select.
 
 **New follow-ups queued from this session:**
 - **Clock-colour cycling window.** P17b's colour phases (9-12) held each
   state ~25s and found no colour change from eco; that rules out an
   immediate eco-colour interaction but not a slower one. A longer-hold
-  variant (multi-minute per phase) would close the gap.
-- **Clock-style sweep, all eight values.** Only styles 0
-  (STYLE_RGB_SWIPE_OUTLINE) and 3 (STYLE_COLOR) have ever been put on
-  hardware, and both looked the same to the operator. Styles 1, 2, 4, 5, 6,
-  7 (protocol/clock.py) are completely untested. A dedicated sweep of all
-  eight, with the digit colour and the background colour distinguished
-  explicitly (STYLE_COLOR is now known to colour the background with black
-  digit cutouts, not the digits), is needed before "style selection is
-  inert" can be treated as more than a 2-sample observation.
+  variant (multi-minute per phase) would close the gap. Overlaps the passive
+  magenta watch in P19.
+- ~~Clock-style sweep, all eight values.~~ **DONE — see P19's closed G3.**
 
 ## P18 — Add recovery and lifecycle actions to the HCI capture
 
@@ -687,13 +693,14 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
-## P19 — Second-pass follow-ups (queued 2026-07-27, corrected 2026-07-27)
+## P19 — Second-pass follow-ups (queued 2026-07-27, results 2026-07-28)
 
-Re-cut 2026-07-27 after the post-audit pass on the first-connection shadow. Two
-of the original eight items are now closed and are recorded here as closed
-rather than deleted, so nobody re-queues them; the rest is split into a queue
-with probes already written and a deferred tail. Each item is self-contained;
-batch into any session's tail the way P7 bundled its odds and ends.
+Re-cut 2026-07-27 after the post-audit pass on the first-connection shadow, then
+worked through with the operator at the panel on the night of 2026-07-27/28.
+Closed items are recorded here as closed rather than deleted, so nobody
+re-queues them. What is left is the passive magenta watch and the deferred tail.
+Each item is self-contained; batch into any session's tail the way P7 bundled
+its odds and ends.
 
 **Answered / cancelled — do not re-run:**
 
@@ -708,50 +715,84 @@ batch into any session's tail the way P7 bundled its odds and ends.
   matrix colour row held, so phase 9 is the shadow and colour volatility is
   dead as a hypothesis. Re-running it would only re-answer an answered
   discriminator. See capabilities.py's color.show.
+- **G1 — brightness's class.** RUN 2026-07-28, `probe_p11_persistence.py
+  --no-reset brightness`, twice. **BRIGHTNESS IS CONFIG-CLASS.** The white
+  field armed with it died at the BLE reconnect (display-class, expected); the
+  DIMMING SURVIVED, and survived the software power cycle after it as well.
+  That second cell is a VALID measurement, not a void one: the
+  void-second-column rule applies only to state interruption 1 had already
+  killed, and brightness was still in force. Pinning brightness once at
+  startup is safe. See capabilities.py's common.set_brightness.
+- **G1b — is the shadow per-client-session?** Answered as a by-product of G1,
+  **TWO instances: YES, strictly per-client-session.** Both G1 runs were
+  preceded by a full daemon session that did its own connect/disconnect/
+  reconnect double-tap and streamed, and both died at the probe's first
+  reconnect. The runs differed only in the prior session's DURATION -- hours
+  vs ~60 s -- so prior-session duration is irrelevant. A mitigation must
+  therefore live inside the transport's own connect path, per process;
+  nothing another process did helps. See display.persistence_matrix.
+- **G2 — shadow-recover: pointer or payload?** RUN 2026-07-28,
+  `probe_p11_persistence.py shadow-recover`. **POINTER, NOT PAYLOAD.**
+  Operator saw HOP -> CLOCK -> HOP -> HOP: the shadowed GIF died at the
+  reconnect, `gif.activate_stored()` with the same bytes and NO re-upload
+  brought it back and it actually rendered, and a control reconnect proved the
+  restore durable. The shadow destroys nothing -- only the current-mode
+  pointer is session-gated. SDK recovery rule: **RE-ACTIVATE, DO NOT
+  RE-TRANSFER**, with the caveat that it only applies to content that HAS a
+  re-activate path (a parked DIY still has none). See gif.upload_file.
+- **G3 — sweep all eight clock styles.** RUN 2026-07-28,
+  `probe_p19_g3_clock_styles.py sweep`, unlabelled, colour white. **All eight
+  rendered as DISTINCT faces** ("all the faces from the app"), all eight
+  acked. `clock.style_select` moves UNKNOWN -> VERIFIED on all 8 values, and
+  the candidate-KNOWN_BROKEN framing is deleted, not softened. P17b's
+  contrary reading was label-contaminated (see the P17 correction above).
+- **G3b — where does the colour argument land?** RUN 2026-07-28,
+  `probe_p19_g3_clock_styles.py sweep-red`, identical to `sweep` but for the
+  colour. **ALL RED DIGITS, no background fill anywhere, including
+  STYLE_COLOR.** The colour argument colours the DIGITS on every style; the
+  vendor app agrees (one colour setting, digits, no background option). The
+  "STYLE_COLOR paints the background" claim is deleted. Reinstating a
+  background-fill claim for any style requires a RED-equivalent reproduction
+  -- white is useless for this question.
+- **G3c — styles 6 and 7 ANIMATE.** Observed during the red sweep:
+  STYLE_OUTLINES (6) and STYLE_RGB_CORNERS (7) blink / have a heartbeat, and
+  their colours read slightly off from the app's. First record of any clock
+  style animating; the colour mismatch is noted and not chased. The magenta
+  hypothesis that the `RGB_*` styles free-run through hues was **FALSIFIED**
+  (style 0 rendered plain red digits), so magenta stays open -- see the
+  passive watch, still queued below.
+- **G4 — does an armed schedule theme silence set_time's acks?** RUN
+  2026-07-28, `probe_p19_g4_settime_acks.py full`. **The theme is not the
+  variable: `set_time` is UNCONDITIONALLY ack-silent.** Zero acks on all seven
+  jumps -- three armed, three with both slots disarmed and the master switch
+  off, plus a pre-arm jump -- at a 2.5 s settle with the ack list never read
+  early. P5's two-ack reading is SUPERSEDED (probable ack-attribution
+  artifact). Not a hang hazard, but every call was paying the transport's
+  2.0 s ack timeout, so `client.set_time` is now fire-and-forget
+  (`verify=False`). See capabilities.py's common.set_time and
+  common.ack_timing.
 
-**Tonight's queue (operator at the panel; probes pre-authored):**
+**LESSON, now a probe house rule (from G3/G3b):** an on-panel label is itself
+a mode-changing command. Scoreboard and text labels are a legitimate way to
+disambiguate phases, but they are UNSAFE in any probe whose subject is native
+mode state -- here they manufactured a false KNOWN_BROKEN candidate that
+survived in the capability table for a day, and then a lux reading appeared to
+corroborate it because both instruments shared the same confound. Prefer
+console-timestamped unlabelled sweeps whenever the measurement lives in the
+same mode the label would occupy. This raises the value of the label-free
+chronograph rerun in the deferred tail: P7's own caveat is now MORE likely,
+not less.
 
-1. **G1 — brightness's class.** `probe_p11_persistence.py --no-reset
-   brightness` (~85 s). The config-class / display-class split (see
-   capabilities.py's display.persistence_matrix) predicts config-class state
-   commits durably on a first connection; brightness is the one state whose
-   side of the split is unknown. A DIED reading puts brightness on the
-   display-class side and means every caller pinning brightness once at
-   startup is wrong.
-2. **G2 — shadow-recover: does the shadow kill the pointer or the payload?**
-   `probe_p11_persistence.py shadow-recover` (~3 min). Uploads the 4-corner
-   hop GIF on a first connection, lets the reconnect kill it, then calls
-   `gif.activate_stored()` on the post-reconnect session: if the hop comes
-   back with no re-upload, the stored payload survived and only the
-   current-mode pointer was lost, and the SDK's recovery guidance becomes
-   RE-ACTIVATE, DO NOT RE-TRANSFER. Confirms (or kills) the
-   pointer-not-payload hypothesis.
-3. **G3 — sweep all eight clock styles.** `probe_p19_g3_clock_styles.py sweep`
-   (~90 s). `clock.style_select` sits at UNKNOWN on 2 of 8 values (styles 0
-   and 3, which looked identical to the operator) and cannot ship that way.
-   The sweep is deliberately UNLABELLED: a scoreboard or text label between
-   phases is itself a native-mode command and would switch modes out from
-   under the test, so the operator watches eight unannounced faces and reports
-   how many were visually distinct and where the changes fell. Background
-   colour and digit colour must be distinguished explicitly in whatever is
-   recorded -- STYLE_COLOR colours the BACKGROUND with black digit cutouts,
-   and any reading that conflates the two silently repeats P17b's misreading.
-4. **G4 — set_time acks with an armed schedule theme.**
-   `probe_p19_g4_settime_acks.py full` (~2 min). P14 recorded that no command
-   family it tested was ever
-   silent; P5 saw `set_time` draw ZERO acks three times running with a
-   schedule theme armed, at the same 2.0 s settle. Arm a theme, jump the RTC
-   three times counting acks, disarm, repeat as a control. Settles whether
-   armed schedule state suppresses acks -- which decides whether a
-   `response=True` await on `set_time` can hang a caller (see
-   capabilities.py's common.ack_timing and common.set_time).
-5. **Passive: the magenta watch.** Leave a static clock face up and glance at
-   it occasionally through the session. Tests whether the face cycles colour
-   on its own over time -- the last standing candidate for the unexplained
-   magenta digits from an early P17 run, now that eco, clock style, the
-   default colour argument, and low-brightness channel dropout are all
-   excluded (capabilities.py's eco.lowlight_no_colour_shift and
-   clock.style_select). Send no commands once the face is up.
+**Still queued:**
+
+- **Passive: the magenta watch.** Leave a static clock face up and glance at
+  it occasionally through the session. Tests whether the face cycles colour
+  on its own over time -- the last standing candidate for the unexplained
+  magenta digits from an early P17 run, now that eco, clock style selection,
+  the default colour argument, low-brightness channel dropout, AND RGB-style
+  hue cycling (G3c's falsified prediction) are all excluded
+  (capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
+  Send no commands once the face is up.
 
 **Deferred tail (unchanged, no probe written):**
 

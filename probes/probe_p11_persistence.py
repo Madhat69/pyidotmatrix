@@ -251,16 +251,34 @@ result was re-run with no variables changed and reproduced exactly.
 THE ORGANIZING MODEL: CONFIG-CLASS device state (RTC, alarms, schedules) commits
 durably on ANY connection, the first included. DISPLAY-CLASS state (the
 current-mode pointer) is SESSION-GATED: durable only when set on connection >= 2
-of the client session. Brightness's class is unknown until `--no-reset
-brightness` runs.
+of the client session.
 
-POINTER-NOT-PAYLOAD, HYPOTHESIS: the shadow may kill only the current-mode
-POINTER, leaving stored/flash payload intact underneath. Colour has no stored
-payload and died identically; P10 found stored GIF content intact through
-interruptions; config-class writes commit fine on first connections. Prediction:
-after a shadowed GIF dies to the clock, gif.activate_stored() on the
-POST-reconnect session brings it back with no re-upload. That is what the
-`shadow-recover` mode tests.
+BRIGHTNESS IS CONFIG-CLASS (G1, `--no-reset brightness`, 2026-07-28, two runs;
+run 2 is the record). The row arms a flat WHITE field at brightness 10 -- two
+variables on one screen, which is the point of it. Operator: clock at full
+brightness -> WHITE, DIM (baseline) -> CLOCK, STILL DIM (after the BLE
+reconnect) -> full brightness at the restore. The white field died at the
+reconnect, display-class as expected; THE DIMMING SURVIVED, and survived the
+software power cycle after it too. That second cell IS valid here, unlike a
+dying run's: the void rule applies only to state interruption 1 had already
+killed, and brightness was still in force going in. Pinning brightness once at
+startup is safe.
+
+THE SHADOW IS STRICTLY PER-CLIENT-SESSION (G1b, two instances, 2026-07-28).
+BOTH G1 runs were preceded by a full GlanceOSD daemon session that performed its
+own connect / disconnect / reconnect double-tap and then streamed, and in both
+the white field still died at the probe's first reconnect. The runs differ only
+in how long the daemon held the link first -- HOURS in run 1, ~60 s in run 2 --
+so prior-session duration is irrelevant. A prior PROCESS's BLE session does not
+lift the shadow for a later process, however long it was and however thoroughly
+it reconnected. Consequence: any mitigation has to live inside the transport's
+own connect path, per process; a startup-only or system-level "something already
+connected" fix buys nothing.
+
+POINTER-NOT-PAYLOAD, CONFIRMED (G2, `shadow-recover`, 2026-07-28). The shadow
+kills ONLY the current-mode pointer; the stored/flash payload commits normally
+even on a first connection. See THE `shadow-recover` MODE below for the run and
+its reading. SDK recovery rule: RE-ACTIVATE, DO NOT RE-TRANSFER.
 
 THE `shadow-recover` MODE
 ------------------------
@@ -288,6 +306,20 @@ SURVIVES UNDERNEATH IT? One run, on a fresh client, with NO common.reset():
     Step 4 HOP HOLDS    => the ordinary unshadowed durability result, and the
                            control that says step 3's restore was real rather
                            than a repaint that would have died on its own.
+
+RESULT (2026-07-28): HOP -> CLOCK -> HOP -> HOP. POINTER-NOT-PAYLOAD CONFIRMED.
+Step 3's activate_stored() returned True -- the device recognized its stored CRC
+and never asked for a re-transfer -- and the animation ACTUALLY RENDERED, which
+on this panel is the distinction that matters. Step 4 held, so the restore is
+durable and step 3 was a real recovery rather than a transient. The shadow
+destroys NOTHING: what is session-gated is only the device's "what am I
+displaying" state. RECOVERY RULE, now evidence-backed: RE-ACTIVATE, DO NOT
+RE-TRANSFER -- one small command instead of a whole chunked upload. SCOPE
+CAVEAT: this was shown for stored GIFs, which HAVE a re-activate path. It does
+not generalise to display-class content that has none -- a parked DIY still
+(DIY-clear -> frame -> QUIT_STILL) has no "activate what you already have"
+command, so for that path a real connect/disconnect/reconnect is still the only
+defence.
 
 CONSISTENT-WITH (inferred topology, not proof): the 2026-07-17 persistence
 probes had fullscreen colour survive THREE DAYS including power cycles, in all
@@ -322,10 +354,10 @@ MITIGATION: none is in the driver, and the cheap one is off the table.
 `--preamble power gif` was the discriminator -- turn_off / turn_on over the SAME
 BLE connection, no disconnect -- and it DIED, so a power blink in a caller's
 startup handshake would buy nothing. The only known lift is a genuine throwaway
-connect / disconnect / reconnect at startup, which is a workaround for a
-mechanism nobody understands; it should wait on the `shadow-recover` result,
-since re-activating stored content is a far cheaper recovery if the
-pointer-not-payload hypothesis holds -- which is what `shadow-recover` measures.
+connect / disconnect / reconnect, and per G1b it has to sit inside the
+transport's own connect path to help the process that needs it. For stored GIFs
+there is now a cheaper answer than lifting the shadow at all: G2's recovery rule,
+re-activate rather than re-transfer.
 
 The preamble deliberately calls the row loop's own interrupt_ble /
 interrupt_power, so a preamble interruption is byte-identical to a row's.
@@ -344,6 +376,12 @@ vacuous as a shadow test (a clock dying to a clock is undetectable). The DIY x
 software-power-cycle cell is VOID (the state was never re-armed between the two
 interruptions); the PHYSICAL power-cycle column is unrun for every row. Full
 account in capabilities.py's display.persistence_matrix.
+
+RESULT (2026-07-28, P19 night session): three more results, all recorded above
+in full -- G1 brightness is CONFIG-CLASS (`--no-reset brightness`, two runs);
+G1b the shadow is STRICTLY PER-CLIENT-SESSION regardless of a prior session's
+duration; G2 POINTER-NOT-PAYLOAD confirmed (`shadow-recover`), so the recovery
+rule is re-activate, not re-transfer.
 """
 
 import asyncio

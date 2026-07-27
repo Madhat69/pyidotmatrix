@@ -238,6 +238,23 @@ below its LED turn-on threshold at low brightness, consistent with P13's
 phases 13-16 (`lowlight` mode) were written to test it but were NOT run
 tonight and remain open. capabilities.py's eco.set_mode and the new clock.
 style_select entry carry these results.
+
+VOID (2026-07-28): THE ENTIRE CLOCK-STYLE PART OF THAT RESULT IS WITHDRAWN AS A
+BLOCK -- the style-inertness reading, the "STYLE_COLOR colours the BACKGROUND
+with black digit cutouts" rendering model, and phases 9-12's lux figures alike.
+P19 G3 (probes/probe_p19_g3_clock_styles.py) swept all eight styles UNLABELLED
+and the operator saw eight DISTINCT faces; the red sweep (G3b) showed RED DIGITS
+on every style with no background fill anywhere, and the vendor app agrees. The
+cause of the error is this probe's own DESIGN: every phase here is separated by a
+scoreboard label, and a scoreboard call is a native-mode command, so the panel
+left and re-entered clock mode between phases and the style argument never got a
+clean test. Worse, the lux appeared to corroborate the background claim -- 63-65
+against a full white field's 65.8 -- but a label sitting on the panel produces
+exactly that reading. THE LUX CORROBORATED THE LABEL, NOT THE STYLE; two
+instruments agreeing is not validation when both share a confound. The phases
+1-8 brightness/eco results are UNAFFECTED (no style argument in play), and this
+probe's own CONFOUND note above turns out to have been right to flag that
+STYLE_COLOR's handling of the colour argument was unverified.
 """
 
 import asyncio
