@@ -26,7 +26,14 @@ placed it center-screen -- semantics unresolved, treat 3 and 4 as unmapped.
 
 from pyidotmatrix.validation import validate_rgb
 
-# Device accepts at most this many coordinates in one command (found by testing).
+# HARD SAFETY LIMIT, not a tuning knob. Exceeding it by a single coordinate
+# KILLS THE DEVICE: a 256-pixel command (P13, probes/probe_boundary_sweep.py
+# phase E, 2026-07-25) failed mid-write, the panel stopped advertising
+# altogether, reconnect raised BleakDeviceNotFoundError, the display went black,
+# and a PHYSICAL power cycle was required to recover. There is no nack and no
+# error to catch -- the BLE stack is simply gone. Callers must batch; both
+# client.py's GraffitiFeature.set_pixels and display/ble_display.py's set_pixels
+# already do, so this hazard is reachable only from hand-built raw commands.
 MAX_PIXELS_PER_COMMAND = 255
 
 # DiyImageMoveType values for the byte-4 option field (see module docstring).

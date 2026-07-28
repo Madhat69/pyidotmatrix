@@ -120,8 +120,11 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "display", "set_pixels", CapabilityStatus.VERIFIED, _S32,
-        "Graffiti delta path, ~20 ms unacked, <=255 px/command found by testing "
-        "(ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering).",
+        "Graffiti delta path, ~20 ms unacked, <=255 px/command "
+        "(ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering). The 255 cap is "
+        "a HARD SAFETY LIMIT: 256 pixels in one command crashes the panel's BLE stack and "
+        "needs a physical power cycle (P13 phase E, 2026-07-25 -- see graffiti.set_pixels). "
+        "This method batches, so it is safe.",
     ),
     Capability(
         "display", "diy_entry_no_clear", CapabilityStatus.KNOWN_BROKEN, _S32,
@@ -390,7 +393,14 @@ _ENTRIES: tuple[Capability, ...] = (
         "countdown", "set_mode", CapabilityStatus.VERIFIED, _S32,
         "30s countdown ran on panel, auto-returned to clock at zero; runs autonomously on "
         "device (probes/probe_capability_sweep1.py, 2026-07-20). MODE_DISABLE left resumable "
-        "state rather than clearing (see chronograph caveat).",
+        "state rather than clearing (see chronograph caveat). OUT-OF-RANGE MINUTES ARE "
+        "ACCEPTED-THEN-ABORTED 2026-07-25 (P13 phase C, probes/probe_boundary_sweep.py): a "
+        "RAW [7,0,8,128,1,60,0] frame (60:00, bypassing the builder's minutes<=59 "
+        "validation) was NOT nacked -- the device accepted it and then ABORTED the countdown "
+        "that was already running, falling back to the clock. Neither clamped to 59:59 nor "
+        "rejected. The builder's own minutes<=59 check is therefore load-bearing: without "
+        "it an out-of-range value silently destroys a running countdown instead of failing "
+        "loudly.",
     ),
     Capability(
         "clock", "show", CapabilityStatus.VERIFIED, _S32,
@@ -454,7 +464,13 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     Capability(
         "scoreboard", "show", CapabilityStatus.VERIFIED, _S32,
-        "12:34 rendered as two scores on panel (probes/probe_capability_sweep1.py, 2026-07-20).",
+        "12:34 rendered as two scores on panel (probes/probe_capability_sweep1.py, 2026-07-20). "
+        "OUT-OF-RANGE SCORES ARE SILENTLY IGNORED 2026-07-25 (P13 phase D, probes/"
+        "probe_boundary_sweep.py): a RAW [8,0,10,128,232,3,0,0] frame (score 1000, "
+        "little-endian 0x03E8, bypassing the builder's 999 clamp) produced NO ACK AT ALL and "
+        "the panel kept showing the previous 999. No nack, no 16-bit wrap to 000, no visible "
+        "change -- the frame simply vanishes. The builder's 999 clamp is the only thing "
+        "keeping an out-of-range score from being an invisible no-op.",
     ),
     Capability(
         "eco", "set_mode", CapabilityStatus.VERIFIED, _S32,
@@ -532,7 +548,16 @@ _ENTRIES: tuple[Capability, ...] = (
         "queued in docs/PROBE_PLAN.md is CANCELLED "
         "-- it would only re-run an answered discriminator. The 3-day persistence figure at the "
         "top of this entry is consistent with that reading and is discussed under "
-        "display.persistence_matrix's CONSISTENT-WITH note.",
+        "display.persistence_matrix's CONSISTENT-WITH note. CHANNEL EXTREMES MEASURED "
+        "2026-07-25 (P13 phase B, probes/probe_boundary_sweep.py): every extreme is "
+        "ACCEPTED and acked [05 00 02 02 01] -- there is no rejected RGB value -- but two "
+        "ends of the range are not visually distinguishable from their neighbours. (1,1,1) "
+        "renders as BLACK: it is below the LEDs' turn-on threshold and cannot be told apart "
+        "from a dark panel, so callers must not use a near-black colour as a 'barely lit' "
+        "signal. (254,254,254) is indistinguishable from full white. (255,0,255) is "
+        "saturated magenta as expected. (0,0,0) is a plain black RASTER, NOT a powered-off "
+        "panel -- the panel is still on and still in colour mode, so common.set_power(False) "
+        "remains the only way to actually turn the display off.",
     ),
     Capability(
         "graffiti", "set_pixels", CapabilityStatus.VERIFIED, _S32,
@@ -546,7 +571,22 @@ _ENTRIES: tuple[Capability, ...] = (
         "invalidate_diy_mode): pixels sent while a native clock is showing, with no DIY entry, "
         "do NOT draw through onto the clock -- they force a MODE SWITCH instead. A caller must "
         "already be in the pixel/DIY framebuffer before graffiti deltas are safe; sent from a "
-        "native-mode state it is not a safe overlay.",
+        "native-mode state it is not a safe overlay. *** 256 PIXELS IN ONE COMMAND KILLS THE "
+        "DEVICE *** 2026-07-25 (P13 phase E, probes/probe_boundary_sweep.py) -- the "
+        "highest-severity hazard on this table. A single RAW command carrying 256 coordinate "
+        "pairs (size header (8,2) = 520 bytes, exactly ONE pixel over "
+        "graffiti.MAX_PIXELS_PER_COMMAND=255) CRASHED THE PANEL'S BLE STACK: the GATT write "
+        "failed mid-transfer ('Could not write value ... Unreachable'), the device STOPPED "
+        "ADVERTISING entirely so reconnect raised BleakDeviceNotFoundError, the display went "
+        "black, and a PHYSICAL POWER CYCLE was required to recover -- the probe's own "
+        "clock-restore cleanup could not run. This is not a nack and not a recoverable error: "
+        "there is nothing to catch and no software path back. The 255 cap is a hard safety "
+        "limit, not a tuning constant. THE PUBLIC API IS SAFE: client.py's "
+        "GraffitiFeature.set_pixels and display/ble_display.py's set_pixels both slice into "
+        "MAX_PIXELS_PER_COMMAND-sized batches before building, so no public call can reach "
+        "this. The hazard is reachable ONLY by hand-built raw commands that call "
+        "build_set_pixels' wire layout directly -- which is precisely what probe scripts do, "
+        "so any future probe author touching graffiti must respect the cap.",
     ),
     Capability(
         "graffiti", "move_type", CapabilityStatus.VERIFIED, _S32,

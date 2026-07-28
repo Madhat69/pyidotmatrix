@@ -7,3 +7,6 @@ build/
 
 # Private working notes -- decompiled-app analysis, not for publication.
 docs/SDK_ANALYSIS.md
+
+# Ephemeral probe handoff state (probe_p11_persistence.py set/check/restore).
+probes/probe_p11_state.json

@@ -57,9 +57,45 @@ async def main(mac: str | None, password: int) -> None:
         print("disconnected.")
 
 
+_INTERLOCK = "--i-accept-the-lockout-risk"
+
+_REFUSAL = f"""
+REFUSING TO RUN.
+
+This probe sends verify_password to real hardware, and the password commands are
+sequenced LAST across the entire roadmap by maintainer ruling (docs/ROADMAP.md
+section 17, SDK-M3) -- after every other milestone's hardware work is done.
+
+Why the ruling exists:
+  * there is NO known factory-reset path on this device;
+  * set_password's byte 4 is a MODE field that is a variable in the vendor app
+    and hardcoded to 1 by us, explicitly unexplored -- that, not the password
+    value, is the real unknown;
+  * verify_password's ack key (5, 2) collides byte-for-byte with graffiti's
+    nack, so even READING whether authentication succeeded is unreliable;
+  * the reference panel is the only one this project has.
+
+Before this is ever run, do the zero-risk step first: open the vendor app and
+confirm it exposes password set AND clear for this panel. If it can clear one,
+the worst case becomes "unlock with the app". If it cannot, do not run this.
+
+If you are the maintainer, every other milestone is genuinely finished, and you
+accept that you may lock the panel out of its own driver permanently, re-run
+with {_INTERLOCK} as the last argument.
+"""
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("password", type=int, help="6-digit password to verify (0..999999)")
     parser.add_argument("--mac", default=None, help="device MAC address; omit to auto-discover")
+    parser.add_argument(
+        _INTERLOCK,
+        dest="accepted_risk",
+        action="store_true",
+        help="required acknowledgement; without it this probe refuses to run",
+    )
     args = parser.parse_args()
+    if not args.accepted_risk:
+        print(_REFUSAL)
+        raise SystemExit(2)
     asyncio.run(main(args.mac, args.password))

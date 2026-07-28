@@ -88,7 +88,7 @@ working replacement.
 disconnected, attributed (unconfirmed) to the operator's phone app
 auto-reconnecting once we released the link.
 
-### P1-(c) — effect length-byte isolation A/B  ⭐ next session
+### P1-(c) — effect length-byte isolation A/B  ✅ CLOSED 2026-07-26 (result superseded by the speed sweep)
 
 `probes/probe_effect_length_byte.py`. Follow-up (a) proved byte 5 works but
 changed several things at once versus the 2026-07-21 probes. This one changes
@@ -160,7 +160,7 @@ Cost: ~20 min phone work + desk parsing. Unblocks: effect speed,
 
 </details>
 
-## P2 — GIF CRC cache (overclocked's claim)
+## P2 — GIF CRC cache (overclocked's claim)  ⚠ PARTIAL 2026-07-25
 
 Upload a GIF, wait, re-upload the identical bytes: does the second upload
 return SAVED immediately with no NEXT_CHUNK round trips? Measure both wall
@@ -225,7 +225,7 @@ pass), the vendor app's own approach. The instant-switch primitive from P2d is
 exposed as `gif.activate_stored()`: one recognized chunk 1 switches playback in
 ~1s. No further P2 GIF probes planned.
 
-## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7
+## P3 — Graffiti byte-4 leftovers: ERASE hypothesis + values 5–7  ✅ CLOSED 2026-07-25
 
 On a NON-black background (push a dark-blue frame first — a black background
 can't distinguish "erased" from "drew black"):
@@ -249,7 +249,7 @@ throughout. Conclusion: the APK's DiyImageMoveType enum names (OVERALL_MOVEMENT,
 ERASE) describe APP-SIDE paint-tool behavior, not firmware behavior. No further
 byte-4 probes planned.
 
-## P4 — Streaming endurance: find the safe sustained rate
+## P4 — Streaming endurance: find the safe sustained rate  ⚠ PARTIAL 2026-07-20
 
 The flood benchmark killed the link twice; the render cap is ~1.75 fps. What
 GlanceOS actually needs is the SAFE sustained envelope:
@@ -382,7 +382,7 @@ color.show and display.persistence_matrix entries.
 
 *Maintainer additions below this line:*
 
-## P8 — Canonical geometry, color-order, and flip contract
+## P8 — Canonical geometry, color-order, and flip contract  ✅ CLOSED 2026-07-24
 
 Prove the hardware contract behind `show_frame()` and `set_pixels()` rather
 than relying on plausible-looking output. Send one full frame with unique RGB
@@ -581,7 +581,7 @@ off/on" reading (see capabilities.py's display.persistence_matrix): that
 result traced to an invisible scoreboard command sent while the screen was
 dark, not to the power cycle itself.
 
-## P13 — Non-destructive validation-boundary sweep
+## P13 — Non-destructive validation-boundary sweep  ✅ CLOSED 2026-07-25
 
 Exercise safe boundary values, recording both SDK validation and device ack/
 visual behavior. Do not fuzz blindly and keep password/OTA exclusions intact.
@@ -596,6 +596,47 @@ visual behavior. Do not fuzz blindly and keep password/OTA exclusions intact.
 
 Cost: ~10 min. Aligns SDK validation with actual firmware behavior and guards
 against accidental, permanent API semantics.
+
+**P13 CLOSED (2026-07-25):** `probes/probe_boundary_sweep.py` drove the real
+firmware limits by hand-building RAW frames, since the SDK's own validation is
+stricter than the wire and would otherwise hide them. Findings were recorded
+into `capabilities.py` on 2026-07-28 — the probe had deferred recording to avoid
+an edit collision and it was then forgotten for three days, which is the drift
+this plan's status markers now exist to prevent.
+
+1. **Brightness: the firmware range is EXACTLY 5–100, rejected not clamped.**
+   Raw frames at 0, 1, 4, 101, 255 ALL nacked (`05 00 04 80 00`) and the panel
+   never changed brightness. The SDK's own 5–100 validation matches firmware
+   precisely. **This also closes P7's "brightness floor" question** (struck
+   through in that section): 1–4 nack, the device does not clamp and does not
+   turn the panel off.
+2. **Fullscreen colour: every extreme is ACCEPTED — there is no rejected RGB
+   value** — but the ends are not visually distinct. `(1,1,1)` renders as BLACK
+   (below the LEDs' turn-on threshold, indistinguishable from a dark panel, so
+   it is useless as a "barely lit" signal); `(254,254,254)` is indistinguishable
+   from full white; `(0,0,0)` is a plain black raster, NOT a powered-off panel —
+   `common.set_power(False)` remains the only real off.
+3. **Countdown out-of-range minutes are ACCEPTED-THEN-ABORTED.** A raw
+   `[7,0,8,128,1,60,0]` (60:00) was not nacked: the device accepted it and then
+   killed the countdown that was already running, falling back to the clock.
+   Neither clamped to 59:59 nor rejected — so the builder's `minutes<=59` check
+   is load-bearing, not cosmetic.
+4. **Scoreboard out-of-range scores are SILENTLY IGNORED.** A raw
+   `[8,0,10,128,232,3,0,0]` (1000, LE `0x03E8`) produced NO ACK AT ALL and the
+   panel kept showing the previous 999 — no nack, no 16-bit wrap. The builder's
+   999 clamp is the only thing keeping this from being an invisible no-op.
+5. **⚠️ 256 PIXELS IN ONE GRAFFITI COMMAND KILLS THE DEVICE — the
+   highest-severity hazard on record.** One coordinate over
+   `graffiti.MAX_PIXELS_PER_COMMAND=255` (size header `(8,2)` = 520 bytes): the
+   GATT write failed mid-transfer, the panel STOPPED ADVERTISING entirely,
+   reconnect raised `BleakDeviceNotFoundError`, the display went black, and a
+   **PHYSICAL POWER CYCLE** was required — the probe's own cleanup could not
+   run. There is no nack and nothing to catch. The 255 cap is a hard safety
+   limit, not a tuning constant. **The public API is safe** (`client.py`'s
+   `GraffitiFeature.set_pixels` and `display/ble_display.py`'s `set_pixels` both
+   batch before building); the hazard is reachable only from hand-built raw
+   commands — which is exactly what probe scripts do, so any future probe author
+   touching graffiti must respect the cap.
 
 ## P14 — Ack timing, duplication, and silence characterization  ✅ CLOSED 2026-07-27
 
@@ -619,7 +660,7 @@ measured. This run is also the evidentiary basis for retracting the
 list before the device's reply had arrived), not a device behavior. See
 capabilities.py's new common.ack_timing entry.
 
-## P15 — Long soak with intentional recoveries
+## P15 — Long soak with intentional recoveries  ⬜ OPEN
 
 Extend P4 from throughput to resilience: run 12–24 h at a conservative mixed
 workload, periodically switch native/DIY modes, and intentionally exercise a
@@ -632,7 +673,7 @@ connected-but-invisible state; the next full frame reliably heals the panel.
 Cost: mostly unattended. This is the highest-confidence evidence for the
 transport/reconnect promise made by a public SDK.
 
-## P16 — Community multi-model compatibility pack
+## P16 — Community multi-model compatibility pack  ⬜ OPEN (needs contributors' panels)
 
 Create a non-destructive, contributor-runnable probe that emits a redacted JSON
 report plus optional photos/video. Capture advertised name, dimensions, GATT
@@ -693,7 +734,7 @@ capabilities.py's clock.style_select.
   magenta watch in P19.
 - ~~Clock-style sweep, all eight values.~~ **DONE — see P19's closed G3.**
 
-## P18 — Add recovery and lifecycle actions to the HCI capture
+## P18 — Add recovery and lifecycle actions to the HCI capture  ⬜ OPEN
 
 Still open after P1: that session captured commands, not lifecycle. A second
 capture should record reconnect after intentional app disconnect, Bluetooth
@@ -705,7 +746,7 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
-## P19 — Second-pass follow-ups (queued 2026-07-27, results 2026-07-28)
+## P19 — Second-pass follow-ups  ✅ CLOSED 2026-07-28 (G1-G5; deferred tail below)
 
 Re-cut 2026-07-27 after the post-audit pass on the display-durability effect,
 then worked through with the operator at the panel on the night of
