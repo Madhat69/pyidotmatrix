@@ -262,6 +262,30 @@ GlanceOS actually needs is the SAFE sustained envelope:
 Cost: ~25 min mostly unattended (panel shows a test pattern; operator can
 leave). Directly feeds GlanceOS animated-scene design + an SDK streaming doc.
 
+**Probe authored 2026-07-29, NOT YET RUN:**
+`probes/probe_p4_streaming_endurance.py` covers all three sub-items. It is
+SELF-MEASURING — nothing to watch on the panel, every figure (frames and
+commands sent, acks, ack:frame ratio, achieved vs. targeted rate, missed pacing
+slots, reconnects, every write exception verbatim, time-to-first-degradation)
+is captured in code and printed as one summary table, emitted from a `finally`
+so a link death still leaves the numbers on screen.
+
+    python probes/probe_p4_streaming_endurance.py frames   # sub-item 1, ~10.5 min
+    python probes/probe_p4_streaming_endurance.py deltas   # sub-item 2, ~2.5 min max
+    python probes/probe_p4_streaming_endurance.py mix      # sub-item 3, ~5.5 min
+    python probes/probe_p4_streaming_endurance.py smoke    # harness shakedown, ~1 min
+
+Degradation is defined in code, not judged: WRITE_FAILED (a write raised),
+LINK_DOWN (reconnect_count rose, a reconnect event fired, or is_connected went
+False), ACK_COLLAPSE (acks per full frame below 0.50 — full-frame steps only,
+since graffiti is ack-silent by design), RATE_COLLAPSE (achieved send rate below
+0.75 of target). Ratio criteria are not judged during a step's first 10 s, since
+acks lag sends by up to ~4.3 s (P14). The FIRST criterion to trip ends the step
+and abandons the rest of the phase — no escalation into another link death.
+Deltas go through `display.set_pixels` (the call GlanceOS's pipeline makes) at
+exactly 255 coordinates per command, the hard safety limit from P13 phase E.
+Stays ⚠ PARTIAL until it has actually run.
+
 ## P5 — Weekly Schedule verification via RTC spoofing  ✅ CLOSED 2026-07-27
 
 Same trick that mapped the Timer week bits in minutes. Schedule differs from
