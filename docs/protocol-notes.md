@@ -219,10 +219,43 @@ cap, regardless of send rate or write mode.** Findings:
   more effective render rate plus non-blocking sends (~20 ms per frame vs
   ~740 ms acked), but real sustained animation on this hardware belongs to
   the **graffiti delta path** instead — `set_pixels`/`display.set_pixels` is
-  unacked, ~20 ms per command, ≤255 pixels per command, roughly 50
-  commands/second achievable. If you're animating a small changing region
-  (a cursor, a sparkline, a clock's seconds digit) rather than the whole
-  canvas, deltas are both faster and don't fight the frame-rate cap.
+  unacked, ~20 ms per command, ≤255 pixels per command, so roughly 50
+  commands/second is the theoretical rate (measured ceiling below). If you're
+  animating a small changing region (a cursor, a sparkline, a clock's seconds
+  digit) rather than the whole canvas, deltas are both faster and don't fight
+  the frame-rate cap.
+
+### What you can actually sustain for minutes
+
+The benchmark above found the *ceilings*. A separate ten-minute endurance run
+(`probes/probe_p4_streaming_endurance.py`, 2026-07-28, reference 32×32 panel)
+found the rates that hold steady without back-pressure. **These are the numbers
+to design an animated scene against:**
+
+| What you're sending | Safe sustained rate | Measured |
+| --- | --- | --- |
+| Unacked full frames | **1.5 fps** | 900 frames over 600 s, exact pacing, 900 acks, zero missed slots, zero reconnects |
+| Graffiti deltas (255 px/command) | **40 commands/s** | 10, 20 and 40 cmd/s each exact for 30 s with zero missed slots |
+
+1.5 fps sits deliberately just under the ~1.75 fps render cap and held for the
+full ten minutes with no decay at all. For deltas, 40 cmd/s is clean; pushing to
+60 cmd/s only achieved **55 cmd/s** and started missing pacing slots, so treat
+~55/s as a hard ceiling you should not plan to live at.
+
+> **⚠ Mixing deltas into a frame stream costs you frame acks.**
+> Streaming full frames alone, every frame came back with an fa03 notification —
+> a 1.00 ack-to-frame ratio over ten minutes. Interleaving graffiti deltas with
+> those frames (1 fps + 10 deltas/s for five minutes) dropped that ratio to
+> **0.73** — 218 acks for 300 frames — with a shorter run corroborating at 0.87.
+> Sends and pacing were unaffected; only the acks thinned out.
+>
+> That matters because the fa03 ack is the device telling you a frame was
+> *processed*, and it's the free flow-control signal this SDK gives you. If you
+> design a delta-driven animation with periodic full-frame keyframes and pace
+> yourself on frame acks, expect roughly a quarter fewer of them than a
+> pure full-frame stream would give you — don't treat a missing ack in mixed
+> mode as a dropped frame or a dead link. The mechanism is unknown; this is a
+> measurement, not an explanation.
 
 ### Low-MTU panels on BlueZ
 

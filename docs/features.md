@@ -37,6 +37,14 @@ building anything that pushes frames continuously — the device caps DIY
 frame rendering at ~1.75 fps regardless of send rate; sustained animation
 belongs to the pixel-delta path, not full frames.
 
+Measured sustainable rates, if you're planning an animated scene: **1.5 fps**
+for full frames and **40 commands/s** for 255-pixel deltas, each held for
+minutes with exact pacing and no back-pressure. One caveat worth knowing up
+front — **mixing deltas into a full-frame stream drops the frame ack ratio from
+1.00 to ~0.73**, so don't build flow control that assumes every frame will be
+acked in mixed mode. Both are covered in
+[What you can actually sustain for minutes](protocol-notes.md#what-you-can-actually-sustain-for-minutes).
+
 ```python
 await client.display.show_frame(rgb_bytes)                  # exact width*height*3 RGB bytes
 await client.display.set_pixels((255, 0, 0), [(0, 0), (1, 1)])   # partial update, unacked by default

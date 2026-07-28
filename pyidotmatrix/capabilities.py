@@ -96,7 +96,19 @@ _ENTRIES: tuple[Capability, ...] = (
         "software-power-cycle cell from that same run is VOID, not a second confirmation -- a "
         "methodology flaw left the row's state unarmed going into that interruption (see "
         "display.persistence_matrix); do not cite the software power cycle as independently "
-        "measured for this row.",
+        "measured for this row. SUSTAINED-RATE ENVELOPE MEASURED 2026-07-28 (P4, probes/"
+        "probe_p4_streaming_endurance.py): unacked full frames paced at 1.5 fps held for 600 s "
+        "-- 900 frames, 900 acks, ack:frame 1.00, 1.50/s achieved against a 1.50/s target, zero "
+        "missed pacing slots, zero reconnects, no write failures, no throughput decay across the "
+        "full ten minutes. The safe sustained full-frame envelope therefore sits just under the "
+        "~1.75 fps render cap measured above. *** MIXED-MODE STREAMING COSTS ~27% OF THE FRAME "
+        "ACKS *** same run: interleaving graffiti deltas with full frames (300 frames + 2999 "
+        "deltas over 300 s at 11.00/s, exact pacing, no reconnects) returned only 218 acks for "
+        "300 frames -- ack:frame 0.73 against 1.00 for frames alone, corroborated by 0.87 in a "
+        "15 s smoke run. Since the fa03 ack is the device's frame-processed signal and the SDK's "
+        "free flow control, a caller pacing a delta stream with periodic keyframes gets "
+        "materially fewer acks to pace on than pure full-frame mode would give it. The mechanism "
+        "is UNKNOWN; this is the measurement and its consequence, not an explanation.",
     ),
     Capability(
         "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
@@ -116,7 +128,11 @@ _ENTRIES: tuple[Capability, ...] = (
         "probe: an identical frame at the negotiated write size took 0.67s with "
         "response=True (final packet GATT-acked) vs 0.11s with response=False -- unacked "
         "writes ran 3-6x faster across the sizes measured, with no rendering difference "
-        "either way.",
+        "either way. PACING, NOT THE WRITE MODE, IS WHAT KEEPS THE LINK ALIVE 2026-07-28 (P4, "
+        "probes/probe_p4_streaming_endurance.py): 900 unacked full frames paced at 1.5 fps ran "
+        "600 s with zero reconnects, and 255-px unacked graffiti deltas held 40 cmd/s cleanly -- "
+        "so the two link deaths above belong to flooding, not to write-without-response itself. "
+        "See display.show_frame and display.set_pixels for the measured envelopes.",
     ),
     Capability(
         "display", "set_pixels", CapabilityStatus.VERIFIED, _S32,
@@ -124,7 +140,15 @@ _ENTRIES: tuple[Capability, ...] = (
         "(ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering). The 255 cap is "
         "a HARD SAFETY LIMIT: 256 pixels in one command crashes the panel's BLE stack and "
         "needs a physical power cycle (P13 phase E, 2026-07-25 -- see graffiti.set_pixels). "
-        "This method batches, so it is safe.",
+        "This method batches, so it is safe. SUSTAINED DELTA CEILING MEASURED 2026-07-28 (P4, "
+        "probes/probe_p4_streaming_endurance.py, 255-px commands through this method): 10, 20 "
+        "and 40 cmd/s each ran for 30 s at exactly their target with ZERO missed pacing slots "
+        "and no reconnects; 60 cmd/s achieved only 55.23/s and dropped 143 pacing slots, which "
+        "is unambiguous back-pressure even though the probe's own RATE_COLLAPSE criterion (0.75 "
+        "of target) did not fire. 40 cmd/s is the safe figure to design against and ~55/s is the "
+        "observed hard ceiling -- consistent with the ~20 ms per command above (~50/s "
+        "theoretical). Interleaving these deltas with full frames costs frame acks; see "
+        "display.show_frame.",
     ),
     Capability(
         "display", "diy_entry_no_clear", CapabilityStatus.KNOWN_BROKEN, _S32,

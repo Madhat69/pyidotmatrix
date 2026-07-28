@@ -121,7 +121,58 @@ probe has been edited -- it exercises all three shapes for 15 s each, so a
 broken harness costs a minute instead of ten. `smoke` answers nothing about
 endurance and its table must not be recorded as a P4 result.
 
-RESULT (2026-07-__): pending -- not yet run.
+RESULT (2026-07-28): all three phases ran on the reference 32x32 panel.
+
+    step                          ran  frames  deltas   acks  ack:F  sent/s  target  miss
+    full frames 1.5 fps        600.0s     900       0    900   1.00    1.50    1.50     0
+    deltas 10 cmd/s             30.0s       0     300      0      -   10.00   10.00     0
+    deltas 20 cmd/s             30.0s       0     600      0      -   19.99   20.00     0
+    deltas 40 cmd/s             30.0s       0    1200      0      -   39.98   40.00     0
+    deltas 60 cmd/s             30.0s       0    1657      0      -   55.23   60.00   143
+    mix 1 fps + 10 cmd/s       300.0s     300    2999    218   0.73   11.00   11.00     1
+
+Zero reconnects anywhere. The three sub-items P4 was written to answer are all
+answered:
+
+  1. 1.5 FPS FULL FRAMES ARE COMFORTABLY SUSTAINABLE. Ten minutes, 900 frames,
+     900 acks -- perfect 1:1 frame-to-ack correspondence, exact pacing, no
+     back-pressure, no thinning of the notifies as the device ran on. The safe
+     sustained envelope sits just under the known ~1.75 fps device render cap.
+  2. THE GRAFFITI DELTA CEILING IS ~40 cmd/s CLEAN. 10, 20 and 40 cmd/s each ran
+     exact with zero missed pacing slots. 60 cmd/s could only achieve 55.23/s and
+     dropped 143 slots. That is consistent with the previously measured ~20 ms
+     per graffiti command (~50/s theoretical). Ship 40 cmd/s; ~55/s is the
+     observed hard ceiling, reachable only under back-pressure.
+  3. *** INTERLEAVING DELTAS WITH FULL FRAMES COSTS ~27% OF THE FRAME ACKS. ***
+     Frames alone: ack:F 1.00. Mixed: ack:F 0.73 over five minutes -- 218 acks
+     for 300 frames -- corroborated by the smoke run's 0.87 over 15 s. The fa03
+     ack is the device's "frame processed" signal and the SDK's free flow
+     control, so mixed-mode streaming degrades flow control by roughly a quarter.
+     Anyone designing a delta stream with periodic keyframes must know that
+     pacing on frame acks yields materially fewer of them in mixed mode than in
+     pure full-frame mode. THE MECHANISM IS UNKNOWN and is not guessed at here.
+
+KNOWN LIMITATIONS OF THIS PROBE -- do not over-trust the summary line
+---------------------------------------------------------------------
+This run printed "NO DEGRADATION" and "no write failures" on all three phases.
+Both statements are narrower than they read:
+
+  * CLEANUP IS NOT INSTRUMENTED. The `deltas` and `mix` phases each ended with
+    the cleanup clock write failing `Unreachable`, forcing a transport
+    reconnect. None of that reaches the summary table, which stops measuring
+    when the last step ends. Post-phase damage is invisible here by
+    construction. Those cleanup failures remain UNEXPLAINED: probe_p4b_post_
+    stream_write.py tested the obvious hypothesis (that graffiti streaming
+    breaks the next write) and did NOT reproduce it, so nothing about them is
+    recorded as a defect -- see that probe's RESULT for what was ruled out.
+  * ACK_COLLAPSE'S FLOOR IS 0.50. The `mix` phase's 0.73 is a real and important
+    degradation of flow control, and the criterion never fired. A ratio this
+    probe calls healthy can still be a quarter down on pure full-frame mode.
+  * MISSED SLOTS ARE NOT A DEGRADATION CRITERION. The 60 cmd/s step's 143
+    missed slots are unambiguous back-pressure, but 55.23/60 = 0.92 sits well
+    above the 0.75 RATE_COLLAPSE trigger, so the step was scored clean.
+
+Read the `miss` column and the phase's exit behaviour, not just the verdict line.
 """
 
 import asyncio

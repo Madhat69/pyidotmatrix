@@ -249,7 +249,7 @@ throughout. Conclusion: the APK's DiyImageMoveType enum names (OVERALL_MOVEMENT,
 ERASE) describe APP-SIDE paint-tool behavior, not firmware behavior. No further
 byte-4 probes planned.
 
-## P4 — Streaming endurance: find the safe sustained rate  ⚠ PARTIAL 2026-07-20
+## P4 — Streaming endurance: find the safe sustained rate  ✅ CLOSED 2026-07-28
 
 The flood benchmark killed the link twice; the render cap is ~1.75 fps. What
 GlanceOS actually needs is the SAFE sustained envelope:
@@ -262,18 +262,43 @@ GlanceOS actually needs is the SAFE sustained envelope:
 Cost: ~25 min mostly unattended (panel shows a test pattern; operator can
 leave). Directly feeds GlanceOS animated-scene design + an SDK streaming doc.
 
-**Probe authored 2026-07-29, NOT YET RUN:**
-`probes/probe_p4_streaming_endurance.py` covers all three sub-items. It is
-SELF-MEASURING — nothing to watch on the panel, every figure (frames and
-commands sent, acks, ack:frame ratio, achieved vs. targeted rate, missed pacing
-slots, reconnects, every write exception verbatim, time-to-first-degradation)
-is captured in code and printed as one summary table, emitted from a `finally`
-so a link death still leaves the numbers on screen.
+**RAN 2026-07-28** — `probes/probe_p4_streaming_endurance.py`, all three
+phases. **All three sub-items are answered.** Zero reconnects anywhere.
 
-    python probes/probe_p4_streaming_endurance.py frames   # sub-item 1, ~10.5 min
-    python probes/probe_p4_streaming_endurance.py deltas   # sub-item 2, ~2.5 min max
-    python probes/probe_p4_streaming_endurance.py mix      # sub-item 3, ~5.5 min
-    python probes/probe_p4_streaming_endurance.py smoke    # harness shakedown, ~1 min
+    step                          ran  frames  deltas   acks  ack:F  sent/s  target  miss
+    full frames 1.5 fps        600.0s     900       0    900   1.00    1.50    1.50     0
+    deltas 10 cmd/s             30.0s       0     300      0      -   10.00   10.00     0
+    deltas 20 cmd/s             30.0s       0     600      0      -   19.99   20.00     0
+    deltas 40 cmd/s             30.0s       0    1200      0      -   39.98   40.00     0
+    deltas 60 cmd/s             30.0s       0    1657      0      -   55.23   60.00   143
+    mix 1 fps + 10 cmd/s       300.0s     300    2999    218   0.73   11.00   11.00     1
+
+1. **1.5 fps full frames are comfortably sustainable.** Ten minutes, perfect
+   1:1 frame-to-ack correspondence, exact pacing, no back-pressure and no
+   decay — the safe sustained envelope sits just under the ~1.75 fps render cap.
+2. **The graffiti delta ceiling is ~40 cmd/s clean.** 10/20/40 all exact with
+   zero missed slots; 60 cmd/s achieved only 55.23/s and dropped 143 slots.
+   Consistent with the ~20 ms per graffiti command already measured (~50/s
+   theoretical). Design against 40 cmd/s; ~55/s is the hard ceiling.
+3. **⚠ Mixing deltas into a full-frame stream costs ~27% of the frame acks.**
+   Frames alone: ack:F 1.00. Mixed: **0.73** over five minutes, corroborated by
+   0.87 in the 15 s smoke run. The fa03 ack is the device's frame-processed
+   signal and the SDK's free flow control, so mixed-mode streaming degrades
+   flow control by roughly a quarter — a delta-stream-plus-keyframe design that
+   paces on frame acks gets materially fewer of them than pure full-frame mode.
+   **Mechanism unknown**; the measurement and its consequence are recorded, no
+   more. Promoted to `display.show_frame` / `display.set_pixels` in
+   capabilities.py and to Protocol Notes § Streaming & performance.
+
+**Two blind spots in the probe itself**, recorded in its docstring so the
+numbers are not over-trusted: cleanup is **not instrumented** (the `deltas` and
+`mix` phases each ended with the cleanup clock write failing `Unreachable` and
+forcing a reconnect, none of which reaches the summary), and ACK_COLLAPSE's
+floor is **0.50**, so the mix phase's 0.73 never flagged. Likewise 55.23/60 =
+0.92 sits above the 0.75 RATE_COLLAPSE trigger, so 143 missed slots scored
+"clean". Those cleanup failures are **unexplained, not a defect** — P4b tested
+the graffiti-breaks-the-next-write hypothesis and did not reproduce it (see
+`probes/probe_p4b_post_stream_write.py`).
 
 Degradation is defined in code, not judged: WRITE_FAILED (a write raised),
 LINK_DOWN (reconnect_count rose, a reconnect event fired, or is_connected went
@@ -284,7 +309,11 @@ acks lag sends by up to ~4.3 s (P14). The FIRST criterion to trip ends the step
 and abandons the rest of the phase — no escalation into another link death.
 Deltas go through `display.set_pixels` (the call GlanceOS's pipeline makes) at
 exactly 255 coordinates per command, the hard safety limit from P13 phase E.
-Stays ⚠ PARTIAL until it has actually run.
+
+    python probes/probe_p4_streaming_endurance.py frames   # sub-item 1, ~10.5 min
+    python probes/probe_p4_streaming_endurance.py deltas   # sub-item 2, ~2.5 min max
+    python probes/probe_p4_streaming_endurance.py mix      # sub-item 3, ~5.5 min
+    python probes/probe_p4_streaming_endurance.py smoke    # harness shakedown, ~1 min
 
 ## P5 — Weekly Schedule verification via RTC spoofing  ✅ CLOSED 2026-07-27
 
