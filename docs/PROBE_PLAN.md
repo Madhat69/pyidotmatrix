@@ -575,10 +575,15 @@ exits DIY → reverts to the persisted screen in ~2s"), **plus one separate,
 unexplained prior-reconnect effect**. Display content renders and acks SAVED,
 but a clean disconnect reverts the panel to the last *persisted* mode, so
 content written and disconnected from too quickly is lost. It survives if
-**either** condition holds: **(A) DWELL** -- dies at ~8 s, survives at 90 s,
-threshold not yet bisected; or **(B) a prior disconnect/reconnect earlier in
-the same session** -- `--preamble ble gif` survives at the same ~8 s where the
-matched `--no-reset gif` control dies, reproduced twice, mechanism open.
+**either** condition holds: **(A) DWELL** -- the ladder brackets the threshold
+at 100 s < t <= 180 s (8/30/60/75/90/100 all died, 180 survived), matching this
+lab's 2026-07-12 "under ~3 min" record; or **(B) a prior disconnect/reconnect
+earlier in the same session** -- `--preamble ble gif` survives at ~8 s where the
+matched `--no-reset gif` control dies, reproduced twice, and extended to
+fullscreen colour by G7. **(B)'s mechanism is now known (G8): a prior reconnect
+ARMS THE FLASH COMMIT** -- a colour written 8 s after a reconnect booted back
+after a physical power cycle, so (A) unassisted is a lazy commit at 100-180 s
+while (B) commits in <=8 s.
 `common.reset()` is NOT involved (`--no-reset` died twice), a same-connection
 power blink does NOT help (`--preamble power` died), and it is not GIF-specific
 (`--no-reset color` died with no payload in play). Note also that a dying run
