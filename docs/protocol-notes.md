@@ -80,6 +80,21 @@ Two kinds of device state live behind the same connection, and they persist by
 completely different rules. Confusing them is the easiest way to silently lose
 content you believe you wrote.
 
+There is a second distinction underneath, and it is worth getting straight
+before reading the rest of this section. For *display* content the panel keeps
+**three separate things**, and they routinely disagree:
+
+| | survives a BLE reconnect? | survives a power cycle? |
+|---|---|---|
+| **The stored GIF payload** | yes | **yes** — the device still recognizes its CRC |
+| **The active display mode** | reasserts — this is what a reconnect restores | no |
+| **The flash / boot display state** | *not* what a reconnect restores | **yes** — the panel boots into it |
+
+All three were observed holding different content at the same moment. So "this
+colour stayed up for three days across power cycles" and "this colour vanished
+on a reconnect" are both true and describe different states: the first is the
+boot state, the second is the active mode reasserting.
+
 ### Config-class state — durable immediately
 
 Brightness, the RTC (`common.set_time`), eco windows, alarms (Timer slots) and
@@ -108,17 +123,29 @@ it.
 Content survives a disconnect if **either** of the following holds. Each is
 independently sufficient; neither is required.
 
-- **Dwell** — enough time has passed since the write. Content ~8 s old dies
-  reliably; content 90 s old survives. The threshold lies somewhere between
-  and has not been bisected, so don't design against a precise number.
+- **Dwell** — enough time has passed since the write, in a session that has not
+  reconnected. Measured on a ladder: 8, 30, 60, 75, 90 and 100 seconds all
+  died; 180 seconds survived. **Allow about 3 minutes.** The exact threshold
+  inside that band is not known and is not worth pinning down — don't design
+  against a precise number.
 - **A prior disconnect/reconnect earlier in the same session** — a client that
   has already reconnected once protects everything it writes afterwards, even
-  only ~8 s later. Reproduced twice; the mechanism is unexplained. The effect
-  is per-process: another process's earlier reconnect does not help you.
+  only ~10 s later. Shown for GIFs (twice) and for fullscreen colour. The
+  mechanism is unexplained. The effect is per-process: another process's
+  earlier reconnect does not help you.
 
-If a program must write and hand off quickly, a throwaway
-connect/disconnect/reconnect before the real write is the cheap mitigation.
+**Practical guidance: allow roughly 3 minutes before disconnecting, or
+reconnect once first.** The second is far cheaper — ten seconds of protection
+beats a hundred seconds of waiting — so if a program must write and hand off
+quickly, do a throwaway connect/disconnect/reconnect before the real write.
 Otherwise, dwell.
+
+One trap, if you ever try to verify any of this yourself: putting different
+content on screen does **not** persist it. Activating a stored GIF, for
+instance, changes the active mode while leaving the flash state untouched —
+even after minutes on screen. To test whether a write survived, the *persisted*
+state has to differ from what you wrote, which costs a full commit period to
+set up.
 
 Multiple clients *can* share a panel without one stealing the other's content,
 but the reason is dwell, not ownership — there is no per-client scoping in

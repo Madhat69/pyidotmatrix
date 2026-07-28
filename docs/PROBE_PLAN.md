@@ -799,7 +799,7 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
-## P19 — Second-pass follow-ups  ✅ CLOSED 2026-07-28 (G1-G5; deferred tail below)
+## P19 — Second-pass follow-ups  ✅ CLOSED 2026-07-28 (G1-G5, G7; deferred tail below)
 
 Re-cut 2026-07-27 after the post-audit pass on the display-durability effect,
 then worked through with the operator at the panel on the night of
@@ -822,6 +822,44 @@ table live in capabilities.py's display.persistence_matrix. **Lesson, recorded
 deliberately:** before naming a new phenomenon, check the `glanceos-hardware-facts`
 record and the 07-12/07-17 hardware entries. A "new" durability effect on this
 panel is far more likely to be an old one seen from a new angle.
+
+**THE SETTLED MODEL, as of the late-2026-07-28 pass.** Read this before any of
+the item-by-item notes below, because several of them were written against
+earlier drafts of it.
+
+*Three distinct device states*, previously conflated and the largest single
+source of confusion in the series:
+
+| state | survives BLE reconnect? | survives power cycle? |
+|---|---|---|
+| GIF storage slot | yes | **yes** — seed-215 still recognised (status 3) afterwards |
+| Active display mode | reasserts on reconnect | no — cleared |
+| Flash / boot display state | **not** what a reconnect restores | **yes** — the panel boots to it |
+
+All three disagreed at the same moment: after a power cycle the panel booted
+straight to **orange** with no noise flash, while the GIF slot still held
+seed-215 and a BLE reconnect minutes earlier had reverted to **noise**. This
+also reconciles "fullscreen colour flash-persisted 3 days" (2026-07-17) with
+"colour dies on reconnects" (2026-07-28) — boot state versus the active mode
+reasserting. They were never in conflict.
+
+*Two independent sufficient conditions.* A display write survives a
+disconnect/reconnect if **either** holds:
+
+- **(A) Dwell, in a session with no prior reconnect.** Threshold bracketed at
+  **100 s < t ≤ 180 s** by the `own-delayed` ladder: 8, 30, 60, 75, 90 and
+  100 s all DIED; 180 s SURVIVED. Confirms the 2026-07-12 "under ~3 min"
+  record, which was right all along.
+- **(B) A prior disconnect/reconnect earlier in the same session.** Durable
+  almost immediately — **10 s is enough** (G7). Previously shown only for GIFs
+  (`--preamble ble gif`, twice), now shown for fullscreen colour too.
+
+*The protocol rule*, learned the hard way twice (see G7 and the retractions
+under G5): to ask "did this write survive?", the **PERSISTED** state must
+differ from what is being written — not merely the *active* one — and
+establishing that costs a full commit period of its own, so **a valid isolated
+trial is ~6 minutes, not 2**. Making a decoy *visible* is not the same as
+making it *committed*.
 
 **Answered / cancelled — do not re-run:**
 
@@ -851,11 +889,14 @@ panel is far more likely to be an old one seen from a new angle.
   foreign sessions failing to kill content they had not written. **That claim
   is withdrawn.** Those runs all had minutes of elapsed time behind them, so
   they satisfied condition (A) — dwell — and prove nothing about session
-  identity. G5's `own-delayed` sequence then showed the *same* session failing
-  to kill its own 90-second-old content, holding session identity constant and
-  varying only the delay. Session identity is not the variable. Consequence for
-  integrators: multiple clients CAN share this panel, but the reason is dwell,
-  not ownership. See display.persistence_matrix.
+  identity. G5's `own-delayed` ladder then showed the *same* session failing
+  to kill its own **180-second-old** content, holding session identity constant
+  and varying only the delay. Session identity is not the variable. Consequence
+  for integrators: multiple clients CAN share this panel, but the reason is
+  dwell, not ownership. See display.persistence_matrix. *Note:* the retraction
+  originally rested on a 90 s run that is itself now withdrawn as
+  flash-confounded; the 180 s ladder point carries it instead, so the
+  conclusion stands on re-anchored evidence.
 - **G2 — shadow-recover: pointer or payload?** RUN 2026-07-28,
   `probe_p11_persistence.py shadow-recover` (the mode name is a legacy label
   from the retracted model, kept because it is the CLI handle). **POINTER, NOT
@@ -898,16 +939,50 @@ panel is far more likely to be an old one seen from a new angle.
   (`verify=False`). See capabilities.py's common.set_time and
   common.ack_timing.
 - **G5 — what is the kill event?** RUN 2026-07-28,
-  `probe_p19_g5_kill_event.py`, both sequences. **This is the probe that
-  falsified the session-bound model**, and the one that forced the whole P19
-  retraction above. `reconnect` (a foreign process reconnecting on content it
-  did not write, minutes old) SURVIVED, which the session-bound reading had
-  predicted -- but `own-delayed` (the SAME session writing content, holding
-  90 s, then reconnecting) ALSO SURVIVED, which it had not. Session identity
-  held constant, delay the only variable: **elapsed time is the variable, not
-  ownership.** That plus the `--preamble ble` result gives the two-condition
-  model. The dwell threshold is bracketed at 8 s < t <= 90 s and is not
-  bisected; see the open questions below.
+  `probe_p19_g5_kill_event.py`, both sequences, then `own-delayed` again as a
+  dwell ladder. **This is the probe that falsified the session-bound model**,
+  and the one that forced the whole P19 retraction above. `reconnect` (a
+  foreign process reconnecting on content it did not write, minutes old)
+  SURVIVED, which the session-bound reading had predicted -- but the ladder
+  showed the SAME session unable to kill its own 180-second-old content, which
+  it had not. Session identity held constant, dwell the only variable:
+  **elapsed time is the variable, not ownership.** That plus the
+  `--preamble ble` result gives the two-condition model.
+  **THE DWELL LADDER, one trial per invocation** (a second trial in the same
+  process would be rescued by the first process's own reconnect, i.e. by
+  condition (B)): **8, 30, 60, 75, 90, 100 s all DIED; 180 s SURVIVED**, so
+  **100 s < t ≤ 180 s**. Not narrowed further, deliberately — see the open
+  questions.
+  **TWO RUNS RETRACTED, do not count them as evidence in either direction:**
+  `own-delayed 140` and the `own-delayed 60` rerun both wrote ORANGE while
+  orange was already the flash state, so reversion and survival were the same
+  picture. The 60 s rerun was the worse of the two — it activated a noise GIF
+  as a decoy, but the decoy had only ~10 s, nowhere near a commit, so flash
+  still held orange underneath (which is also how G7's `activate_stored`
+  finding surfaced). **The earlier "90 s survived" reading is withdrawn for
+  the same reason** and is the one that first sent the model astray; the
+  ladder's 90 s point, run under a valid discriminator, DIED.
+- **G7 — a properly isolated dwell trial.** RUN 2026-07-28,
+  `probe_p19_g7_isolated_dwell.py trial` (dwell 10 s). Written specifically to
+  satisfy the protocol rule above: persist a noise decoy for 200 s, reconnect
+  and VERIFY it, then write GREEN, hold 10 s, reconnect. Operator:
+  `noise -> reconnect -> ORANGE -> green -> reconnect -> GREEN -> clock`. Two
+  findings:
+  1. **`gif.activate_stored()` does NOT commit the GIF it activates.** Watch #1
+     showed ORANGE, not noise: the decoy had been the *active* display for a
+     full 200 s — longer than the 180 s that committed orange in the ladder —
+     and flash still held orange from that earlier trial. Activating switches
+     playback without arming whatever the commit path is. Observed once;
+     mechanism OPEN, recorded rather than explained. See gif.upload_file.
+  2. **Condition (B) confirmed for fullscreen colour.** Watch #2 showed GREEN:
+     a 10-second-old write SURVIVED, where the same 10 s in a first-connection
+     session sits well inside the ladder's six consecutive deaths. The only
+     thing this session had that those lacked is the step-2 reconnect.
+  **The run is NOT void despite (1)** — and this is the part worth keeping.
+  Green differs from BOTH candidate revert targets: a lost write would have
+  shown orange (flash) or noise (active), and neither appeared, so watch #2
+  reads cleanly whichever would have won. The discriminator survived its own
+  premise failing.
 
 **LESSON, now a probe house rule (from G3/G3b):** an on-panel label is itself
 a mode-changing command. Scoreboard and text labels are a legitimate way to
@@ -922,35 +997,45 @@ not less.
 
 **OPEN QUESTIONS, as of the 2026-07-28 consolidation:**
 
-1. **Bisect the dwell threshold.** It sits between 8 s and 90 s. This sizes any
-   delay-based mitigation exactly, and it is the single most useful number
-   still missing. A drill already exists:
-   `D:\glanceos\glanceosd\drills\measure_persistence_dwell.py`.
-2. **Why does a prior reconnect rescue an 8-second-old write?** Reproduced
-   twice; dwell cannot explain it (same 8 s, opposite outcome), and on the
-   07-28 run the animation **continued from where it was** rather than
-   restarting, so the device did not re-initialise playback across the
-   disconnect at all. Mechanism unknown. This is the load-bearing evidence for
-   GlanceOS's double-tap connect, so it matters. An HCI capture comparing
-   connection 1 with connection 2 is the definitive tool (see the deferred tail
-   below).
-3. **Does the dwell differ by content type?** GIF (a stored payload),
+1. ~~**Bisect the dwell threshold.**~~ **ANSWERED, and closed on purpose.** The
+   ladder brackets it at **100 s < t ≤ 180 s** (G5 above). **Narrowing it
+   further is NOT worth more panel time**: a valid isolated trial now costs
+   ~6 minutes each, and the guidance — allow ~3 minutes, or reconnect once
+   first — does not change anywhere inside that band. The drill
+   `D:\glanceos\glanceosd\drills\measure_persistence_dwell.py` stays unrun.
+2. **Why does a prior reconnect rescue a 10-second-old write?** Reproduced for
+   GIFs twice and now for fullscreen colour (G7); dwell cannot explain it (same
+   ~10 s, opposite outcome against six ladder deaths), and on the 07-28 GIF run
+   the animation **continued from where it was** rather than restarting, so the
+   device did not re-initialise playback across the disconnect at all.
+   Mechanism unknown. This is the load-bearing evidence for GlanceOS's
+   double-tap connect, so it matters. An HCI capture comparing connection 1
+   with connection 2 is the definitive tool (see the deferred tail below).
+3. **Why does `gif.activate_stored()` not commit the GIF it activates?**
+   Observed once (G7): 200 s as the active display, flash unchanged. Whatever
+   arms the commit path is not armed by activation. Cheap to re-observe as a
+   rider on any future GIF probe; not worth a dedicated session of its own.
+4. **Does the dwell differ by content type?** GIF (a stored payload),
    fullscreen colour (~3 bytes), and DIY frames (never persisted at all, per
-   07-17) plausibly commit on different schedules.
-4. **The magenta digits** remain unexplained. Passive watch: leave a static
+   07-17) plausibly commit on different schedules. The ladder measured
+   fullscreen colour only.
+5. **The magenta digits** remain unexplained. Passive watch: leave a static
    clock face up and glance at it occasionally through a session, sending no
    commands once the face is up. Tests whether the face cycles colour on its
    own over time -- the last standing candidate, now that eco, clock style
    selection, the default colour argument, low-brightness channel dropout, AND
    RGB-style hue cycling (G3c's falsified prediction) are all excluded
    (capabilities.py's eco.lowlight_no_colour_shift and clock.style_select).
-5. **P11's DIY row across a software power cycle** is still a void cell (see
+6. **P11's DIY row across a software power cycle** is still a void cell (see
    the deferred tail).
-6. **The `set` / `check` / `restore` handoff path is dwell-confounded** for
+7. **The `set` / `check` / `restore` handoff path is dwell-confounded** for
    display-class rows. `set` runs in its own process and rejects `--preamble`,
    so any display content it establishes is subject to conditions (A)/(B)
    before the operator even gets up from the desk. Only config-class rows
-   (brightness, eco) are safe on that path as it stands.
+   (brightness, eco) are safe on that path as it stands. Worse than first
+   recorded, now that the protocol rule is understood: a valid display-class
+   trial on that path needs the *persisted* state to differ from what is
+   written, which the handoff workflow has no way to establish.
 
 **Deferred tail (unchanged, no probe written):**
 
