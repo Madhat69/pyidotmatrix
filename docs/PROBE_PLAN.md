@@ -580,10 +580,14 @@ at 100 s < t <= 180 s (8/30/60/75/90/100 all died, 180 survived), matching this
 lab's 2026-07-12 "under ~3 min" record; or **(B) a prior disconnect/reconnect
 earlier in the same session** -- `--preamble ble gif` survives at ~8 s where the
 matched `--no-reset gif` control dies, reproduced twice, and extended to
-fullscreen colour by G7. **(B)'s mechanism is now known (G8): a prior reconnect
-ARMS THE FLASH COMMIT** -- a colour written 8 s after a reconnect booted back
-after a physical power cycle, so (A) unassisted is a lazy commit at 100-180 s
-while (B) commits in <=8 s.
+fullscreen colour by G7. **(B)'s mechanism is OPEN.** A claim that a prior
+reconnect ARMS THE FLASH COMMIT (G8) was retracted on 2026-07-28 and is dead:
+G10-G12 then showed the flash commit runs on WALL CLOCK from the write
+(5 s < t <= 10.3 s) regardless of link state, so G8's matched pair was two
+different reaction times, not two different arming states. Note also that the
+100-180 s bracket above is a RECONNECT reading -- active display mode, not
+flash -- and must never be quoted for power-cut durability. See "THE FLASH
+COMMIT" under P19.
 `common.reset()` is NOT involved (`--no-reset` died twice), a same-connection
 power blink does NOT help (`--preamble power` died), and it is not GIF-specific
 (`--no-reset color` died with no payload in play). Note also that a dying run
@@ -804,7 +808,7 @@ offers.
 Cost: negligible on a second capture run. Broadens the evidence from
 command-byte discovery into initialization, persistence, transfer, and recovery.
 
-## P19 — Second-pass follow-ups  ✅ CLOSED 2026-07-28 (G1-G5, G7; deferred tail below)
+## P19 — Second-pass follow-ups  ✅ CLOSED 2026-07-29 (G1-G5, G7-G12; deferred tail below)
 
 Re-cut 2026-07-27 after the post-audit pass on the display-durability effect,
 then worked through with the operator at the panel on the night of
@@ -858,6 +862,50 @@ disconnect/reconnect if **either** holds:
 - **(B) A prior disconnect/reconnect earlier in the same session.** Durable
   almost immediately — **10 s is enough** (G7). Previously shown only for GIFs
   (`--preamble ble gif`, twice), now shown for fullscreen colour too.
+
+**THE FLASH COMMIT — SETTLED 2026-07-29 (G10–G12). This is a different question
+from (A) and (B) above, and conflating them cost this series two days.**
+
+(A) and (B) are about surviving a **BLE reconnect**, which reads the *active
+display mode*. The **flash commit** — surviving a *power cut* — is separate, and
+it is now measured:
+
+> **The commit runs on WALL CLOCK from the write, 5 s < t ≤ 10.3 s, and the link
+> state is irrelevant.** Dwell was never the variable any earlier probe was
+> manipulating; the operator's unrecorded reaction time was.
+
+| trial | total write→cut | clean disconnect? | committed |
+|---|---|---|---|
+| G12 yellow | **< 5 s** | yes | **no** |
+| G12 magenta | ~10.3 s | yes | yes |
+| G11 white | 47.9 s (only 2.1 s connected) | yes | yes |
+| G12 cyan | ~69 s | **no — plug killed a live link** | yes |
+
+Each row kills a model: G11 kills **dwell** (2 s committed), the cyan row kills
+**disconnect-flush** (no teardown, committed anyway), and the yellow row kills
+**brownout-flush** (a power cut at <5 s flushed nothing) while giving the lower
+bracket. The magenta row did *not* discriminate — it landed above 8 s — and is
+recorded as an upper bracket only.
+
+*How it was finally measurable* (G10, `probe_p19_g10_advert_watch.py`): the
+panel advertises ~9 Hz whenever powered and **not** connected, so a scanner left
+running after the disconnect **sees** the power cut, pinning it to the last
+advertisement (~110 ms typical, ~2.1 s worst case). The interval G8/G9 left
+uncontrolled becomes *measured* — better than controlled, since the operator can
+pull whenever and every trial still counts.
+
+*The back catalogue reconciles.* G8's `no-arm` (8 s hold, fast pull) sat under
+the threshold; G9's lime (8 s hold, slower pull) sat over it. Same nominal
+dwell, opposite outcomes, one uncontrolled variable explaining both. **The
+100–180 s from the `own-delayed` ladder is a display-mode TAKEOVER time, not a
+commit time** — do not quote it for power-cut durability.
+
+*Caller guidance:* leave **~15 s** between the last write and any power loss,
+connected or not.
+
+*Still open, and cheap:* the threshold is bracketed, not pinned. A couple of
+trials near 7 s with a fresh colour each would halve it. Nothing in the SDK
+needs it.
 
 *The protocol rule*, learned the hard way twice (see G7 and the retractions
 under G5): to ask "did this write survive?", the **PERSISTED** state must

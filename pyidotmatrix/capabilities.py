@@ -75,7 +75,10 @@ _S32 = ScreenSize.SIZE_32x32
 _ENTRIES: tuple[Capability, ...] = (
     # --- display (framebuffer pipeline) ---
     Capability(
-        "display", "show_frame", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "show_frame",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "DIY full-frame upload is GlanceOS's main render path; ~1.5 s device processing with "
         "ack-as-flow-control (ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering). "
         "Streaming benchmark 2026-07-20 (probes/probe_streaming_benchmark.py): the device "
@@ -111,7 +114,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "is UNKNOWN; this is the measurement and its consequence, not an explanation.",
     ),
     Capability(
-        "display", "write_without_response", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "write_without_response",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "fa02 advertises write-without-response and our panel honors it: unacked frames "
         "rendered on-screen during the 2026-07-20 streaming benchmark (operator-observed). "
         "Firmware-variant caveat: LumiSync's RE notes report no-response writes IGNORED on "
@@ -135,7 +141,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "See display.show_frame and display.set_pixels for the measured envelopes.",
     ),
     Capability(
-        "display", "set_pixels", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "set_pixels",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Graffiti delta path, ~20 ms unacked, <=255 px/command "
         "(ROADMAP.md section 3 Display; FEATURE_MATRIX.md Display/rendering). The 255 cap is "
         "a HARD SAFETY LIMIT: 256 pixels in one command crashes the panel's BLE stack and "
@@ -151,17 +160,26 @@ _ENTRIES: tuple[Capability, ...] = (
         "display.show_frame.",
     ),
     Capability(
-        "display", "diy_entry_no_clear", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "display",
+        "diy_entry_no_clear",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "DIY entry mode 3 silently fails over effect/clock states while the device acks anyway "
         "(A/B 2026-07-17; 3-run clock probe 2026-07-19; probes/probe_diy_modes.py).",
     ),
     Capability(
-        "display", "diy_quit_keep_frame", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "diy_quit_keep_frame",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "DIY quit mode 2 parks a kept frame that survives clean disconnect but not power-cycle "
         "(2-run probe 2026-07-18; ROADMAP.md section 3 Display).",
     ),
     Capability(
-        "display", "persistence_matrix", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "persistence_matrix",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "P11 PERSISTENCE MATRIX, automated columns 2026-07-27 (probes/probe_p11_"
         "persistence.py): every row tested (clock, DIY frame, fullscreen colour, GIF, text, "
         "effect, flip, brightness, eco, power) against a BLE disconnect/reconnect (~6s), and "
@@ -260,17 +278,32 @@ _ENTRIES: tuple[Capability, ...] = (
         "CAUSE, a design flaw in BOTH probes: the interval between the probe disconnecting and "
         "the operator power-cycling is NEVER CONTROLLED, so if the commit can finish after the "
         "link drops, that unrecorded interval is part of the effective dwell and two runs "
-        "nominally at 8 s can differ by a minute of real time. No sharp commit threshold is "
-        "recorded, deliberately -- neither probe can measure one until that window is "
-        "controlled. WHAT SURVIVES THE RETRACTION: (B)'s DISPLAY effect, which needs no power "
-        "cycle at all -- G7 showed fullscreen colour surviving a reconnect at 10 s where the "
-        "reconnect ladder died at 8/30/60/75/90/100 s. AND, more useful than the retracted "
-        "claim: THE TWO LADDERS MEASURE DIFFERENT QUANTITIES. A reconnect can only read the "
-        "ACTIVE MODE; only a power cycle reads FLASH. Read by power cycle, every G9 rung at "
-        "15 s and above COMMITTED -- the unassisted commit happens in TENS OF SECONDS, nowhere "
-        "near the 100-180 s the reconnect ladder produced, which is a display-mode TAKEOVER "
-        "time. 'Survives a power cut' and 'survives a reconnect' are separate guarantees and "
-        "must never be answered with one number. (B) IS NOT "
+        "nominally at 8 s can differ by a minute of real time. "
+        "RESOLVED 2026-07-29 (P19 G10/G11/G12) -- THE FLASH COMMIT RUNS ON WALL CLOCK FROM THE "
+        "WRITE, 5 s < t <= 10.3 s, AND THE LINK STATE IS IRRELEVANT. Dwell was never the "
+        "variable any probe in this series was manipulating: the operator's unrecorded reaction "
+        "time was. THE INSTRUMENT THAT SETTLED IT (P19 G10, probes/probe_p19_g10_advert_watch."
+        "py): the panel advertises ~9 Hz whenever powered and NOT connected, so a scanner left "
+        "running after the disconnect SEES the power cut -- pinning it to the last advertisement, "
+        "~110 ms typically and ~2.1 s worst case. That converts the uncontrolled interval into a "
+        "MEASURED one, which beats controlling it: the operator pulls whenever and every trial is "
+        "still valid. EVIDENCE, total time from write to power cut, read by boot colour: "
+        "yellow <5 s with a clean disconnect DID NOT COMMIT; magenta ~10.3 s COMMITTED; white "
+        "47.9 s COMMITTED after only 2.1 s of link-up dwell; cyan ~69 s COMMITTED WITH NO CLEAN "
+        "DISCONNECT AT ALL (the plug killed a live link). The last two kill the two rival models "
+        "outright -- a 2 s hold committing kills DWELL, and committing with no teardown kills "
+        "DISCONNECT-FLUSH -- while the first kills a BROWNOUT flush, since a power cut at <5 s "
+        "flushed nothing. THE BACK CATALOGUE RECONCILES: G8's `no-arm` (8 s, operator pulled "
+        "fast) sat under the threshold and G9's lime (8 s, operator slower) sat over it. Same "
+        "nominal dwell, opposite outcomes, no contradiction. WHAT ALSO SURVIVES: (B)'s DISPLAY "
+        "effect, which needs no power cycle at all -- G7 showed fullscreen colour surviving a "
+        "reconnect at 10 s where the reconnect ladder died at 8/30/60/75/90/100 s. AND: THE TWO "
+        "LADDERS MEASURE DIFFERENT QUANTITIES. A reconnect can only read the ACTIVE MODE; only a "
+        "power cycle reads FLASH. The 100-180 s the reconnect ladder produced is a display-mode "
+        "TAKEOVER time, NOT a commit time. 'Survives a power cut' and 'survives a reconnect' are "
+        "separate guarantees and must never be answered with one number. CALLER GUIDANCE: leave "
+        "~15 s between the last write and any power loss, connected or not, and the content is "
+        "in flash. (B) IS NOT "
         "GIF-SPECIFIC AND IS DURABLE ALMOST IMMEDIATELY -- EXTENDED TO FULLSCREEN COLOUR "
         "2026-07-28 (P19 G7, probes/probe_p19_g7_isolated_dwell.py): green written 10 s after a "
         "reconnect SURVIVED, where 10 s in a first-connection session sits well inside the six "
@@ -397,7 +430,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "queued in docs/PROBE_PLAN.md P19.",
     ),
     Capability(
-        "display", "invalidate_diy_mode", CapabilityStatus.VERIFIED, _S32,
+        "display",
+        "invalidate_diy_mode",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "P12 FULL RESULT 2026-07-27, all five sequences run (probes/probe_p12_mode_state_"
         "machine.py, rebuilt one-sequence-per-invocation after two unfollowable multi-sequence "
         "attempts). HEADLINE: the question is not 'does DIY mode need re-entry', it is "
@@ -442,7 +478,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "queued as a follow-up in docs/PROBE_PLAN.md, not claimed here.",
     ),
     Capability(
-        "display", "visual_transients", CapabilityStatus.UNKNOWN, _S32,
+        "display",
+        "visual_transients",
+        CapabilityStatus.UNKNOWN,
+        _S32,
         "TWO OBSERVED-BUT-UNREPRODUCED visual glitches, logged rather than explained, because "
         "each occurred with the BLE link otherwise healthy. (1) 2026-07-24, single-chunk GIF "
         "sends (docs/PROBE_PLAN.md P2): a transient render glitch -- stutter, CRT-like "
@@ -461,7 +500,10 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     # --- native modes ---
     Capability(
-        "chronograph", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "chronograph",
+        "set_mode",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Stopwatch counts up on panel; start-after-pause RESTARTS from zero rather than "
         "resuming (probes/probe_chronograph_clean.py, 2026-07-21). Caveat: with a paused "
         "countdown pending, chronograph commands acted on THAT state instead (sweep 2 "
@@ -496,7 +538,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "(see common.reset).",
     ),
     Capability(
-        "countdown", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "countdown",
+        "set_mode",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "30s countdown ran on panel, auto-returned to clock at zero; runs autonomously on "
         "device (probes/probe_capability_sweep1.py, 2026-07-20). MODE_DISABLE left resumable "
         "state rather than clearing (see chronograph caveat). OUT-OF-RANGE MINUTES ARE "
@@ -509,12 +554,18 @@ _ENTRIES: tuple[Capability, ...] = (
         "loudly.",
     ),
     Capability(
-        "clock", "show", CapabilityStatus.VERIFIED, _S32,
+        "clock",
+        "show",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Clock ticks on RTC through disconnects; not flash-persisted (persistence probes "
         "2026-07-17; 3-run clock probe 2026-07-19; ROADMAP.md section 3 Native modes).",
     ),
     Capability(
-        "clock", "style_select", CapabilityStatus.VERIFIED, _S32,
+        "clock",
+        "style_select",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "VERIFIED ON ALL EIGHT VALUES 2026-07-28 (P19 G3, probes/probe_p19_g3_clock_styles.py "
         "`sweep`): all eight styles sent in wire order 0..7, ~10 s each, colour held WHITE, date "
         "and 24h on, the sweep deliberately UNLABELLED so the panel never left clock mode. All "
@@ -569,7 +620,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "on its own over time; the passive magenta watch stays queued in docs/PROBE_PLAN.md P19.",
     ),
     Capability(
-        "scoreboard", "show", CapabilityStatus.VERIFIED, _S32,
+        "scoreboard",
+        "show",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "12:34 rendered as two scores on panel (probes/probe_capability_sweep1.py, 2026-07-20). "
         "OUT-OF-RANGE SCORES ARE SILENTLY IGNORED 2026-07-25 (P13 phase D, probes/"
         "probe_boundary_sweep.py): a RAW [8,0,10,128,232,3,0,0] frame (score 1000, "
@@ -579,7 +633,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "keeping an out-of-range score from being an invisible no-op.",
     ),
     Capability(
-        "eco", "set_mode", CapabilityStatus.VERIFIED, _S32,
+        "eco",
+        "set_mode",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "With the eco window covering now and eco_brightness=5, the panel visibly "
         "dimmed (probes/probe_capability_sweep3.py, 2026-07-21). CITATION CORRECTED "
         "2026-07-27: that 2026-07-21 run never set a prior brightness, so it could "
@@ -609,7 +666,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "magenta digits' origin is UNRESOLVED; see clock.style_select.",
     ),
     Capability(
-        "eco", "lowlight_no_colour_shift", CapabilityStatus.VERIFIED, _S32,
+        "eco",
+        "lowlight_no_colour_shift",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "NO LOW-LIGHT COLOUR SHIFT 2026-07-27 (probes/probe_p17b_eco_isolation.py, colour + "
         "lowlight modes): a full-white field held at brightness 100/20/10/5 showed NO colour "
         "shift at any level. The RGB channels appear to share a single turn-on threshold "
@@ -622,7 +682,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "clock.style_select's magenta-digit-origin note.",
     ),
     Capability(
-        "color", "show", CapabilityStatus.VERIFIED, _S32,
+        "color",
+        "show",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Fullscreen color flash-persists across power-cycle -- survived 3 days, 2026-07 "
         "(persistence probes 2026-07-17; ROADMAP.md section 3 Display). CORRECTION 2026-07-27: "
         "P7 PHASE 9 WAS WRONGLY RECORDED AS VOID earlier the same day and is UN-VOIDED here. The "
@@ -675,7 +738,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "remains the only way to actually turn the display off.",
     ),
     Capability(
-        "graffiti", "set_pixels", CapabilityStatus.VERIFIED, _S32,
+        "graffiti",
+        "set_pixels",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Hardware-verified delta-render path; genuinely ack-silent, so the transport never "
         "awaits an ack for it (ROADMAP.md section 3 Display; FEATURE_MATRIX.md). App usage "
         "2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the paint screen's ERASER "
@@ -704,7 +770,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "so any future probe author touching graffiti must respect the cap.",
     ),
     Capability(
-        "graffiti", "move_type", CapabilityStatus.VERIFIED, _S32,
+        "graffiti",
+        "move_type",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Header byte 4 = the APK's DiyImageMoveType: 1 = HORIZONTAL_MIRROR, 2 = VERTICAL_MIRROR "
         "-- draws the pixels PLUS a mirrored copy across the panel's center axis (single-pixel "
         "discriminator, probes/probe_graffiti_transform{,2}.py, 2026-07-21). MAP COMPLETE "
@@ -719,7 +788,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "single-pixel test killed it.",
     ),
     Capability(
-        "graffiti", "byte3_required_one", CapabilityStatus.VERIFIED, _S32,
+        "graffiti",
+        "byte3_required_one",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Header byte 3 is NOT a mirror field: only value 1 (the app's hardcoded constant) "
         "draws; 2 is nacked [5,0,5,2,0] (4/4 reproductions), 0/3/4 are acked and silently "
         "swallowed (probes/probe_graffiti_byte3_*.py, control case, 2026-07-21). CORRECTION of "
@@ -727,13 +799,19 @@ _ENTRIES: tuple[Capability, ...] = (
         "no-ops look identical.",
     ),
     Capability(
-        "effect", "show", CapabilityStatus.VERIFIED, _S32,
+        "effect",
+        "show",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Effect mode activated live with the historical speed=90 during persistence probes "
         "2026-07-17 (ROADMAP.md section 3); header layout confirmed from "
         "MutilColorAgreement.java:42-72 (APK_SECOND_PASS.md Q5(a)).",
     ),
     Capability(
-        "effect", "speed", CapabilityStatus.VERIFIED, _S32,
+        "effect",
+        "speed",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Speed is a real header field at byte offset 5 (APK_SECOND_PASS.md Q5(a)). MECHANISM "
         "CONFIRMED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): byte 5 IS how "
         "the app changes effect speed -- on gesture release it re-sends the WHOLE effect command "
@@ -768,7 +846,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "length, in fact acked.",
     ),
     Capability(
-        "effect", "show_chunked", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "effect",
+        "show_chunked",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "MutilColorAgreement.getSendData() bespoke [chunkLen+1, chunkIndex] 96/18-byte framing "
         "(APK_SECOND_PASS.md Q5(a)): both mtu variants ACKED but NO effect appeared on panel "
         "(probes/probe_capability_sweep3.py, 2026-07-21). The flat show() is the working path. "
@@ -783,7 +864,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "Stays KNOWN_BROKEN -- the chunked path has not been re-sent to hardware since the fix.",
     ),
     Capability(
-        "music_sync", "set_mic_type", CapabilityStatus.VERIFIED, _S32,
+        "music_sync",
+        "set_mic_type",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "BleProtocolN.setMicType; acked on hardware 2026-07-21 with no visible change of its "
         "own (probes/probe_capability_sweep3.py) -- effect unobservable in isolation. FRAME "
         "CORRECTED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): the frame is SIX "
@@ -802,7 +886,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "unobserved, and no value has been mapped to a named microphone/source setting.",
     ),
     Capability(
-        "music_sync", "send_image_rhythm", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "music_sync",
+        "send_image_rhythm",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "BleProtocolN.sendImageRhythm promises a dancing figure; a 10-value stream was fully "
         "acked but NO figure appeared, and the clock face stuttered during the stream "
         "(probes/probe_capability_sweep3.py, 2026-07-21). REAL MECHANISM FOUND 2026-07-25 "
@@ -814,7 +901,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "a working replacement and no remaining reason to be used.",
     ),
     Capability(
-        "music_sync", "rhythm_levels", CapabilityStatus.VERIFIED, _S32,
+        "music_sync",
+        "rhythm_levels",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "protocol.music_sync.build_rhythm_levels, added 2026-07-25 from the vendor-app HCI "
         "capture (tools/parse_btsnoop.py): the PHONE does the FFT and streams [21 00 01 02 00] + "
         "16 level bytes to fa02 at ~10 Hz, unacked (byte 0 is a constant 0x21, not the 21-byte "
@@ -830,25 +920,37 @@ _ENTRIES: tuple[Capability, ...] = (
         "geometry, what 'full' means) was not readable from these phases.",
     ),
     Capability(
-        "music_sync", "stop_rhythm", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "music_sync",
+        "stop_rhythm",
+        CapabilityStatus.SOURCE_DERIVED,
+        _S32,
         "BleProtocolN.sendStopMicRhythm; acked 2026-07-21, nothing to observe stopping since "
         "send_image_rhythm never rendered (probes/probe_capability_sweep3.py).",
     ),
     # --- text ---
     Capability(
-        "text", "show", CapabilityStatus.VERIFIED, _S32,
+        "text",
+        "show",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "sendTextTo3232 port renders fully on a real 32x32; render A/B vs the generic packet "
         "2026-07-20 (ROADMAP.md section 3 Text).",
     ),
     Capability(
-        "text", "show_generic_builder", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "text",
+        "show_generic_builder",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "The legacy/generic packet (build_text_packet, used when no screen_size is given) "
         "renders TRUNCATED on 32x32 -- 'HELLO' -> 'HEL' (A/B 2026-07-20); the earlier "
         "2026-07-19 'rejection' was a StatusAck SAVED misparse. Other panel sizes unprobed.",
     ),
     # --- gif ---
     Capability(
-        "gif", "upload_file", CapabilityStatus.VERIFIED, _S32,
+        "gif",
+        "upload_file",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Chunked GIF upload with native playback, optimize=True required (FEATURE_MATRIX.md "
         "Display/rendering; ROADMAP.md section 3 Images). The old 'time_sign/ConvertTime "
         "semantics matched' claim was WRONG and is corrected 2026-07-25 (vendor-app HCI capture, "
@@ -915,7 +1017,10 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     # --- common (device control) ---
     Capability(
-        "common", "set_brightness", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "set_brightness",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "5-100% works; out-of-range values nacked by the device via fa03 "
         "(ROADMAP.md section 3 Device). BOUNDARY CLOSED 2026-07-25 (P13, "
         "probes/probe_boundary_sweep.py): raw frames at 0/1/4/101/255 all NACK "
@@ -953,7 +1058,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "needs nothing to protect it.",
     ),
     Capability(
-        "common", "set_power", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "set_power",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Power on/off exercised live (ROADMAP.md section 3 Device). SEMANTICS "
         "MAPPED 2026-07-27 (P7, probes/probe_p7_odds_and_ends.py phases 1-2): "
         "commands sent to a POWERED-OFF panel are still accepted and EXECUTE "
@@ -967,7 +1075,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "reset-to-clock operation.",
     ),
     Capability(
-        "common", "set_time", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "set_time",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "RTC sync; alarms armed against it fired at the intended wall-clock time 2026-07-12. "
         "Stronger 2026-07-21: the RTC's WEEKDAY follows set_time too -- spoofing tomorrow's "
         "date flipped a day-masked timer from firing to silent (probes/probe_timer_weekbit.py). "
@@ -995,15 +1106,21 @@ _ENTRIES: tuple[Capability, ...] = (
         "common.ack_timing for the scoping of P14's 'no family was ever silent'.",
     ),
     Capability(
-        "common", "device_id_read", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "common",
+        "device_id_read",
+        CapabilityStatus.SOURCE_DERIVED,
+        _S32,
         "The device exposes a readable ID string at ATT handle 0x0007: our panel returned "
-        "\"TR2306R007-15\" to the vendor app (vendor-app HCI capture 2026-07-25, "
+        '"TR2306R007-15" to the vendor app (vendor-app HCI capture 2026-07-25, '
         "tools/parse_btsnoop.py). No SDK method reads it yet; recorded so a future model/firmware "
         "identification feature has a starting point. Handle numbers are per-connection GATT "
         "artifacts -- rediscover by UUID rather than hardcoding 0x0007.",
     ),
     Capability(
-        "common", "set_screen_flipped", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "set_screen_flipped",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Clock rendered upside down on True and righted on False "
         "(probes/probe_capability_sweep2.py, 2026-07-20). Full semantics 2026-07-24 "
         "(probes/probe_p8_geometry.py): flip is a 180-degree ROTATION applied at render time "
@@ -1011,14 +1128,20 @@ _ENTRIES: tuple[Capability, ...] = (
         "always stay in canonical unflipped space.",
     ),
     Capability(
-        "common", "freeze_screen", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "common",
+        "freeze_screen",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "Acked but NO observable effect in three tests 2026-07-20/21: didn't stop a running "
         "effect animation, didn't block graffiti draws from landing, no visual change on the "
         "clock; sending it again toggled nothing (probes/probe_capability_sweep{1,2}.py). "
         "Whatever setScreenFreeze controls, it is not visible on our panel.",
     ),
     Capability(
-        "common", "set_speed", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "common",
+        "set_speed",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "Acked but NO effect in two contexts: live text (A/B 2026-07-20 -- the text packet's "
         "own speed byte governs marquee smoothness) and a running effect (5/100/50 sweep "
         "mid-animation, probes/probe_effect_set_speed.py, 2026-07-21). The vendor app's "
@@ -1036,35 +1159,53 @@ _ENTRIES: tuple[Capability, ...] = (
         "the text packet's own speed byte for marquee speed -- this command has no known use.",
     ),
     Capability(
-        "common", "set_joint", CapabilityStatus.UNKNOWN, None,
+        "common",
+        "set_joint",
+        CapabilityStatus.UNKNOWN,
+        None,
         "Bytes match BleProtocolN.sendJoint, but the feature's purpose is unknown upstream too "
         "(FEATURE_MATRIX.md Device control; ROADMAP.md section 3 Display).",
     ),
     Capability(
-        "common", "set_password", CapabilityStatus.SOURCE_DERIVED, None,
+        "common",
+        "set_password",
+        CapabilityStatus.SOURCE_DERIVED,
+        None,
         "BleProtocolN.setPwd; byte-4 mode field hardcoded 1, unexplored (ROADMAP.md section 5). "
         "NEVER sent to hardware: the set/verify password probe is sequenced last across the "
         "roadmap by maintainer ruling 2026-07-20 -- lockout risk (ROADMAP.md section 17, SDK-M3).",
     ),
     Capability(
-        "common", "verify_password", CapabilityStatus.SOURCE_DERIVED, None,
+        "common",
+        "verify_password",
+        CapabilityStatus.SOURCE_DERIVED,
+        None,
         "BleProtocolN.verifyPwd bytes confirmed (APK_PROTOCOL_FINDINGS.md section 1); ack shape "
         "unobserved and its (5,2) key collides with graffiti's nack (APK_SECOND_PASS.md Q4). "
         "Untested by the same maintainer ruling as set_password (ROADMAP.md section 17).",
     ),
     Capability(
-        "common", "set_screen_timeout", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "common",
+        "set_screen_timeout",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "No fa03 ack and no visual effect on our 32x32 (probes/probe_screen_timeout.py, "
         "2026-07-12) -- likely model-specific; units unknown pending a supporting model "
         "(ROADMAP.md sections 3 and 9).",
     ),
     Capability(
-        "common", "read_screen_timeout", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "common",
+        "read_screen_timeout",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "Same probe as set_screen_timeout: the screen-timeout family is unsupported on our "
         "32x32 (probes/probe_screen_timeout.py, 2026-07-12).",
     ),
     Capability(
-        "common", "reset", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "reset",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Used live 2026-07-18 to clear a stuck state (ROADMAP.md section 3 Device). BOOT/FLASH "
         "STATE IDENTIFIED 2026-07-27 (P7, probes/probe_p7_odds_and_ends.py, the chronograph/"
         "countdown branch): after a common.reset(), the panel briefly shows a RAINBOW pattern "
@@ -1078,7 +1219,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "disconnecting a few seconds after one is what is not safe.",
     ),
     Capability(
-        "common", "ack_timing", CapabilityStatus.VERIFIED, _S32,
+        "common",
+        "ack_timing",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "CALIBRATED 2026-07-27 (P14, probes/probe_p14_ack_timing.py: 7 command families, 5 "
         "repeats each, verification off so the measured t=0 is GATT write completion, not the "
         "SDK's own internal ack-await). NO COMMAND FAMILY TESTED WAS SILENT IN P14'S CONDITIONS "
@@ -1105,24 +1249,36 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
     # --- experimental ---
     Capability(
-        "experimental", "set_time_indicator", CapabilityStatus.KNOWN_BROKEN, _S32,
+        "experimental",
+        "set_time_indicator",
+        CapabilityStatus.KNOWN_BROKEN,
+        _S32,
         "BleProtocolN.setTimeIndicatorEnable (FEATURE_MATRIX.md, findings section 2): acked on/"
         "off with NOTHING visible on the clock face (probes/probe_capability_sweep3.py, "
         "2026-07-21) -- matches the original lab's 'doesn't seem to work' report.",
     ),
     Capability(
-        "experimental", "delete_device_data", CapabilityStatus.SOURCE_DERIVED, None,
+        "experimental",
+        "delete_device_data",
+        CapabilityStatus.SOURCE_DERIVED,
+        None,
         "Agreement.deleteDeviceMaterial, byte-identical across APK versions (FEATURE_MATRIX.md, "
         "findings section 3); destructive, never sent to hardware; requires confirm=True.",
     ),
     Capability(
-        "experimental", "schedule_master_switch", CapabilityStatus.SOURCE_DERIVED, _S32,
+        "experimental",
+        "schedule_master_switch",
+        CapabilityStatus.SOURCE_DERIVED,
+        _S32,
         "All 4 packed enable/buzzer values accepted by hardware but bit semantics untested -- "
         "acks confirm receipt, not effect (probes/probe_schedule_master_switch.py; "
         "ROADMAP.md section 3 Alarms).",
     ),
     Capability(
-        "experimental", "timer_close", CapabilityStatus.VERIFIED, _S32,
+        "experimental",
+        "timer_close",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Sent to hardware, but the ack is a state echo (statuses 0/1/3 observed from different "
         "states), so the disarm effect was long unconfirmed (probes/probe_timer_close.py; "
         "ROADMAP.md section 3 Alarms). MECHANISM ESTABLISHED 2026-07-27 (P6, probes/probe_p6_"
@@ -1144,7 +1300,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "the kind of thing easy to misread under the ack-timing bugs this lab has hit before.",
     ),
     Capability(
-        "experimental", "timer_set", CapabilityStatus.VERIFIED, _S32,
+        "experimental",
+        "timer_set",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "Chunked handshake proven; GIF content fired animated with buzzer (2026-07-12; "
         "ROADMAP.md section 3 Alarms; ALARM_BUZZER_APK_FINDINGS.md). CONTENT_IMAGE SOLVED "
         "2026-07-21: it wants an encoded PNG bytestream, which fired and RENDERED at alarm "
@@ -1173,7 +1332,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "correction this same session produced.",
     ),
     Capability(
-        "experimental", "schedule_set_theme", CapabilityStatus.VERIFIED, _S32,
+        "experimental",
+        "schedule_set_theme",
+        CapabilityStatus.VERIFIED,
+        _S32,
         "GIF theme upload SAVED and fired inside its window 2026-07-12 -- end boundary looked "
         "minute-exclusive (probes/probe_schedule_gif.py; ROADMAP.md section 3 Alarms). Image "
         "content is PNG, not raw RGB (APK_SECOND_PASS.md Q2). DAY-BIT MAP CONFIRMED and PNG "
@@ -1200,9 +1362,7 @@ _ENTRIES: tuple[Capability, ...] = (
     ),
 )
 
-CAPABILITIES: Mapping[str, Capability] = MappingProxyType(
-    {entry.name: entry for entry in _ENTRIES}
-)
+CAPABILITIES: Mapping[str, Capability] = MappingProxyType({entry.name: entry for entry in _ENTRIES})
 """Read-only mapping of "feature.command" -> Capability."""
 
 
