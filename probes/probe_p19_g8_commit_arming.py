@@ -62,7 +62,32 @@ The argument is mandatory. Runtime ~45 s (arm) / ~25 s (no-arm), plus your power
 cycle. Each sequence writes a colour the current flash state is NOT: reusing a
 colour already in flash makes reversion and survival the same picture.
 
-RESULT (2026-07-28): **CONFIRMED -- a prior reconnect ARMS THE FLASH COMMIT.**
+RESULT (2026-07-28): **RETRACTED IN PART. The commit claim below did NOT hold
+up; the display claim is untouched. Read this box before the account beneath it.**
+
+This probe concluded that a prior reconnect ARMS THE FLASH COMMIT, on the
+strength of a matched pair: `arm` (reconnect, 8 s hold) booted its own colour,
+`no-arm` (no reconnect, same 8 s) booted the previous one. One variable, opposite
+outcomes.
+
+probe_p19_g9_commit_ladder.py then re-ran 8 s WITHOUT a reconnect and it DID
+commit. So 8 s commits inconsistently unassisted, the pair is not a contrast, and
+**"(B) arms the flash commit" is UNPROVEN.**
+
+Root cause, and it is this probe's flaw as much as G9's: **the interval between
+the disconnect and the operator's power cycle is never controlled.** If the commit
+can finish after the link drops, that unrecorded interval is part of the effective
+dwell, and two runs nominally at "8 s" can differ by a minute of real elapsed
+time. Neither probe measures what it claims at the boundary.
+
+WHAT STILL STANDS: condition (B)'s DISPLAY effect. G7 showed green surviving a
+reconnect at 10 s where the reconnect ladder died at 8, 30, 60, 75, 90 and 100 s.
+That evidence does not depend on any power cycle and is unaffected.
+
+The original account follows, kept for provenance:
+
+--- ORIGINAL (superseded) -----------------------------------------------------
+**a prior reconnect ARMS THE FLASH COMMIT.**
 
 Operator: `reconnect -> GREEN -> green (~1 s) -> BLUE -> power cycle -> BLUE`.
 
@@ -100,6 +125,7 @@ three-minute timer it would rarely survive.
 
 Note the panel is deliberately left on this run's colour; restoring would have
 overwritten the state being measured, and the boot reading is the measurement.
+--- END ORIGINAL --------------------------------------------------------------
 
 RESULT, `no-arm` (2026-07-28): **the hypothesis is FALSIFIED, and that turns
 this probe into a MATCHED PAIR -- the cleanest evidence in the series.**

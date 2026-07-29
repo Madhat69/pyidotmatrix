@@ -52,42 +52,51 @@ USAGE
 
 Colours: see PALETTE below. Runtime = dwell + ~15 s, plus your power cycle.
 
-RESULT (2026-07-28): **the unassisted flash commit is 8 s < t <= 15 s -- an
-order of magnitude faster than the reconnect-measured ladder, because the two
-ladders measure DIFFERENT THINGS.**
+RESULT (2026-07-28): **INCONCLUSIVE ON THE THRESHOLD. A design flaw in this
+probe -- and in G8 -- makes the boundary unmeasurable as built. Read the flaw
+before trusting any number here.**
 
-Ladder, each rung a fresh session with NO reconnect, read by power cycle:
+Rungs run, each a fresh session with NO reconnect, read by power cycle:
 
-    dwell   colour    booted     commits?
-      8 s   magenta   blue       NO   (G8 `no-arm`, the lower anchor)
-     15 s   red       RED        YES
-     30 s   yellow    YELLOW     YES
-     60 s   cyan      CYAN       YES
+    dwell   colour    booted    reading
+      8 s   magenta   blue      did NOT commit   (G8 `no-arm`)
+      8 s   lime      LIME      DID commit       (this probe, later)
+     15 s   red       RED       DID commit
+     30 s   yellow    YELLOW    DID commit
+     60 s   cyan      CYAN      DID commit
 
-Each trial wrote a colour the current flash state was not, so the boot colour
-names the trial that committed and no reading was a judgement call.
+**8 s BOTH committed and failed to commit.** So the ladder has no valid lower
+anchor and the "8 s < t <= 15 s" bracket first written here is WITHDRAWN.
 
-WHAT THIS CORRECTS. The (A) figure recorded from probe_p19_g5_kill_event.py's
-ladder -- 100 s < t <= 180 s -- was measured with a RECONNECT, and a reconnect
-can only read the ACTIVE MODE. It is a DISPLAY-MODE TAKEOVER time, not a commit
-time. The commit itself, read straight from flash by power-cycling, happens
-inside 15 s. Both numbers are real; they answer different questions:
+THE FLAW: **the interval between the probe disconnecting and the operator
+pulling the power is never controlled.** Every run ends with the probe exiting
+and the operator power-cycling whenever they get to it -- ten seconds, sixty,
+unrecorded either way. If the commit can complete AFTER the link drops, that
+interval counts toward the effective dwell and no rung measures what it claims
+to. Longer rungs also trivially enjoy more total elapsed time, so the ladder's
+shape may be an artifact of operator timing rather than of the dwell argument.
 
-    "will this survive a power cut?"   -> commit:   <= 15 s unassisted,
-                                                    <= 8 s after a reconnect (G8)
-    "will this survive a reconnect?"   -> takeover: 100-180 s unassisted
+WHAT SURVIVES, and it is worth keeping:
 
-A caller who wants durability across a power cut needs far less patience than
-the 3-minute figure the docs were about to publish; a caller who wants their
-content to survive the next BLE reconnect needs the longer one, or condition (B).
+  * the unassisted commit happens in TENS OF SECONDS, not minutes. Every rung at
+    15 s and above committed, and that is nowhere near the 100-180 s figure the
+    reconnect ladder produced.
+  * the two ladders therefore measure DIFFERENT QUANTITIES. A reconnect reads the
+    ACTIVE MODE; only a power cycle reads FLASH. "Will this survive a power cut?"
+    and "will this survive a reconnect?" are separate questions with separate
+    answers, and the docs must not answer both with one number.
 
-NOT NARROWED FURTHER on purpose: the band is 7 s wide and the guidance ("a write
-is durable within about fifteen seconds") does not change anywhere inside it.
+WHAT IS RETRACTED because of this run: G8's matched pair (arm committed at 8 s,
+no-arm did not) was the sole evidence that condition (B) ARMS THE FLASH COMMIT.
+With 8 s committing inconsistently unassisted, that contrast is not a contrast.
+See probe_p19_g8_commit_arming.py, whose RESULT carries the same retraction.
+(B)'s DISPLAY effect is untouched -- G7's green surviving a reconnect at 10 s
+against six deaths in the reconnect ladder stands.
 
-CREDIT WHERE DUE: the operator predicted this outright -- "lazy time will be
-much lower" -- before any of it was measured. The reason it took a new probe is
-that G8's `no-arm` had tested only 8 s, which sits just below the threshold and
-so looked like confirmation that the unassisted commit was slow.
+TO MEASURE THIS PROPERLY the probe must control the post-disconnect window:
+either instruct and verify a power cycle within a stated few seconds, or find a
+readout for flash that does not need one. Until then no sharp threshold should
+be recorded from this design.
 """
 
 import asyncio
