@@ -182,6 +182,19 @@ async def test_verify_password_routes_to_transport():
     assert transport.writes == [(bytes([7, 0, 5, 2, 12, 34, 56]), True)]
 
 
+async def test_set_password_requires_confirm():
+    client, transport = _client()
+    with pytest.raises(ValueError):
+        await client.common.set_password(123456)
+    assert transport.writes == []
+
+
+async def test_set_password_routes_to_transport_when_confirmed():
+    client, transport = _client()
+    await client.common.set_password(123456, confirm=True)
+    assert transport.writes == [(bytes([8, 0, 4, 2, 1, 12, 34, 56]), True)]
+
+
 async def test_set_screen_timeout_routes_to_transport():
     client, transport = _client()
     await client.common.set_screen_timeout(30)

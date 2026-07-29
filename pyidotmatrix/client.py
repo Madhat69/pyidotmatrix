@@ -613,7 +613,20 @@ class CommonFeature(_Feature):
     async def set_joint(self, mode: int) -> None:
         await self._send(common.build_set_joint(mode))
 
-    async def set_password(self, password: int) -> None:
+    async def set_password(self, password: int, *, confirm: bool = False) -> None:
+        """Sets a device password, gating access to the panel.
+
+        Never hardware-verified by this driver, and there is no known
+        factory-reset path on these panels -- a wrong value may permanently
+        lock the device out of its own driver. Compounding the risk, the
+        verify_password ack key collides with graffiti's nack (see its
+        docstring below), so a caller cannot reliably confirm a password even
+        took. Requires confirm=True -- raises ValueError otherwise -- to
+        reduce the chance of an accidental call; there is no further
+        confirmation from the device once this is sent.
+        """
+        if not confirm:
+            raise ValueError("set_password may permanently lock the device; pass confirm=True to proceed")
         await self._send(common.build_set_password(password))
 
     async def verify_password(self, password: int) -> None:
@@ -626,7 +639,8 @@ class CommonFeature(_Feature):
         (5, 2) wait that an interleaved graffiti nack could wrongly resolve, so
         this path keeps the pre-M2 no-await behavior. A caller that needs the
         real verify result must await_device_ack it itself, having ensured no
-        graffiti write is in flight.
+        graffiti write is in flight. See set_password above for why this
+        ack collision makes password changes dangerous.
         """
         await self._send(common.build_verify_password(password), verify=False)
 
@@ -660,7 +674,7 @@ class ExperimentalFeature(_Feature):
         """
         await self._send(common.build_set_time_indicator(enabled))
 
-    async def delete_device_data(self, confirm: bool = False) -> None:
+    async def delete_device_data(self, *, confirm: bool = False) -> None:
         """EXPERIMENTAL and DESTRUCTIVE: erases device data.
 
         Never hardware-verified by this driver, and irreversible on the device
