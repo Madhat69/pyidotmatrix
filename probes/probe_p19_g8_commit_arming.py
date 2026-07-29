@@ -55,9 +55,12 @@ measured.
 
 USAGE
 -----
-    python probes/probe_p19_g8_commit_arming.py arm
+    python probes/probe_p19_g8_commit_arming.py arm      # BLUE, after a reconnect
+    python probes/probe_p19_g8_commit_arming.py no-arm   # MAGENTA, no reconnect
 
-The argument is mandatory. Runtime ~45 s, plus your power cycle.
+The argument is mandatory. Runtime ~45 s (arm) / ~25 s (no-arm), plus your power
+cycle. Each sequence writes a colour the current flash state is NOT: reusing a
+colour already in flash makes reversion and survival the same picture.
 
 RESULT (2026-07-28): **CONFIRMED -- a prior reconnect ARMS THE FLASH COMMIT.**
 
@@ -97,6 +100,38 @@ three-minute timer it would rarely survive.
 
 Note the panel is deliberately left on this run's colour; restoring would have
 overwritten the state being measured, and the boot reading is the measurement.
+
+RESULT, `no-arm` (2026-07-28): **the hypothesis is FALSIFIED, and that turns
+this probe into a MATCHED PAIR -- the cleanest evidence in the series.**
+
+Magenta was written with NO arming reconnect and held the same 8 s. The panel
+BOOTED TO BLUE: magenta never reached flash, and the `arm` run's blue was still
+there.
+
+    run       reconnect first?   hold   booted
+    arm       YES                8 s    BLUE  (its own colour -- committed)
+    no-arm    NO                 8 s    BLUE  (magenta LOST -- never committed)
+
+Same probe, same hold, same panel, one variable. So:
+
+  * the UNASSISTED commit is genuinely slow -- it is NOT <= 8 s;
+  * condition (B) really does ARM the commit, now shown against its own matched
+    control rather than against the ladder run days apart;
+  * the (A) ladder was NOT measuring the wrong thing. The worry that prompted
+    this sequence -- that a reconnect reads the ACTIVE MODE while only a power
+    cycle reads flash, so the ladder might have measured display takeover rather
+    than commit -- is a real distinction, but it does not apply: if the commit
+    were fast and only takeover slow, magenta would have booted.
+
+Added after the operator observed that the (A) ladder may have measured the
+wrong thing entirely. Every rung of that ladder asked its question with a
+RECONNECT, but a reconnect reads the ACTIVE MODE, not flash -- and G7/G8 showed
+those are different states. If a noise GIF was still the active mode with the
+colour merely painted over it, each rung was measuring "has the colour taken
+over as the active mode", not "has the colour committed". Only a power cycle
+reads flash directly. `no-arm` therefore repeats `arm` with the arming reconnect
+REMOVED: if magenta boots after only 8 s unassisted, the unassisted commit is
+fast and (A)'s 100-180 s bracket is a takeover time, not a commit time.
 """
 
 import asyncio
@@ -107,17 +142,26 @@ from pyidotmatrix import IDotMatrixClient, ScreenSize
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 SCREEN = ScreenSize.SIZE_32x32
 
-BLUE = (0, 80, 255)  # unmistakably not G7's green, nor the earlier orange
+BLUE = (0, 80, 255)  # `arm`: unmistakably not G7's green, nor the earlier orange
+MAGENTA = (255, 0, 200)  # `no-arm`: must differ from BLUE too, since `arm` left blue in flash
+
+# Each sequence writes a colour the CURRENT flash state is not. Reusing a colour
+# already in flash makes reversion and survival the same picture -- the confound
+# that invalidated two dwell trials on 2026-07-28.
+SEQUENCE_COLOURS = {"arm": BLUE, "no-arm": MAGENTA}
 HOLD_SECONDS = 8.0  # far too short for an ordinary commit -- that is the point
 BLE_GAP_SECONDS = 6.0
 WATCH_SECONDS = 10.0
 SETTLE_SECONDS = 2.0
 
-SEQUENCES = {"arm": "reconnect, write BLUE, hold 8s, disconnect -- then you power-cycle"}
+SEQUENCES = {
+    "arm": "reconnect FIRST, then write BLUE, hold 8s, disconnect -- you power-cycle",
+    "no-arm": "NO reconnect: write MAGENTA, hold 8s, disconnect -- you power-cycle",
+}
 
 
 def print_usage() -> None:
-    print("usage: python probes/probe_p19_g8_commit_arming.py arm", flush=True)
+    print("usage: python probes/probe_p19_g8_commit_arming.py <arm|no-arm>", flush=True)
     print("", flush=True)
     print("Runs exactly ONE sequence. The argument is mandatory.", flush=True)
     for key, description in SEQUENCES.items():
@@ -141,46 +185,63 @@ def select_sequence(argv: list[str]) -> str:
     return argv[0]
 
 
-def print_visual_script() -> None:
+def print_visual_script(sequence: str) -> None:
     """EVERY visual of the run, in order, printed before any BLE contact."""
+    armed = sequence == "arm"
+    colour_name = "BLUE" if armed else "MAGENTA"
     print("", flush=True)
     print("=== WHAT YOU WILL SEE, IN ORDER ============================================", flush=True)
     print("  0. BEFORE: whatever is on the panel now. Not a measurement.", flush=True)
-    print("  1. A ~6s gap while the link drops and comes back. This reconnect is the", flush=True)
-    print("     WHOLE POINT -- it is condition (B), and it happens BEFORE the write.", flush=True)
-    print(f"  2. BLUE fills the panel and is held {HOLD_SECONDS:.0f}s -- far too short to commit", flush=True)
-    print("     by ordinary dwell, which is what makes this run a discriminator.", flush=True)
-    print("  3. The link drops. WATCH #1: does BLUE stay, or does the panel revert?", flush=True)
-    print("     (Reverting would show GREEN -- the current flash state, from G7.)", flush=True)
+    if armed:
+        print("  1. A ~6s gap while the link drops and comes back. This reconnect is the", flush=True)
+        print("     WHOLE POINT -- it is condition (B), and it happens BEFORE the write.", flush=True)
+    else:
+        print("  1. NO reconnect. This session connects once and stays connected, so", flush=True)
+        print("     condition (B) is deliberately NOT satisfied. What the power cycle", flush=True)
+        print("     shows is the UNASSISTED commit speed, read straight from flash.", flush=True)
+    print(f"  2. {colour_name} fills the panel, held {HOLD_SECONDS:.0f}s -- far too short to commit by", flush=True)
+    print("     ordinary dwell, which is what makes this run a discriminator.", flush=True)
+    print("  3. The link drops. WATCH #1: does the colour stay, or does it revert?", flush=True)
     print("  4. The probe EXITS leaving the panel as it is. Nothing is restored:", flush=True)
     print("     restoring would overwrite the state being measured.", flush=True)
-    print("  5. YOU: pull the panel's power, plug it back in, and report the BOOT colour.", flush=True)
-    print("       BOOTS BLUE  -> blue committed in ~8s: a prior reconnect ARMS the", flush=True)
-    print("                      flash commit.", flush=True)
-    print("       BOOTS GREEN -> blue never committed; flash still holds G7's green, so", flush=True)
-    print("                      condition (B) governs the DISPLAY only.", flush=True)
+    print("  5. YOU: pull the panel's power, plug it back in, report the BOOT colour.", flush=True)
+    if armed:
+        print("       BOOTS BLUE -> committed in ~8s: a prior reconnect ARMS the commit.", flush=True)
+        print("       BOOTS ANYTHING ELSE -> it never committed; (B) is display-only.", flush=True)
+    else:
+        print(f"       BOOTS MAGENTA -> the UNASSISTED commit is <= {HOLD_SECONDS:.0f}s, so the", flush=True)
+        print("           100-180s (A) ladder measured display-mode TAKEOVER, not the flash", flush=True)
+        print("           commit -- a reconnect cannot read flash, only a power cycle can.", flush=True)
+        print("       BOOTS BLUE -> magenta never committed; flash still holds the `arm` run's", flush=True)
+        print("           blue, and (A) really is slow when unassisted.", flush=True)
     print("============================================================================", flush=True)
     print("", flush=True)
 
 
 async def main(sequence: str) -> None:
     print(f"sequence: {sequence} -- {SEQUENCES[sequence]}", flush=True)
-    print_visual_script()
+    print_visual_script(sequence)
 
     print("connecting ...", flush=True)
     client = IDotMatrixClient(SCREEN, mac_address=ADDRESS)
     await client.connect()
     try:
-        print("\n=== STEP 1: disconnect/reconnect -- arming condition (B)", flush=True)
-        await client.disconnect()
-        await asyncio.sleep(BLE_GAP_SECONDS)
-        await client.connect()
-        await asyncio.sleep(SETTLE_SECONDS)
-        snapshot = client.snapshot()
-        print(f"    transport: {snapshot}", flush=True)
-        if not snapshot.is_connected:
-            print("    RECONNECT FAILED -- run is void, nothing can be concluded.", flush=True)
-            return
+        if sequence == "arm":
+            print("\n=== STEP 1: disconnect/reconnect -- arming condition (B)", flush=True)
+            await client.disconnect()
+            await asyncio.sleep(BLE_GAP_SECONDS)
+            await client.connect()
+            await asyncio.sleep(SETTLE_SECONDS)
+            snapshot = client.snapshot()
+            print(f"    transport: {snapshot}", flush=True)
+            if not snapshot.is_connected:
+                print("    RECONNECT FAILED -- run is void, nothing can be concluded.", flush=True)
+                return
+        else:
+            print("\n=== STEP 1 SKIPPED: no-arm -- this session has NOT reconnected.", flush=True)
+            print("    Condition (B) is deliberately NOT satisfied, so what the power", flush=True)
+            print("    cycle shows is the UNASSISTED commit speed -- read directly from", flush=True)
+            print("    flash, which a reconnect-based test cannot do.", flush=True)
 
         print(f"\n=== STEP 2: write BLUE {BLUE}, hold {HOLD_SECONDS:.0f}s", flush=True)
         await client.color.show(BLUE)
