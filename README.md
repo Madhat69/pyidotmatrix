@@ -76,7 +76,7 @@ carries machine-readable evidence:
 ```python
 from pyidotmatrix import capability
 capability("text.show").status        # CapabilityStatus.VERIFIED
-capability("common.set_speed").evidence  # cites the probe and date
+capability("device.set_speed").evidence  # cites the probe and date
 ```
 
 Full table with evidence: [pyidotmatrix/capabilities.py](pyidotmatrix/capabilities.py)
@@ -131,8 +131,8 @@ async with IDotMatrixClient.connect_to(devices[0], ScreenSize.SIZE_32x32) as cli
 Commands are verified by default: a device rejection raises
 `CommandRejectedError` (opt out with `verify_commands=False`).
 
-Feature namespaces: `chronograph`, `countdown`, `clock`, `scoreboard`, `eco`,
-`color`, `graffiti`, `effect`, `music_sync`, `text`, `gif`, `common`, plus `display`.
+Feature namespaces: `chronograph` (alias `stopwatch`), `countdown`, `clock`, `scoreboard`, `eco`,
+`color`, `graffiti`, `effect`, `music_sync` (alias `music`), `text`, `gif`, `device`, plus `display`.
 Alarms and weekly schedules live under `experimental` (bytes confirmed,
 hardware-verified for the core paths, but not yet promoted out of that
 namespace) — see the [Feature Guide](docs/features.md#experimental--unverified-andor-destructive).
@@ -153,7 +153,7 @@ ack = await client.await_device_ack(common.build_set_brightness(60))
 
 **Protocol truth worth knowing:** an ack confirms *receipt*, not *effect* —
 the device can accept a command and not act on it. The inverse happens too:
-`common.set_time` works and never acks at all, so this client sends it
+`device.set_time` works and never acks at all, so this client sends it
 fire-and-forget. The SDK documents these cases rather than hiding them (see
 [Protocol Notes](docs/protocol-notes.md) and ROADMAP §4).
 

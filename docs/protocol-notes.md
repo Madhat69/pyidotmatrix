@@ -19,11 +19,11 @@ not that it did what you asked.** Two hardware-confirmed ways this bites:
   silently fails to take over an active effect/clock state — the device just
   stays in whatever mode it was in. Mode 1 (clear) always takes.
 - Several commands are acked and then simply do nothing observable on the
-  reference panel: `common.freeze_screen`, `common.set_speed`,
+  reference panel: `device.freeze_screen`, `device.set_speed`,
   `experimental.set_time_indicator`, `music_sync.send_image_rhythm`. See the
   [Hardware Compatibility table](hardware-compatibility.md) for the specific
   evidence behind each.
-- The inverse also happens: **`common.set_time` works and never acks at all.**
+- The inverse also happens: **`device.set_time` works and never acks at all.**
   Zero acks across seven RTC jumps, with schedules armed and unarmed alike, so
   the SDK sends it fire-and-forget rather than paying a 2 s ack timeout on
   every call. Don't wait on an ack for it, and don't read the silence as
@@ -97,7 +97,7 @@ boot state, the second is the active mode reasserting.
 
 ### Config-class state — durable immediately
 
-Brightness, the RTC (`common.set_time`), eco windows, alarms (Timer slots) and
+Brightness, the RTC (`device.set_time`), eco windows, alarms (Timer slots) and
 weekly schedules are **flash-backed and committed on any connection**. They
 survive a clean disconnect, a software power cycle, and a physical mains power
 cut — an unplugged panel boots back with the brightness it was last given and

@@ -84,7 +84,7 @@ static.
 background-fill behaviour on any style, including `STYLE_COLOR` — the vendor
 app likewise exposes exactly one colour setting and no background option.
 
-Set the device's RTC first (`client.common.set_time`) if you care about it
+Set the device's RTC first (`client.device.set_time`) if you care about it
 showing the right time.
 
 ## `text` — device-rendered scrolling text
@@ -112,7 +112,7 @@ await client.text.show(
 ```
 
 Text is rasterized host-side into fixed 16×32 1-bit cells (no anti-aliasing,
-no kerning) and animated/colorized device-side. `common.set_speed` has **no**
+no kerning) and animated/colorized device-side. `device.set_speed` has **no**
 effect on a running text animation — the packet's own `speed` byte is what
 governs marquee smoothness.
 
@@ -164,7 +164,9 @@ ROADMAP §6).
 ## `chronograph` — stopwatch
 
 **Status:** ✅ verified. Counts up on the panel once started; runs
-autonomously on the device.
+autonomously on the device. `client.stopwatch` is an alias for this same
+namespace (same instance, not a copy) for callers who think "stopwatch"
+rather than the protocol's "chronograph".
 
 ```python
 await client.chronograph.reset()
@@ -271,13 +273,16 @@ sweep produced a monotonic animation-rate curve, matching the vendor app,
 whose speed dial re-sends the whole effect command with a new byte 5. This
 capability spent a while marked broken because an early probe sent a
 malformed length byte; the byte was always fine, the builder wasn't. Note
-there is no standalone "set speed" command — `common.set_speed` is dead code
+there is no standalone "set speed" command — `device.set_speed` is dead code
 that the vendor app never sends; change speed by re-issuing `show()`.
 
 `show_chunked` — the app's bespoke chunked effect framing — is acked but
 produced no visible effect; `show()` is the hardware-proven path.
 
 ## `music_sync` — onboard-mic reactive lighting
+
+`client.music` is an alias for this same namespace (same instance, not a
+copy), for callers who think "music" rather than the protocol's "music_sync".
 
 **Status:** ✅ `send_rhythm_levels` and `set_mic_type` verified; ⚠
 `stop_rhythm` source-derived; ✖ `send_image_rhythm` known-broken (acked, no
@@ -299,29 +304,29 @@ await client.music_sync.send_image_rhythm(5)   # known not to work — see above
 await client.music_sync.stop_rhythm()
 ```
 
-## `common` — device settings
+## `device` — device settings
 
 **Status:** mixed — see the per-method table below. This is the "junk
 drawer" namespace: brightness, power, RTC, flip, reset, plus several
 commands proven inert on the reference panel.
 
 ```python
-await client.common.set_brightness(60)          # ✅ 5-100%, out-of-range nacked
-await client.common.turn_on()                    # ✅
-await client.common.turn_off()                    # ✅
-await client.common.set_screen_flipped(True)      # ✅ verified upside-down/righted
-await client.common.set_time(datetime.now())      # ✅ RTC sync; never acks (see below)
-await client.common.reset()                        # ✅ used live to clear a stuck state
+await client.device.set_brightness(60)          # ✅ 5-100%, out-of-range nacked
+await client.device.turn_on()                    # ✅
+await client.device.turn_off()                    # ✅
+await client.device.set_screen_flipped(True)      # ✅ verified upside-down/righted
+await client.device.set_time(datetime.now())      # ✅ RTC sync; never acks (see below)
+await client.device.reset()                        # ✅ used live to clear a stuck state
 
-await client.common.freeze_screen()               # ✖ acked, no observable effect
-await client.common.set_speed(50)                  # ✖ acked, no effect on text or effects
-await client.common.set_screen_timeout(30)          # ✖ no ack, no effect on this panel
-await client.common.read_screen_timeout()            # ✖ same — family unsupported here
+await client.device.freeze_screen()               # ✖ acked, no observable effect
+await client.device.set_speed(50)                  # ✖ acked, no effect on text or effects
+await client.device.set_screen_timeout(30)          # ✖ no ack, no effect on this panel
+await client.device.read_screen_timeout()            # ✖ same — family unsupported here
 
-await client.common.set_joint(0)                    # ❓ purpose unknown even upstream
+await client.device.set_joint(0)                    # ❓ purpose unknown even upstream
 
-await client.common.set_password(123456)             # ⚠ NEVER exercised on hardware —
-await client.common.verify_password(123456)           #    see the warning below
+await client.device.set_password(123456, confirm=True) # ⚠ gated — raises ValueError without confirm=True;
+await client.device.verify_password(123456)           #    see the warning below
 ```
 
 **Brightness accepts 5–100 and nacks anything outside that**, but the *usable*
@@ -336,7 +341,7 @@ unarmed schedule state alike, so the client sends it fire-and-forget rather
 than burning a 2 s ack timeout on every call. Don't await one, and don't read
 the silence as failure — the RTC does get set.
 
-**Set `client.common.set_time` before relying on any alarm or schedule
+**Set `client.device.set_time` before relying on any alarm or schedule
 firing at the intended wall-clock time** — Timer/Schedule evaluate against
 the device's own RTC, including its weekday.
 
@@ -345,10 +350,13 @@ the device's own RTC, including its weekday.
 > real device — the maintainer sequenced it deliberately last across the
 > entire project roadmap because a wrong guess about the password protocol's
 > semantics could lock a panel out of its own driver, with no known
-> factory-reset path. If you choose to probe this yourself, you accept that
-> risk. `verify_password` is also always fire-and-forget in this client
-> (`verify=False` internally) because its ack key collides with graffiti's
-> nack — see the method's docstring in `pyidotmatrix/client.py`.
+> factory-reset path. `set_password` now raises `ValueError` unless called
+> with `confirm=True`, so nothing reaches the wire by accident — but the
+> guard only prevents an *accidental* call, not a *wrong* one: it does not
+> make the command itself safe. If you choose to probe this yourself, you
+> accept that risk. `verify_password` is also always fire-and-forget in this
+> client (`verify=False` internally) because its ack key collides with
+> graffiti's nack — see the method's docstring in `pyidotmatrix/client.py`.
 
 ## `experimental` — unverified and/or destructive
 

@@ -95,7 +95,7 @@ class IDotMatrixClient:
 
     # feature namespaces, all sharing one BleTransport:
     display: BleDisplay
-    chronograph: ChronographFeature
+    chronograph: ChronographFeature   # alias: stopwatch (same instance)
     countdown: CountdownFeature
     clock: ClockFeature
     scoreboard: ScoreboardFeature
@@ -103,10 +103,10 @@ class IDotMatrixClient:
     color: FullscreenColorFeature
     graffiti: GraffitiFeature
     effect: EffectFeature
-    music_sync: MusicSyncFeature
+    music_sync: MusicSyncFeature      # alias: music (same instance)
     text: TextFeature
     gif: GifFeature
-    common: CommonFeature
+    device: DeviceFeature
     experimental: ExperimentalFeature
 ```
 
@@ -194,7 +194,7 @@ class GifFeature:
     ) -> None: ...
     async def upload_bytes(self, gif_data: bytes) -> None: ...
 
-class CommonFeature:
+class DeviceFeature:
     async def set_brightness(self, percent: int) -> None: ...
     async def turn_on(self) -> None: ...
     async def turn_off(self) -> None: ...
@@ -203,7 +203,7 @@ class CommonFeature:
     async def set_speed(self, speed: int) -> None: ...       # ✖ known-broken
     async def set_time(self, when: datetime) -> None: ...
     async def set_joint(self, mode: int) -> None: ...        # ❓ unknown
-    async def set_password(self, password: int) -> None: ...       # ⚠ never hardware-tested
+    async def set_password(self, password: int, *, confirm: bool = False) -> None: ...  # ⚠ never hardware-tested, raises ValueError without confirm=True
     async def verify_password(self, password: int) -> None: ...    # ⚠ never hardware-tested, always fire-and-forget
     async def set_screen_timeout(self, value: int) -> None: ...    # ✖ known-broken
     async def read_screen_timeout(self) -> None: ...               # ✖ known-broken
@@ -211,7 +211,7 @@ class CommonFeature:
 
 class ExperimentalFeature:
     async def set_time_indicator(self, enabled: bool) -> None: ...          # ✖ known-broken
-    async def delete_device_data(self, confirm: bool = False) -> None: ...  # destructive, raises ValueError without confirm=True
+    async def delete_device_data(self, *, confirm: bool = False) -> None: ...  # destructive, raises ValueError without confirm=True
     async def schedule_master_switch(self, enable: bool, buzzer: bool) -> None: ...
     async def timer_close(self, timer_obj: timer.Timer) -> None: ...
     async def timer_set(self, timer_obj: timer.Timer, payload: bytes) -> None: ...
@@ -258,7 +258,7 @@ SDK, so you can lay out pixels without probing for orientation:
   space exactly.** An `(x, y)` delta lands on the same physical pixel as the
   same `(x, y)` inside a full frame; there is no offset or axis flip between
   the two paths.
-- **`common.set_screen_flipped(True)` is a 180° rotation applied at render
+- **`device.set_screen_flipped(True)` is a 180° rotation applied at render
   time**, and it applies equally to DIY frames, graffiti deltas and native
   modes. Commands always stay in canonical unflipped space — never
   pre-rotate coordinates to compensate.

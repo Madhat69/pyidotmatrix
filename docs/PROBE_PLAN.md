@@ -22,7 +22,7 @@ bundled `pyidotmatrix-btsnoop` CLI (`pyidotmatrix/btsnoop.py`), and every
 finding below is now in `capabilities.py` and the builders.
 
 **What it settled.** The effect speed mystery has an answer: the app **never
-sends `common.set_speed`** — not once, speed dial included — so that command is
+sends `device.set_speed`** — not once, speed dial included — so that command is
 dead code in the vendor ecosystem. Effect speed is byte 5 of the standard effect
 command, and the dial re-sends the *whole* command on gesture release
 (`[1c 00 03 02 style speed count + count*RGB]`, style 0, 7 colors, speed 0x5a
@@ -404,7 +404,7 @@ experimental.timer_close and experimental.timer_set entries.
 Power-state semantics CLOSED: commands sent to a powered-off panel are still
 accepted and execute invisibly into an unseen framebuffer; `turn_on` reveals
 that resulting framebuffer rather than restoring the prior mode or resetting
-to the clock (capabilities.py's common.set_power entry). The countdown/
+to the clock (capabilities.py's device.set_power entry). The countdown/
 chronograph shared-state mapping (phases 3-8) was exercised but a verified
 per-step readout was not carried forward into this documentation pass; treat
 it as still needing a citation-worthy result beyond the existing 2026-07-20
@@ -419,7 +419,7 @@ handshake is the vendor app's, observed only in the app's traffic; our
 **Phase 9 is now RESOLVED (2026-07-27), and it is the earliest instance on
 record of LAZY DISPLAY-STATE PERSISTENCE.** This caveat read two wrong ways
 before that: first as a "reset shadow" (phase 9 runs immediately after that
-probe's own `common.reset()` cleanup), then as an open choice between genuine
+probe's own `device.reset()` cleanup), then as an open choice between genuine
 device-side colour volatility and a "first-connection shadow" -- a model since
 **retracted**, see P11 below. The reset is not the variable (`--no-reset` died
 identically). The colour-volatility branch is dead too: `--no-reset color` is
@@ -565,7 +565,7 @@ must re-push a frame -- no native mode covers for it; whether a bare software
 power cycle carries the same consequence for DIY is unresolved pending the
 void cell's re-run. A reproducible display-durability effect surfaced in the
 same run and was chased over two evenings. It was named twice and wrongly both
-times -- first a "reset shadow" blamed on `common.reset()`, then a
+times -- first a "reset shadow" blamed on `device.reset()`, then a
 "first-connection shadow" scoped to the client session. **Both names are
 retracted.** What it actually is: **LAZY DISPLAY-STATE PERSISTENCE**, a panel
 property already recorded in this lab on 2026-07-12 ("the device persists its
@@ -588,7 +588,7 @@ different reaction times, not two different arming states. Note also that the
 100-180 s bracket above is a RECONNECT reading -- active display mode, not
 flash -- and must never be quoted for power-cut durability. See "THE FLASH
 COMMIT" under P19.
-`common.reset()` is NOT involved (`--no-reset` died twice), a same-connection
+`device.reset()` is NOT involved (`--no-reset` died twice), a same-connection
 power blink does NOT help (`--preamble power` died), and it is not GIF-specific
 (`--no-reset color` died with no payload in play). Note also that a dying run
 yields exactly ONE measurement: once the reconnect has killed the content, the
@@ -677,7 +677,7 @@ this plan's status markers now exist to prevent.
    (below the LEDs' turn-on threshold, indistinguishable from a dark panel, so
    it is useless as a "barely lit" signal); `(254,254,254)` is indistinguishable
    from full white; `(0,0,0)` is a plain black raster, NOT a powered-off panel —
-   `common.set_power(False)` remains the only real off.
+   `device.set_power(False)` remains the only real off.
 3. **Countdown out-of-range minutes are ACCEPTED-THEN-ABORTED.** A raw
    `[7,0,8,128,1,60,0]` (60:00) was not nacked: the device accepted it and then
    killed the countdown that was already running, falling back to the clock.
@@ -720,7 +720,7 @@ measured. This run is also the evidentiary basis for retracting the
 "0x0d effect frames never ack" finding from `probe_effect_length_byte2.py`
 (2026-07-26) -- that silence was an instrumentation bug (reading the ack
 list before the device's reply had arrived), not a device behavior. See
-capabilities.py's new common.ack_timing entry.
+capabilities.py's new device.ack_timing entry.
 
 ## P15 — Long soak with intentional recoveries  ⬜ OPEN
 
@@ -772,7 +772,7 @@ follow-up open question surfaced by this same run: whether eco affects the
 clock's colour-CYCLING behavior over a longer window than these probes held
 (the colour phases here only ran ~25s each) is not fully excluded -- see the
 new follow-up below. Full account in capabilities.py's
-common.set_brightness and eco.set_mode entries.
+device.set_brightness and eco.set_mode entries.
 
 **P17b's CLOCK-STYLE SECTION IS VOID AS A BLOCK (2026-07-28).** Its phases
 9-12 reported that style selection "appeared inert" and that STYLE_COLOR
@@ -936,7 +936,7 @@ making it *committed*.
   measurement, not a void one: the void-second-column rule applies only to
   state interruption 1 had already killed, and brightness was still in force.
   Brightness is flash-backed; pinning it once at startup is safe. See
-  capabilities.py's common.set_brightness.
+  capabilities.py's device.set_brightness.
 - **G1b — is the effect per-client-session? RETRACTED.** This was recorded as
   "**TWO instances: YES, strictly per-client-session**", on the strength of
   foreign sessions failing to kill content they had not written. **That claim
@@ -989,8 +989,8 @@ making it *committed*.
   early. P5's two-ack reading is SUPERSEDED (probable ack-attribution
   artifact). Not a hang hazard, but every call was paying the transport's
   2.0 s ack timeout, so `client.set_time` is now fire-and-forget
-  (`verify=False`). See capabilities.py's common.set_time and
-  common.ack_timing.
+  (`verify=False`). See capabilities.py's device.set_time and
+  device.ack_timing.
 - **G5 — what is the kill event?** RUN 2026-07-28,
   `probe_p19_g5_kill_event.py`, both sequences, then `own-delayed` again as a
   dwell ladder. **This is the probe that falsified the session-bound model**,

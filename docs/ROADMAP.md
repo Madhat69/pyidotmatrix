@@ -140,7 +140,7 @@ writing a line of SDK code.
 ```python
 client = IDotMatrixClient(ScreenSize.SIZE_32x32, mac_address="AA:BB:...")  # or None → first discovered
 await client.connect()
-await client.common.set_brightness(60)
+await client.device.set_brightness(60)
 await client.clock.show(style=0, hour24=True)
 await client.gif.upload_file("nyan.gif")
 await client.display.show_frame(rgb_bytes)      # DIY framebuffer
@@ -308,7 +308,7 @@ Status tags per §"Evidence conventions". Evidence: probe scripts live in
 | Password verify | ⚠ | ack shape unobserved; (5,2) collision risk (§6) |
 | Screen timeout set/read | ⚠ | **no fa03 ack, no visual effect on 32×32** (2026-07-12) — likely model-specific; units unknown |
 | Firmware/device info query | ❓ | no known command; RE target |
-| Reset | ✅ | `common.reset()` — used live 2026-07-18 (cleared a stuck state) |
+| Reset | ✅ | `device.reset()` — used live 2026-07-18 (cleared a stuck state) |
 | Delete device data | ⚠ **destructive** | byte-identical across APK versions; never sent to hardware; requires `confirm=True` |
 
 ### Display (framebuffer)
@@ -803,6 +803,16 @@ driver still evolves against the old names, and renaming now would turn every
 cross-repo sync into a rename-translation exercise for zero user benefit before
 the first published release.
 
+*Status 2026-07-29 — rename landed:* `common` → `device` (`CommonFeature` →
+`DeviceFeature`, capability-table keys included; no back-compat alias — this
+is the one deliberate breaking pass), plus `stopwatch` and `music` added as
+aliases of `chronograph` and `music_sync` (same instance, not a copy).
+`alarms` was deliberately left out of this pass — it is a new API surface over
+`experimental.timer_set`, not a rename, so it's an architect decision rather
+than something this pass could just do; `media` is likewise still open. Still
+outstanding from this milestone: `ConnectionLostError` mapping, the command
+serialization lock, and typed callbacks.
+
 **SDK-M3 — Protocol completeness & verification**
 Port `sendTextTo3232` (unblocks text — the known-broken feature) · unify the 4
 chunked builders · full effects command · verify_password probe · week-bit +
@@ -839,7 +849,7 @@ discriminator — symmetric probe layouts had made mirroring mimic recoloring
 work.* The two items that were still open on 2026-07-21 are both closed:
 
 - **Effect speed — CLOSED 2026-07-25.** The P1 HCI capture proved the app
-  never sends `common.set_speed` at all (dead code in the vendor ecosystem);
+  never sends `device.set_speed` at all (dead code in the vendor ecosystem);
   the dial re-sends the *whole* effect command with a new **byte 5**. Byte 5
   replayed from this SDK slowed and restored the animation, and a five-point
   sweep gave a monotonic curve, moving `effect.speed` **KNOWN_BROKEN →

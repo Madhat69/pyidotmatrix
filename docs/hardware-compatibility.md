@@ -74,23 +74,23 @@ capability("text.show").evidence    # the probe/date/source behind that status
 |---|---|---|---|
 | `gif.upload_file` | ✅ | 32×32 | Chunked upload + native playback; `optimize=True` required. `gif.activate_stored()` recovers a GIF lost to lazy display-state persistence with **no re-transfer** — the stored payload survives, only the current-mode pointer is lost, and the device matches the CRC of the same bytes (2026-07-28). Re-activate, don't re-upload. |
 
-## Device control (`common`)
+## Device control (`device`)
 
 | Capability | Status | Panel | Notes |
 |---|---|---|---|
-| `common.set_brightness` | ✅ | 32×32 | Firmware range is exactly 5–100; out-of-range values nack hard, no clamping. The response curve is **compressed**: usable dimming runs ~5 to ~42, and 50–100 are visually indistinguishable (lux-metered 2026-07-27). Config-class — applies immediately in every mode and survives disconnects, software power cycles and a physical mains power cut. |
-| `common.set_power` | ✅ | 32×32 | Power on/off exercised live. |
-| `common.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). **Ack-silent** — zero acks on 7 jumps, armed and unarmed schedule state alike (P19 G4, 2026-07-28) — so the SDK sends it fire-and-forget rather than paying the 2 s ack timeout on every call. |
-| `common.device_id_read` | ⚠ | 32×32 | Device ID string readable over GATT — our panel returned `TR2306R007-15` to the vendor app (HCI capture 2026-07-25). No SDK method reads it yet. |
-| `common.set_screen_flipped` | ✅ | 32×32 | Clock rendered upside down on `True`, righted on `False`. |
-| `common.freeze_screen` | ✖ | 32×32 | Acked, no observable effect in three separate tests. |
-| `common.set_speed` | ✖ | 32×32 | Acked, no effect on live text or a running effect. Resolved 2026-07-25 (HCI capture): the vendor app **never sends this frame** — dead code in the ecosystem; the speed dial re-sends the effect command instead. |
-| `common.set_joint` | ❓ | — | Bytes match the decompiled `sendJoint`; purpose unknown upstream too. |
-| `common.set_password` | ⚠ | — | Byte-4 mode field hardcoded `1`, unexplored. **Never sent to hardware** — sequenced last across the whole roadmap by maintainer ruling (lockout risk, no known factory reset). |
-| `common.verify_password` | ⚠ | — | Bytes confirmed from source; ack shape unobserved and its (5,2) key collides with graffiti's nack. Untested by the same maintainer ruling as `set_password`. |
-| `common.set_screen_timeout` | ✖ | 32×32 | No ack, no visual effect on this panel — likely model-specific. |
-| `common.read_screen_timeout` | ✖ | 32×32 | Same probe as `set_screen_timeout` — family unsupported on this panel. |
-| `common.reset` | ✅ | 32×32 | Used live to clear a stuck state. |
+| `device.set_brightness` | ✅ | 32×32 | Firmware range is exactly 5–100; out-of-range values nack hard, no clamping. The response curve is **compressed**: usable dimming runs ~5 to ~42, and 50–100 are visually indistinguishable (lux-metered 2026-07-27). Config-class — applies immediately in every mode and survives disconnects, software power cycles and a physical mains power cut. |
+| `device.set_power` | ✅ | 32×32 | Power on/off exercised live. |
+| `device.set_time` | ✅ | 32×32 | RTC sync; alarms fire at intended wall-clock time. The RTC's **weekday** follows `set_time` too — used to spoof-test week-bit-masked timers. Draws an undecoded 9-byte notification the 5-byte ack parser ignores (HCI capture 2026-07-25). **Ack-silent** — zero acks on 7 jumps, armed and unarmed schedule state alike (P19 G4, 2026-07-28) — so the SDK sends it fire-and-forget rather than paying the 2 s ack timeout on every call. |
+| `device.device_id_read` | ⚠ | 32×32 | Device ID string readable over GATT — our panel returned `TR2306R007-15` to the vendor app (HCI capture 2026-07-25). No SDK method reads it yet. |
+| `device.set_screen_flipped` | ✅ | 32×32 | Clock rendered upside down on `True`, righted on `False`. |
+| `device.freeze_screen` | ✖ | 32×32 | Acked, no observable effect in three separate tests. |
+| `device.set_speed` | ✖ | 32×32 | Acked, no effect on live text or a running effect. Resolved 2026-07-25 (HCI capture): the vendor app **never sends this frame** — dead code in the ecosystem; the speed dial re-sends the effect command instead. |
+| `device.set_joint` | ❓ | — | Bytes match the decompiled `sendJoint`; purpose unknown upstream too. |
+| `device.set_password` | ⚠ | — | Byte-4 mode field hardcoded `1`, unexplored. **Never sent to hardware** — sequenced last across the whole roadmap by maintainer ruling (lockout risk, no known factory reset). Gated behind `confirm=True` in the client; raises `ValueError` otherwise. |
+| `device.verify_password` | ⚠ | — | Bytes confirmed from source; ack shape unobserved and its (5,2) key collides with graffiti's nack. Untested by the same maintainer ruling as `set_password`. |
+| `device.set_screen_timeout` | ✖ | 32×32 | No ack, no visual effect on this panel — likely model-specific. |
+| `device.read_screen_timeout` | ✖ | 32×32 | Same probe as `set_screen_timeout` — family unsupported on this panel. |
+| `device.reset` | ✅ | 32×32 | Used live to clear a stuck state. |
 
 ## Experimental (`.experimental` namespace — exempt from SemVer)
 
@@ -115,7 +115,7 @@ hardware probe on a panel we don't have is a first-class contribution (see
    bad. A probe that proves a feature *doesn't* work is exactly as valuable
    as one that proves it does — several rows in this table exist because a
    probe overturned an earlier assumption in one direction or the other
-   (`common.freeze_screen` and `common.set_speed` fell to ✖; `effect.speed`
+   (`device.freeze_screen` and `device.set_speed` fell to ✖; `effect.speed`
    climbed back out of ✖ once the probe itself was fixed).
 3. **Add a byte-exact regression test** if the finding changes a builder's
    behavior.

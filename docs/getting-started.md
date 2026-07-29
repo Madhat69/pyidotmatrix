@@ -96,7 +96,7 @@ best-effort sends:
 from pyidotmatrix import CommandRejectedError
 
 try:
-    await client.common.set_brightness(150)   # out of range
+    await client.device.set_brightness(150)   # out of range
 except CommandRejectedError as ex:
     print("device rejected it:", ex)
 
