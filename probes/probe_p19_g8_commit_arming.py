@@ -65,6 +65,14 @@ colour already in flash makes reversion and survival the same picture.
 RESULT (2026-07-28): **RETRACTED IN PART. The commit claim below did NOT hold
 up; the display claim is untouched. Read this box before the account beneath it.**
 
+**FULLY EXPLAINED 2026-07-29 -- DO NOT RE-RUN THIS PROBE.** G10/G11/G12 showed
+the flash commit runs on WALL CLOCK from the write (5 s < t <= 10.3 s),
+independent of link state: a 2 s hold committed, and a run with no clean
+disconnect at all committed too. This probe's matched pair was therefore two
+different operator reaction times, not two arming states -- and its `arm` run
+additionally spent ~10 s of wall clock on the reconnect that its control never
+spent. Nothing here needs re-measuring. See probes/probe_p19_g12_flush_trigger.py.
+
 This probe concluded that a prior reconnect ARMS THE FLASH COMMIT, on the
 strength of a matched pair: `arm` (reconnect, 8 s hold) booted its own colour,
 `no-arm` (no reconnect, same 8 s) booted the previous one. One variable, opposite

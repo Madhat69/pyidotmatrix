@@ -97,6 +97,16 @@ TO MEASURE THIS PROPERLY the probe must control the post-disconnect window:
 either instruct and verify a power cycle within a stated few seconds, or find a
 readout for flash that does not need one. Until then no sharp threshold should
 be recorded from this design.
+
+**ANSWERED 2026-07-29 -- DO NOT RE-RUN THIS PROBE.** G10 solved the instrument
+problem a third way: the panel advertises ~9 Hz whenever powered and not
+connected, so a scanner left running after the disconnect SEES the power cut and
+times it (~110 ms typical). The window is not controlled, it is MEASURED, and
+the operator can pull whenever. G11/G12 then answered the question outright:
+**the commit runs on WALL CLOCK from the write, 5 s < t <= 10.3 s, independent
+of link state** -- a 2 s hold committed, and a run with NO clean disconnect at
+all committed too. This probe's own contradiction resolves as two different
+operator reaction times. See probes/probe_p19_g12_flush_trigger.py.
 """
 
 import asyncio
