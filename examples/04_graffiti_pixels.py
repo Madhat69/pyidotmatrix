@@ -59,17 +59,13 @@ async def main() -> None:
         # diagonal appear on the right half without sending its coordinates.
         print("drawing another diagonal with move_type=MOVE_HORIZONTAL_MIRROR ...")
         mirrored_diagonal = [(x, x + 12) for x in range(4, 10)]
-        await client.graffiti.set_pixels(
-            CYAN, mirrored_diagonal, move_type=graffiti.MOVE_HORIZONTAL_MIRROR
-        )
+        await client.graffiti.set_pixels(CYAN, mirrored_diagonal, move_type=graffiti.MOVE_HORIZONTAL_MIRROR)
         await asyncio.sleep(2)
 
         # Vertical mirror: same idea, mirrored across the horizontal center line.
         print("drawing a third shape with move_type=MOVE_VERTICAL_MIRROR ...")
         low_shape = [(x, 26) for x in range(10, 16)]
-        await client.graffiti.set_pixels(
-            GREEN, low_shape, move_type=graffiti.MOVE_VERTICAL_MIRROR
-        )
+        await client.graffiti.set_pixels(GREEN, low_shape, move_type=graffiti.MOVE_VERTICAL_MIRROR)
         await asyncio.sleep(3)
 
 

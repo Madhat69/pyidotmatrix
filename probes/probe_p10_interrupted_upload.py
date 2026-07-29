@@ -241,10 +241,10 @@ OBSERVE_SECONDS = 8
 RECONNECT_PAUSE_SECONDS = 3
 
 CANVAS = 32
-BASE_TINT = (0, 255, 0)          # BASE plays over a dim GREEN field
-NOISE_FRAMES = 16                # ~6 outer chunks: enough for a real "middle"
+BASE_TINT = (0, 255, 0)  # BASE plays over a dim GREEN field
+NOISE_FRAMES = 16  # ~6 outer chunks: enough for a real "middle"
 NOISE_PIXELS_PER_FRAME = 300
-NOISE_SEED = 210                 # not any seed used by the earlier gif probes
+NOISE_SEED = 210  # not any seed used by the earlier gif probes
 
 CASES = ("a", "b", "c")
 
@@ -292,7 +292,9 @@ def build_big_gif() -> bytes:
         pixels = image.load()
         for _ in range(NOISE_PIXELS_PER_FRAME):
             pixels[rng.randrange(CANVAS), rng.randrange(CANVAS)] = (
-                rng.randrange(256), rng.randrange(256), rng.randrange(256),
+                rng.randrange(256),
+                rng.randrange(256),
+                rng.randrange(256),
             )
         frames.append(image)
     buffer = io.BytesIO()
@@ -383,8 +385,7 @@ async def main(cases: tuple[str, ...]) -> None:
         print(f"  BASE: {len(base_bytes)} bytes -> {len(base_chunks)} outer chunk(s)", flush=True)
         print(f"  BIG : {len(big_bytes)} bytes -> {len(big_chunks)} outer chunk(s)", flush=True)
         print(
-            f"  BIG chunk 1: {len(big_chunks[0])} protocol packet(s),"
-            f" first is {len(big_chunks[0][0])} bytes",
+            f"  BIG chunk 1: {len(big_chunks[0])} protocol packet(s), first is {len(big_chunks[0][0])} bytes",
             flush=True,
         )
         print(f"  negotiated GATT write size: {write_size} bytes -- one raw write sends this many", flush=True)
@@ -550,20 +551,20 @@ async def main(cases: tuple[str, ...]) -> None:
             # non-DIY panel is SILENTLY SWALLOWED while still acking accepted=True.
             client.display.invalidate_diy_mode()
             frame = bytearray(CANVAS * CANVAS * 3)
-            for y in range(CANVAS):                       # a chiral corner-keyed frame
+            for y in range(CANVAS):  # a chiral corner-keyed frame
                 for x in range(CANVAS):
                     if x < 4 and y < 4:
-                        colour = (255, 0, 0)              # TL red
+                        colour = (255, 0, 0)  # TL red
                     elif x >= CANVAS - 4 and y < 4:
-                        colour = (0, 255, 0)              # TR green
+                        colour = (0, 255, 0)  # TR green
                     elif x < 4 and y >= CANVAS - 4:
-                        colour = (0, 0, 255)              # BL blue
+                        colour = (0, 0, 255)  # BL blue
                     elif x >= CANVAS - 4 and y >= CANVAS - 4:
-                        colour = (255, 255, 255)          # BR white
+                        colour = (255, 255, 255)  # BR white
                     else:
                         colour = (0, 0, 0)
                     offset = (y * CANVAS + x) * 3
-                    frame[offset:offset + 3] = bytes(colour)
+                    frame[offset : offset + 3] = bytes(colour)
             sent_at = time.perf_counter()
             await client.display.show_frame(bytes(frame), wait_for_device=True)
             await report_acks("DIY health-check frame (expect 05 00 00 00 01)", sent_at)

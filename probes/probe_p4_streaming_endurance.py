@@ -185,15 +185,15 @@ from pyidotmatrix import IDotMatrixClient, ScreenSize, TransportEvent, Transport
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 SCREEN = ScreenSize.SIZE_32x32
 
-DELTA_PIXELS = 255      # HARD CEILING per graffiti command -- see SAFETY above
-MIX_DELTA_HZ = 10.0     # the "N" in "1 full frame + N deltas per second"
+DELTA_PIXELS = 255  # HARD CEILING per graffiti command -- see SAFETY above
+MIX_DELTA_HZ = 10.0  # the "N" in "1 full frame + N deltas per second"
 
-SETTLE_SECONDS = 2.5    # quiet after the last send, BEFORE the ack slice is read
-GRACE_SECONDS = 10.0    # no ratio judgement before this much of a step has run
-CHECK_EVERY = 5.0       # how often the degradation criteria are evaluated
-PROGRESS_EVERY = 30.0   # heartbeat line, so an unattended run is not silent
+SETTLE_SECONDS = 2.5  # quiet after the last send, BEFORE the ack slice is read
+GRACE_SECONDS = 10.0  # no ratio judgement before this much of a step has run
+CHECK_EVERY = 5.0  # how often the degradation criteria are evaluated
+PROGRESS_EVERY = 30.0  # heartbeat line, so an unattended run is not silent
 ACK_RATIO_FLOOR = 0.50  # acks per full frame sent, below which = ACK_COLLAPSE
-RATE_FLOOR = 0.75       # fraction of target send rate, below which = RATE_COLLAPSE
+RATE_FLOOR = 0.75  # fraction of target send rate, below which = RATE_COLLAPSE
 
 
 @dataclass(frozen=True)
@@ -254,12 +254,12 @@ class StepResult:
     ran_seconds: float = 0.0
     frames_sent: int = 0
     deltas_sent: int = 0
-    missed_slots: int = 0          # pacing slots skipped because a send ran long
-    acks: int = 0                  # settled count, read after SETTLE_SECONDS
-    first_ack_delta: float | None = None   # send->ack, first reply of the step
+    missed_slots: int = 0  # pacing slots skipped because a send ran long
+    acks: int = 0  # settled count, read after SETTLE_SECONDS
+    first_ack_delta: float | None = None  # send->ack, first reply of the step
     reconnects: int = 0
     degradation: str | None = None
-    degraded_at: float | None = None       # seconds into the step
+    degraded_at: float | None = None  # seconds into the step
     failures: list[str] = field(default_factory=list)  # verbatim exception reprs
 
     @property
@@ -325,10 +325,8 @@ def print_run_script(phase: str) -> None:
     print("", flush=True)
     print("  The link may well die: the 2026-07-20 flood benchmark killed it twice. That", flush=True)
     print("  is a recorded outcome here, not a failed run. A step STOPS at the first", flush=True)
-    print("  degradation (a write raising, a reconnect, ack ratio under "
-          f"{ACK_RATIO_FLOOR:.2f}, or", flush=True)
-    print(f"  achieved rate under {RATE_FLOOR:.2f} of target) and the phase does NOT escalate "
-          "further.", flush=True)
+    print(f"  degradation (a write raising, a reconnect, ack ratio under {ACK_RATIO_FLOOR:.2f}, or", flush=True)
+    print(f"  achieved rate under {RATE_FLOOR:.2f} of target) and the phase does NOT escalate further.", flush=True)
     print("  Cleanup puts the panel back on the ordinary clock face on every exit path.", flush=True)
     print("=============================================================================", flush=True)
 
@@ -351,7 +349,7 @@ def _build_frames() -> list[bytes]:
         for y in range(_HEIGHT):
             for dx in range(3):
                 offset = (y * _WIDTH + (position + dx) % _WIDTH) * 3
-                rgb[offset:offset + 3] = bytes(color)
+                rgb[offset : offset + 3] = bytes(color)
         frames.append(bytes(rgb))
     return frames
 
@@ -367,9 +365,9 @@ def delta_coords(index: int) -> list[tuple[int, int]]:
     never splits and never exceeds the hard limit.
     """
     start = (index * 137) % len(_ALL_COORDS)
-    window = _ALL_COORDS[start:start + DELTA_PIXELS]
+    window = _ALL_COORDS[start : start + DELTA_PIXELS]
     if len(window) < DELTA_PIXELS:
-        window = window + _ALL_COORDS[:DELTA_PIXELS - len(window)]
+        window = window + _ALL_COORDS[: DELTA_PIXELS - len(window)]
     return window
 
 
@@ -400,8 +398,11 @@ async def run_step(
     def trip(criterion: str, at: float, detail: str = "") -> None:
         result.degradation = criterion
         result.degraded_at = at - started
-        print(f"    *** {criterion} at {result.degraded_at:.1f}s into the step"
-              f"{' -- ' + detail if detail else ''} -- stopping, no escalation ***", flush=True)
+        print(
+            f"    *** {criterion} at {result.degraded_at:.1f}s into the step"
+            f"{' -- ' + detail if detail else ''} -- stopping, no escalation ***",
+            flush=True,
+        )
 
     while True:
         now = time.perf_counter()
@@ -465,23 +466,24 @@ async def run_step(
             next_check_at = now + CHECK_EVERY
             achieved = result.sent / elapsed if elapsed > 0 else 0.0
             if step.target_hz and achieved < RATE_FLOOR * step.target_hz:
-                trip("RATE_COLLAPSE", now,
-                     f"{achieved:.2f} of {step.target_hz:.2f} cmd/s targeted")
+                trip("RATE_COLLAPSE", now, f"{achieved:.2f} of {step.target_hz:.2f} cmd/s targeted")
                 break
             if step.judges_acks and result.frames_sent:
                 # Read early ON PURPOSE (lenient floor, post-grace); the number
                 # that goes in the table is the settled one, read below.
                 ratio = (len(acks) - mark) / result.frames_sent
                 if ratio < ACK_RATIO_FLOOR:
-                    trip("ACK_COLLAPSE", now,
-                         f"{len(acks) - mark} acks for {result.frames_sent} frames = {ratio:.2f}")
+                    trip("ACK_COLLAPSE", now, f"{len(acks) - mark} acks for {result.frames_sent} frames = {ratio:.2f}")
                     break
 
         if now >= next_progress_at:
             next_progress_at = now + PROGRESS_EVERY
-            print(f"    {elapsed:6.0f}s  frames {result.frames_sent:5d}  deltas {result.deltas_sent:6d}"
-                  f"  acks {len(acks) - mark:5d}  {result.sent / elapsed:6.2f}/s"
-                  f"  connected={client.is_connected}", flush=True)
+            print(
+                f"    {elapsed:6.0f}s  frames {result.frames_sent:5d}  deltas {result.deltas_sent:6d}"
+                f"  acks {len(acks) - mark:5d}  {result.sent / elapsed:6.2f}/s"
+                f"  connected={client.is_connected}",
+                flush=True,
+            )
 
     result.ran_seconds = time.perf_counter() - started
     result.reconnects = client.snapshot().reconnect_count - reconnects_before
@@ -518,9 +520,12 @@ async def warm_up(client: IDotMatrixClient, acks: list[tuple[float, str]]) -> No
         for at, text in window:
             print(f"    ack {at - sent_at:+.2f}s after send  {text}", flush=True)
     else:
-        print(f"    *** ZERO ACKS after {SETTLE_SECONDS:.1f}s *** -- genuine silence; the list "
-              "was not read early and is never cleared. Treat this run's ack column with "
-              "suspicion.", flush=True)
+        print(
+            f"    *** ZERO ACKS after {SETTLE_SECONDS:.1f}s *** -- genuine silence; the list "
+            "was not read early and is never cleared. Treat this run's ack column with "
+            "suspicion.",
+            flush=True,
+        )
 
 
 async def main(phase: str, results: list[StepResult]) -> None:
@@ -529,17 +534,14 @@ async def main(phase: str, results: list[StepResult]) -> None:
     print_run_script(phase)
     print("\nconnecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, SCREEN) as client:
-        acks: list[tuple[float, str]] = []          # NEVER cleared
+        acks: list[tuple[float, str]] = []  # NEVER cleared
         events: list[TransportEvent] = []
-        unsubscribe_acks = client.add_response_listener(
-            lambda ack: acks.append((time.perf_counter(), repr(ack)))
-        )
+        unsubscribe_acks = client.add_response_listener(lambda ack: acks.append((time.perf_counter(), repr(ack))))
         unsubscribe_events = client.add_event_listener(events.append)
         try:
             await warm_up(client, acks)
             for step in steps:
-                print(f"\n--- {step.label} ({step.seconds:.0f}s, target {step.target_hz:g}/s) ---",
-                      flush=True)
+                print(f"\n--- {step.label} ({step.seconds:.0f}s, target {step.target_hz:g}/s) ---", flush=True)
                 try:
                     result = await run_step(client, step, acks, events)
                 except Exception as ex:
@@ -558,8 +560,11 @@ async def main(phase: str, results: list[StepResult]) -> None:
                 await client.clock.show()
                 print("panel restored to the clock face.", flush=True)
             except Exception as ex:
-                print(f"*** CLOCK RESTORE FAILED: {ex!r} -- the panel is still showing test "
-                      "content. Reconnect and run any clock probe, or power-cycle. ***", flush=True)
+                print(
+                    f"*** CLOCK RESTORE FAILED: {ex!r} -- the panel is still showing test "
+                    "content. Reconnect and run any clock probe, or power-cycle. ***",
+                    flush=True,
+                )
             unsubscribe_acks()
             unsubscribe_events()
     print("disconnected.", flush=True)
@@ -573,8 +578,10 @@ def print_summary(phase: str | None, results: list[StepResult]) -> None:
         print("=============================================================================", flush=True)
         return
     print(f"  phase: {phase}", flush=True)
-    header = (f"  {'step':26s} {'ran':>7s} {'frames':>7s} {'deltas':>7s} {'acks':>6s} "
-              f"{'ack:F':>6s} {'sent/s':>7s} {'target':>7s} {'miss':>5s} {'rc':>3s}  degradation")
+    header = (
+        f"  {'step':26s} {'ran':>7s} {'frames':>7s} {'deltas':>7s} {'acks':>6s} "
+        f"{'ack:F':>6s} {'sent/s':>7s} {'target':>7s} {'miss':>5s} {'rc':>3s}  degradation"
+    )
     print(header, flush=True)
     for result in results:
         ratio = result.ack_ratio
@@ -582,11 +589,13 @@ def print_summary(phase: str | None, results: list[StepResult]) -> None:
         if result.degradation:
             at = f"{result.degraded_at:.1f}s" if result.degraded_at is not None else "?"
             degraded = f"{result.degradation} @ {at}"
-        print(f"  {result.label:26s} {result.ran_seconds:6.1f}s {result.frames_sent:7d} "
-              f"{result.deltas_sent:7d} {result.acks:6d} "
-              f"{('-' if ratio is None else f'{ratio:.2f}'):>6s} {result.achieved_hz:7.2f} "
-              f"{result.target_hz:7.2f} {result.missed_slots:5d} {result.reconnects:3d}  {degraded}",
-              flush=True)
+        print(
+            f"  {result.label:26s} {result.ran_seconds:6.1f}s {result.frames_sent:7d} "
+            f"{result.deltas_sent:7d} {result.acks:6d} "
+            f"{('-' if ratio is None else f'{ratio:.2f}'):>6s} {result.achieved_hz:7.2f} "
+            f"{result.target_hz:7.2f} {result.missed_slots:5d} {result.reconnects:3d}  {degraded}",
+            flush=True,
+        )
     print("  ack:F = acks per FULL FRAME sent. '-' = a delta-only step: graffiti is", flush=True)
     print("  ack-silent by design, so zero acks there is correct, not degradation.", flush=True)
     print("  miss = pacing slots skipped because a send overran its interval.", flush=True)
@@ -606,21 +615,31 @@ def print_summary(phase: str | None, results: list[StepResult]) -> None:
         print("\n  => NO DEGRADATION. Every step ran its full duration with the link intact.", flush=True)
         if survived:
             best = max(survived, key=lambda r: r.target_hz)
-            print(f"     Highest rate sustained: {best.target_hz:g}/s for {best.ran_seconds:.0f}s "
-                  f"({best.label}).", flush=True)
+            print(
+                f"     Highest rate sustained: {best.target_hz:g}/s for {best.ran_seconds:.0f}s ({best.label}).",
+                flush=True,
+            )
     else:
         first = degraded[0]
-        print(f"\n  => DEGRADED at '{first.label}' ({first.degradation}, "
-              f"{first.degraded_at:.1f}s in). Nothing above that rate was attempted.", flush=True)
+        print(
+            f"\n  => DEGRADED at '{first.label}' ({first.degradation}, "
+            f"{first.degraded_at:.1f}s in). Nothing above that rate was attempted.",
+            flush=True,
+        )
         if survived:
             best = max(survived, key=lambda r: r.target_hz)
-            print(f"     Last clean step: {best.label} -- {best.target_hz:g}/s held for "
-                  f"{best.ran_seconds:.0f}s. THAT is the budget, not the step that broke.", flush=True)
+            print(
+                f"     Last clean step: {best.label} -- {best.target_hz:g}/s held for "
+                f"{best.ran_seconds:.0f}s. THAT is the budget, not the step that broke.",
+                flush=True,
+            )
         else:
-            print("     No step survived. Do not derive a budget from this run; re-run "
-                  "`smoke` first to rule out the harness.", flush=True)
-    print("  One run is one data point. Repeat before writing a number into "
-          "capabilities.py.", flush=True)
+            print(
+                "     No step survived. Do not derive a budget from this run; re-run "
+                "`smoke` first to rule out the harness.",
+                flush=True,
+            )
+    print("  One run is one data point. Repeat before writing a number into capabilities.py.", flush=True)
     print("=============================================================================", flush=True)
 
 

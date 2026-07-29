@@ -267,17 +267,17 @@ from pyidotmatrix.protocol import clock as clock_protocol
 
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 
-PROBE_NUMBER = 17          # scoreboard count1 on every label -- "this is P17b"
+PROBE_NUMBER = 17  # scoreboard count1 on every label -- "this is P17b"
 
-WHITE = (255, 255, 255)    # the measurement target: maximum lit area, always
-PINNED = 100               # the level brightness is pinned to and left at
+WHITE = (255, 255, 255)  # the measurement target: maximum lit area, always
+PINNED = 100  # the level brightness is pinned to and left at
 
-MODE_FULL = "full"         # all 12 phases (no argument)
-MODE_COLOUR = "colour"     # phases 9-12 only
+MODE_FULL = "full"  # all 12 phases (no argument)
+MODE_COLOUR = "colour"  # phases 9-12 only
 MODE_LOWLIGHT = "lowlight"  # phases 13-16 only
 COLOUR_PHASE_NUMBERS = (9, 10, 11, 12)
 LOWLIGHT_PHASE_NUMBERS = (13, 14, 15, 16)
-LOWLIGHT_LEVELS = (100, 20, 10, 5)   # white field, eco off, judged for HUE not level
+LOWLIGHT_LEVELS = (100, 20, 10, 5)  # white field, eco off, judged for HUE not level
 LOWLIGHT_HOLD_SECONDS = 15
 
 # The A/B (phases 5 and 7): both ends of the firmware-valid 5..100 range (P13),
@@ -305,11 +305,11 @@ CLOCK_STYLE = clock_protocol.STYLE_COLOR
 CLOCK_CONTROL_STYLE = clock_protocol.STYLE_RGB_SWIPE_OUTLINE
 CLOCK_COLOR = WHITE
 
-LABEL_SECONDS = 3          # scoreboard label: short, then get out of the way
-HOLD_SECONDS = 25          # every measurement hold: settle the meter, read it
-ACK_SETTLE = 2.5           # never report an ack list sooner than this after a send
+LABEL_SECONDS = 3  # scoreboard label: short, then get out of the way
+HOLD_SECONDS = 25  # every measurement hold: settle the meter, read it
+ACK_SETTLE = 2.5  # never report an ack list sooner than this after a send
 
-REPIN_AFTER_PHASE = 6      # see the A/B note in the module docstring
+REPIN_AFTER_PHASE = 6  # see the A/B note in the module docstring
 
 
 def select_mode(argv: list[str]) -> str:
@@ -360,11 +360,13 @@ class AckLog:
 
     async def report(self, label: str, sent_at: float) -> None:
         await asyncio.sleep(ACK_SETTLE)
-        fresh = self._entries[self._reported:]
+        fresh = self._entries[self._reported :]
         self._reported = len(self._entries)
         if not fresh:
-            print(f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send"
-                  f" -- record it, silence is itself a result", flush=True)
+            print(
+                f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send -- record it, silence is itself a result",
+                flush=True,
+            )
             return
         print(f"  ACK {label}: {len(fresh)}", flush=True)
         for at, text in fresh:
@@ -400,65 +402,108 @@ def build_phases(client: IDotMatrixClient, window: tuple[int, int, int, int]):
     read_color = "READ THE DIGIT COLOUR (not the level)"
 
     return (
-        (1, "white @ 100% -- calibration + meter check",
-         lambda: white_at(100),
-         f"{read_level}. This is the top reference"),
-        (2, "white @ 40% -- calibration",
-         lambda: white_at(40),
-         f"{read_level}. Must read clearly BELOW phase 1, or the meter is too coarse"),
-        (3, "white @ 5% -- calibration",
-         lambda: white_at(5),
-         f"{read_level}. Must read clearly BELOW phase 2, or THE RUN IS VOID"),
-        (4, "white @ 100% -- back to the reference",
-         lambda: white_at(PINNED),
-         f"{read_level}. Must match phase 1; if it does not, the readings are not"
-         f" comparable across this run (meter drift, or the room light changed)"),
-        (5, f"white, eco ON, eco_brightness={ECO_LOW}   <-- A/B half A",
-         lambda: white_with_eco(True, ECO_LOW),
-         f"{read_level}. Compare with phase 7, which differs ONLY in this parameter"),
-        (6, "white, eco OFF (after A)",
-         lambda: white_with_eco(False, ECO_LOW),
-         f"{read_level}. Back to the phase-4 reference => eco restores the host's"
-         f" brightness; still dim => the eco value sticks"),
-        (7, f"white, eco ON, eco_brightness={ECO_HIGH}  <-- A/B half B",
-         lambda: white_with_eco(True, ECO_HIGH),
-         f"{read_level}. SAME as phase 5 => the parameter is INERT and eco applies a"
-         f" FIXED level. Brighter than phase 5 => the parameter works"),
-        (8, "white, eco OFF (after B)",
-         lambda: white_with_eco(False, ECO_HIGH),
-         f"{read_level}. Second eco-OFF datapoint"),
-        (9, "clock (solid-colour face, pinned WHITE), eco OFF",
-         lambda: clock_with_eco(False, ECO_HIGH, CLOCK_STYLE),
-         f"{read_color}. This is the colour baseline -- it should be WHITE"),
-        (10, f"clock (same face), eco ON at eco_brightness={ECO_COLOUR_BLOCK} (no dimming)",
-         lambda: clock_with_eco(True, ECO_COLOUR_BLOCK, CLOCK_STYLE),
-         f"{read_color}. Eco is ARMED and ACTIVE but not dimming, so the digits stay"
-         f" at full brightness and COLOUR is the only thing that can have changed"
-         f" since phase 9. DID THE DIGIT COLOUR CHANGE? Any non-white hue => eco"
-         f" alters RENDERING independently of brightness. Still white => eco touches"
-         f" brightness only, and run 1's magenta was the clock STYLE"),
-        (11, "clock (same face), eco OFF again",
-         lambda: clock_with_eco(False, ECO_LOW, CLOCK_STYLE),
-         f"{read_color}. Back to white => whatever phase 10 showed was eco-driven"
-         f" and reversible"),
-        (12, "clock STYLE 0 (RGB swipe), eco OFF  <-- the control",
-         lambda: clock_with_eco(False, ECO_HIGH, CLOCK_CONTROL_STYLE),
-         f"{read_color}. Colours CYCLING with no eco anywhere => the magenta was the"
-         f" DEFAULT CLOCK STYLE all along, and eco is exonerated on colour"),
+        (
+            1,
+            "white @ 100% -- calibration + meter check",
+            lambda: white_at(100),
+            f"{read_level}. This is the top reference",
+        ),
+        (
+            2,
+            "white @ 40% -- calibration",
+            lambda: white_at(40),
+            f"{read_level}. Must read clearly BELOW phase 1, or the meter is too coarse",
+        ),
+        (
+            3,
+            "white @ 5% -- calibration",
+            lambda: white_at(5),
+            f"{read_level}. Must read clearly BELOW phase 2, or THE RUN IS VOID",
+        ),
+        (
+            4,
+            "white @ 100% -- back to the reference",
+            lambda: white_at(PINNED),
+            f"{read_level}. Must match phase 1; if it does not, the readings are not"
+            f" comparable across this run (meter drift, or the room light changed)",
+        ),
+        (
+            5,
+            f"white, eco ON, eco_brightness={ECO_LOW}   <-- A/B half A",
+            lambda: white_with_eco(True, ECO_LOW),
+            f"{read_level}. Compare with phase 7, which differs ONLY in this parameter",
+        ),
+        (
+            6,
+            "white, eco OFF (after A)",
+            lambda: white_with_eco(False, ECO_LOW),
+            f"{read_level}. Back to the phase-4 reference => eco restores the host's"
+            f" brightness; still dim => the eco value sticks",
+        ),
+        (
+            7,
+            f"white, eco ON, eco_brightness={ECO_HIGH}  <-- A/B half B",
+            lambda: white_with_eco(True, ECO_HIGH),
+            f"{read_level}. SAME as phase 5 => the parameter is INERT and eco applies a"
+            f" FIXED level. Brighter than phase 5 => the parameter works",
+        ),
+        (
+            8,
+            "white, eco OFF (after B)",
+            lambda: white_with_eco(False, ECO_HIGH),
+            f"{read_level}. Second eco-OFF datapoint",
+        ),
+        (
+            9,
+            "clock (solid-colour face, pinned WHITE), eco OFF",
+            lambda: clock_with_eco(False, ECO_HIGH, CLOCK_STYLE),
+            f"{read_color}. This is the colour baseline -- it should be WHITE",
+        ),
+        (
+            10,
+            f"clock (same face), eco ON at eco_brightness={ECO_COLOUR_BLOCK} (no dimming)",
+            lambda: clock_with_eco(True, ECO_COLOUR_BLOCK, CLOCK_STYLE),
+            f"{read_color}. Eco is ARMED and ACTIVE but not dimming, so the digits stay"
+            f" at full brightness and COLOUR is the only thing that can have changed"
+            f" since phase 9. DID THE DIGIT COLOUR CHANGE? Any non-white hue => eco"
+            f" alters RENDERING independently of brightness. Still white => eco touches"
+            f" brightness only, and run 1's magenta was the clock STYLE",
+        ),
+        (
+            11,
+            "clock (same face), eco OFF again",
+            lambda: clock_with_eco(False, ECO_LOW, CLOCK_STYLE),
+            f"{read_color}. Back to white => whatever phase 10 showed was eco-driven and reversible",
+        ),
+        (
+            12,
+            "clock STYLE 0 (RGB swipe), eco OFF  <-- the control",
+            lambda: clock_with_eco(False, ECO_HIGH, CLOCK_CONTROL_STYLE),
+            f"{read_color}. Colours CYCLING with no eco anywhere => the magenta was the"
+            f" DEFAULT CLOCK STYLE all along, and eco is exonerated on colour",
+        ),
     ) + tuple(
         # lowlight: the same white field, eco OFF, walked down the brightness
         # scale. The question is HUE, not level -- see the docstring.
-        (13 + step, f"white @ {level}% -- lowlight hue check",
-         (lambda lv=level: white_at(lv)),
-         "IS THE WHITE FIELD STILL WHITE, or has it shifted (pink / magenta / blue)?"
-         " A shift means the RGB channels' LED turn-on thresholds DIVERGE at low"
-         " drive -- green dropping out first would render white as magenta")
+        (
+            13 + step,
+            f"white @ {level}% -- lowlight hue check",
+            (lambda lv=level: white_at(lv)),
+            "IS THE WHITE FIELD STILL WHITE, or has it shifted (pink / magenta / blue)?"
+            " A shift means the RGB channels' LED turn-on thresholds DIVERGE at low"
+            " drive -- green dropping out first would render white as magenta",
+        )
         for step, level in enumerate(LOWLIGHT_LEVELS)
     )
 
 
 async def run_phase(
-    client: IDotMatrixClient, log: AckLog, number: int, title: str, setup, question: str,
+    client: IDotMatrixClient,
+    log: AckLog,
+    number: int,
+    title: str,
+    setup,
+    question: str,
     hold: int = HOLD_SECONDS,
 ) -> None:
     """Label the phase on the panel, establish the state, THEN hold it still.
@@ -488,8 +533,10 @@ async def restore(client: IDotMatrixClient) -> None:
     separately: failing to restore eco must not also cost us the clock.
     """
     for label, action in (
-        ("eco disabled (window 22:00-06:00, eco_brightness 100 -- inert either way)",
-         lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100)),
+        (
+            "eco disabled (window 22:00-06:00, eco_brightness 100 -- inert either way)",
+            lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100),
+        ),
         (f"brightness {PINNED}", lambda: client.device.set_brightness(PINNED)),
         ("clock", lambda: client.clock.show()),
     ):
@@ -518,8 +565,7 @@ def print_banner(mode: str, phases, start: datetime, end: datetime, now: datetim
     else:
         print("P17b FULL RUN -- lux meter ~2 inches from the panel, room monitor OFF.", flush=True)
         print("Phases 1-8 are already answered (see the docstring); 9-12 need eyes.", flush=True)
-    print(f"Each phase: a {LABEL_SECONDS}s scoreboard label (17 | N), then {HOLD_SECONDS}s of a",
-          flush=True)
+    print(f"Each phase: a {LABEL_SECONDS}s scoreboard label (17 | N), then {HOLD_SECONDS}s of a", flush=True)
     print("STEADY field. Nothing changes during a hold. One reading per phase.", flush=True)
     print("", flush=True)
     for number, title, _setup, _question in phases:
@@ -551,17 +597,20 @@ async def main(mode: str) -> None:
         wanted = {
             MODE_COLOUR: COLOUR_PHASE_NUMBERS,
             MODE_LOWLIGHT: LOWLIGHT_PHASE_NUMBERS,
-        }.get(mode, tuple(range(1, 13)))   # the full run is phases 1-12, as before
+        }.get(mode, tuple(range(1, 13)))  # the full run is phases 1-12, as before
         phases = tuple(p for p in build_phases(client, window) if p[0] in wanted)
         hold = LOWLIGHT_HOLD_SECONDS if mode == MODE_LOWLIGHT else HOLD_SECONDS
         print_banner(mode, phases, start, end, now)
 
         if end.date() != start.date():
-            print("*** WARNING: the eco window wraps midnight (start hour > end hour)."
-                  " The firmware may treat that as an empty window and never dim."
-                  " A DEAD WINDOW GIVES NO DIM IN EITHER HALF, which is a DIFFERENT reading"
-                  " from 'both halves dim identically' -- do not conclude eco_brightness is"
-                  " inert from it. Re-run away from midnight. ***", flush=True)
+            print(
+                "*** WARNING: the eco window wraps midnight (start hour > end hour)."
+                " The firmware may treat that as an empty window and never dim."
+                " A DEAD WINDOW GIVES NO DIM IN EITHER HALF, which is a DIFFERENT reading"
+                " from 'both halves dim identically' -- do not conclude eco_brightness is"
+                " inert from it. Re-run away from midnight. ***",
+                flush=True,
+            )
 
         try:
             # Known-state entry, in BOTH modes: reset (verified non-destructive),
@@ -591,8 +640,11 @@ async def main(mode: str) -> None:
                     # Phase 6's reading has been taken and printed above; this
                     # only guarantees the two A/B halves start from the same
                     # commanded level, whatever eco OFF turned out to do.
-                    print(f"  (phase {number} recorded) re-pinning brightness to {PINNED} so the"
-                          f" A/B halves share a reference", flush=True)
+                    print(
+                        f"  (phase {number} recorded) re-pinning brightness to {PINNED} so the"
+                        f" A/B halves share a reference",
+                        flush=True,
+                    )
                     try:
                         await client.device.set_brightness(PINNED)
                         await asyncio.sleep(3)
@@ -601,29 +653,37 @@ async def main(mode: str) -> None:
 
             print("\nverdict to record:", flush=True)
             if mode == MODE_LOWLIGHT:
-                print("  white stays WHITE down to 5 => channels share a turn-on threshold;"
-                      " the magenta had some other cause and brightness 5-15 is safe for a"
-                      " night mode.", flush=True)
-                print("  white shifts pink/magenta as brightness drops => the GREEN channel"
-                      " drops out first; note the level it starts at -- that is the floor a"
-                      " night mode can use before the panel goes off-white.", flush=True)
+                print(
+                    "  white stays WHITE down to 5 => channels share a turn-on threshold;"
+                    " the magenta had some other cause and brightness 5-15 is safe for a"
+                    " night mode.",
+                    flush=True,
+                )
+                print(
+                    "  white shifts pink/magenta as brightness drops => the GREEN channel"
+                    " drops out first; note the level it starts at -- that is the floor a"
+                    " night mode can use before the panel goes off-white.",
+                    flush=True,
+                )
             elif mode != MODE_COLOUR:
                 print("  (lux, one value per phase number)", flush=True)
-                print("  1/2/3 not clearly distinct, or 4 != 1 => RUN VOID, meter too coarse.",
-                      flush=True)
-                print("  lux(5) vs lux(7) is the A/B -- recorded 4.55 vs 65.23 on 2026-07-27,"
-                      " so eco_brightness is LIVE and is the ordinary brightness scale.", flush=True)
-                print("  6/8 back to the phase-4 reference => eco OFF restores host brightness.",
-                      flush=True)
+                print("  1/2/3 not clearly distinct, or 4 != 1 => RUN VOID, meter too coarse.", flush=True)
+                print(
+                    "  lux(5) vs lux(7) is the A/B -- recorded 4.55 vs 65.23 on 2026-07-27,"
+                    " so eco_brightness is LIVE and is the ordinary brightness scale.",
+                    flush=True,
+                )
+                print("  6/8 back to the phase-4 reference => eco OFF restores host brightness.", flush=True)
             if mode != MODE_LOWLIGHT:
-                print("  (colour, judged by eye -- all four phases are at full brightness)",
-                      flush=True)
-                print("  10 shows a NON-WHITE hue while 9/11 stay white => eco alters RENDERING"
-                      " independently of brightness; capabilities.py's eco description is"
-                      " incomplete.", flush=True)
+                print("  (colour, judged by eye -- all four phases are at full brightness)", flush=True)
+                print(
+                    "  10 shows a NON-WHITE hue while 9/11 stay white => eco alters RENDERING"
+                    " independently of brightness; capabilities.py's eco description is"
+                    " incomplete.",
+                    flush=True,
+                )
                 print("  9/10/11 all white => eco touches BRIGHTNESS ONLY.", flush=True)
-                print("  12 cycling colours with no eco => run 1's magenta was the DEFAULT CLOCK"
-                      " STYLE.", flush=True)
+                print("  12 cycling colours with no eco => run 1's magenta was the DEFAULT CLOCK STYLE.", flush=True)
         finally:
             # Restoration runs even if a phase raised: an eco window left armed
             # would keep dimming the operator's desk display, and a half-run

@@ -65,9 +65,9 @@ def make_frame(index: int, color: tuple[int, int, int]) -> bytes:
         for dx in range(4):
             x = (bar_x + dx) % SIZE
             off = (y * SIZE + x) * 3
-            rgb[off:off + 3] = bytes(color)
+            rgb[off : off + 3] = bytes(color)
     for x in range((index % SIZE) + 1):
-        rgb[x * 3:x * 3 + 3] = b"\xff\xff\xff"
+        rgb[x * 3 : x * 3 + 3] = b"\xff\xff\xff"
     return bytes(rgb)
 
 

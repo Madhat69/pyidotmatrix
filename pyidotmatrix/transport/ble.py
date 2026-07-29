@@ -132,12 +132,12 @@ class BleTransport:
                 f"{_MAX_WRITE_SIZE_OVERRIDE}, got {write_size_override!r}"
             )
         self._mac_address = mac_address
-        self._auto_reconnect = auto_reconnect      # configured intent
-        self._reconnect_armed = False              # armed on connect, disarmed on explicit disconnect
+        self._auto_reconnect = auto_reconnect  # configured intent
+        self._reconnect_armed = False  # armed on connect, disarmed on explicit disconnect
         self._write_size_override = write_size_override
         self._client: BleakClient | None = None
-        self._connect_lock = asyncio.Lock()        # per-instance: multiple devices don't serialize
-        self._write_size: int | None = None     # negotiated no-response size, cached per connection
+        self._connect_lock = asyncio.Lock()  # per-instance: multiple devices don't serialize
+        self._write_size: int | None = None  # negotiated no-response size, cached per connection
         self._reconnect_task: asyncio.Task | None = None
         # Serializes write()/write_packets() so one logical command's full
         # multi-packet send can't be interleaved with another writer's packets
@@ -250,8 +250,7 @@ class BleTransport:
         addresses = await discover_devices()
         if not addresses:
             raise BleakError(
-                "no iDotMatrix devices found; ensure the device is powered on, in range, "
-                "and not connected elsewhere"
+                "no iDotMatrix devices found; ensure the device is powered on, in range, and not connected elsewhere"
             )
         return addresses[0]
 
@@ -271,7 +270,7 @@ class BleTransport:
         async with self._write_lock:
             for start in range(0, len(data), chunk_size):
                 is_last = start + chunk_size >= len(data)
-                await self._write_raw(data[start:start + chunk_size], response=response and is_last)
+                await self._write_raw(data[start : start + chunk_size], response=response and is_last)
 
     async def write_packets(self, packets: list[list[bytearray]], response: bool = False) -> None:
         """Writes a multi-chunk frame. Only the very last write is GATT-acked.
@@ -295,10 +294,8 @@ class BleTransport:
                 for packet_index, packet in enumerate(chunk):
                     is_last_packet = packet_index == len(chunk) - 1
                     for start in range(0, len(packet), write_size):
-                        piece = packet[start:start + write_size]
-                        is_final = (
-                            response and is_last_chunk and is_last_packet and start + write_size >= len(packet)
-                        )
+                        piece = packet[start : start + write_size]
+                        is_final = response and is_last_chunk and is_last_packet and start + write_size >= len(packet)
                         await self._write_raw(piece, response=is_final)
 
     async def await_device_ack(
@@ -433,7 +430,8 @@ class BleTransport:
             logger.warning(
                 "write to %s failed on a client that looked write-ready (%s); "
                 "forcing a clean reconnect and retrying once",
-                self._mac_address, ex,
+                self._mac_address,
+                ex,
             )
             try:
                 await self._reconnect_for_readiness()

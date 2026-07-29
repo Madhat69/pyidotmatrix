@@ -78,8 +78,21 @@ async def test_countdown_routes_to_transport_with_ack():
 async def test_all_feature_namespaces_present():
     client, _ = _client()
     for name in (
-        "chronograph", "stopwatch", "countdown", "clock", "scoreboard", "eco",
-        "color", "graffiti", "effect", "music_sync", "music", "text", "gif", "device", "display",
+        "chronograph",
+        "stopwatch",
+        "countdown",
+        "clock",
+        "scoreboard",
+        "eco",
+        "color",
+        "graffiti",
+        "effect",
+        "music_sync",
+        "music",
+        "text",
+        "gif",
+        "device",
+        "display",
         "experimental",
     ):
         assert hasattr(client, name), f"missing namespace: {name}"
@@ -109,10 +122,8 @@ def test_music_is_music_sync_alias():
 
 async def test_graffiti_move_type_passes_through():
     client, transport = _client()
-    await client.graffiti.set_pixels(
-        (0, 255, 0), [(1, 1)], move_type=graffiti.MOVE_VERTICAL_MIRROR
-    )
-    (data, _ack), = transport.writes
+    await client.graffiti.set_pixels((0, 255, 0), [(1, 1)], move_type=graffiti.MOVE_VERTICAL_MIRROR)
+    ((data, _ack),) = transport.writes
     assert data[4] == graffiti.MOVE_VERTICAL_MIRROR  # DiyImageMoveType byte
     assert data[3] == 1  # byte 3 pinned: the only value the device draws for
 
@@ -140,7 +151,7 @@ async def test_send_rhythm_levels_is_fire_and_forget():
     transport.next_ack = DeviceAck(1, 2, accepted=False, raw=b"")  # would raise if awaited
     await client.music_sync.send_rhythm_levels([1] * 16)
     assert transport.ack_waits == []
-    (data, _response), = transport.writes
+    ((data, _response),) = transport.writes
     assert data[:5] == bytes([0x21, 0x00, 0x01, 0x02, 0x00])
     assert len(data) == 21
 
@@ -154,14 +165,14 @@ async def test_set_mic_type_sends_the_six_byte_frame():
 async def test_effect_show_passes_speed_through():
     client, transport = _client()
     await client.effect.show(1, [(255, 0, 0), (0, 255, 0)], speed=120)
-    (data, _ack), = transport.writes
+    ((data, _ack),) = transport.writes
     assert data[5] == 120  # speed byte (APK_SECOND_PASS.md Q5(a))
 
 
 async def test_effect_show_default_speed_is_legacy_90():
     client, transport = _client()
     await client.effect.show(1, [(255, 0, 0), (0, 255, 0)])
-    (data, _ack), = transport.writes
+    ((data, _ack),) = transport.writes
     assert data[5] == 90
 
 
@@ -172,7 +183,7 @@ async def test_effect_show_chunked_uses_packet_path():
     colors = [(255, 0, 0), (0, 255, 0)]
     await client.effect.show_chunked(1, colors, speed=120, mtu_negotiated=False)
     assert transport.writes == []  # not the flat-command path
-    (packets, _response), = transport.packet_writes
+    ((packets, _response),) = transport.packet_writes
     assert packets == [effect_protocol.build_show_packets(1, colors, 120, mtu_negotiated=False)]
 
 
@@ -244,9 +255,7 @@ async def test_experimental_delete_device_data_requires_confirm():
 async def test_experimental_delete_device_data_routes_to_transport_when_confirmed():
     client, transport = _client()
     await client.experimental.delete_device_data(confirm=True)
-    assert transport.writes == [
-        (bytes([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), True)
-    ]
+    assert transport.writes == [(bytes([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), True)]
 
 
 async def test_experimental_schedule_master_switch_routes_to_transport():
@@ -258,8 +267,13 @@ async def test_experimental_schedule_master_switch_routes_to_transport():
 async def test_experimental_timer_close_routes_to_transport():
     client, transport = _client()
     t = timer.Timer(
-        num=1, week=0, hour=6, minute=0,
-        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_IMAGE, buzzer_enable=False,
+        num=1,
+        week=0,
+        hour=6,
+        minute=0,
+        duration_bucket=timer.DURATION_10S,
+        content_type=timer.CONTENT_IMAGE,
+        buzzer_enable=False,
     )
     await client.experimental.timer_close(t)
     assert transport.writes == [(bytes([12, 0, 0x00, 0x80, 1, 0, 6, 0, 10, 0, 2, 0]), True)]
@@ -297,8 +311,13 @@ async def _yield_control(times: int = 3) -> None:
 
 def _timer_obj(**overrides) -> timer.Timer:
     base = dict(
-        num=0, week=0xFF, hour=0, minute=0,
-        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_GIF, buzzer_enable=False,
+        num=0,
+        week=0xFF,
+        hour=0,
+        minute=0,
+        duration_bucket=timer.DURATION_10S,
+        content_type=timer.CONTENT_GIF,
+        buzzer_enable=False,
     )
     base.update(overrides)
     return timer.Timer(**base)
@@ -405,9 +424,7 @@ async def test_timer_set_never_saved_raises():
 async def test_schedule_set_theme_single_chunk_goes_straight_to_saved():
     client, transport = _client()
     payload = b"x" * 10
-    task = asyncio.create_task(
-        client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF)
-    )
+    task = asyncio.create_task(client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF))
     await _yield_control()
 
     _push_ack(transport, _status_ack(0x05, 0x80, STATUS_SAVED))
@@ -419,9 +436,7 @@ async def test_schedule_set_theme_single_chunk_goes_straight_to_saved():
 async def test_schedule_set_theme_multi_chunk_next_chunk_then_saved():
     client, transport = _client()
     payload = b"y" * 8200  # three outer chunks
-    task = asyncio.create_task(
-        client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF)
-    )
+    task = asyncio.create_task(client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF))
 
     for _ in range(2):
         await _yield_control()
@@ -436,9 +451,7 @@ async def test_schedule_set_theme_multi_chunk_next_chunk_then_saved():
 async def test_schedule_set_theme_tolerates_duplicate_acks():
     client, transport = _client()
     payload = b"z" * 4200  # two outer chunks
-    task = asyncio.create_task(
-        client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF)
-    )
+    task = asyncio.create_task(client.experimental.schedule_set_theme(_theme_obj(), payload, schedule.CONTENT_GIF))
 
     await _yield_control()
     _push_ack(transport, _status_ack(0x05, 0x80, STATUS_NEXT_CHUNK))
@@ -453,9 +466,7 @@ async def test_schedule_set_theme_tolerates_duplicate_acks():
 
 async def test_schedule_set_theme_failed_raises():
     client, transport = _client()
-    task = asyncio.create_task(
-        client.experimental.schedule_set_theme(_theme_obj(), b"a" * 5, schedule.CONTENT_GIF)
-    )
+    task = asyncio.create_task(client.experimental.schedule_set_theme(_theme_obj(), b"a" * 5, schedule.CONTENT_GIF))
     await _yield_control()
 
     _push_ack(transport, _status_ack(0x05, 0x80, STATUS_FAILED))
@@ -755,7 +766,7 @@ async def test_set_time_is_fire_and_forget():
     transport.next_ack = _device_ack(1, 128, accepted=False)  # would raise if awaited
     await client.device.set_time(datetime(2026, 7, 28, 2, 33, 0))
     assert transport.ack_waits == []  # never awaited an ack that does not come
-    (data, _response), = transport.writes
+    ((data, _response),) = transport.writes
     assert data[:4] == bytes([11, 0, 1, 128])
 
 

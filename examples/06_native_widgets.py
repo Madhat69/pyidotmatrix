@@ -76,7 +76,7 @@ async def demo_text(client: IDotMatrixClient, font_path: str) -> None:
         font_path=font_path,
         font_size=16,
         text_mode=text.MODE_MARQUEE,
-        speed=95,               # 100 measured smoothest on a 32x32 panel
+        speed=95,  # 100 measured smoothest on a 32x32 panel
         color_mode=text.COLOR_RGB,
         color=(0, 200, 255),
     )

@@ -66,8 +66,15 @@ def test_effect_length_byte_is_the_total_frame_length():
 def test_effect_matches_the_captured_vendor_frame_byte_for_byte():
     # The 2026-07-25 vendor-app HCI capture, speed dial at 0x64 (probe group A
     # replayed exactly these bytes and the panel ran smooth/slow/smooth).
-    colors = [(0x7F, 0, 0), (0x7F, 0x51, 0), (0x7F, 0x7F, 0), (0, 0x7F, 0),
-              (0, 0, 0x7F), (0x7F, 0, 0x7F), (0x7F, 0x7F, 0x7F)]
+    colors = [
+        (0x7F, 0, 0),
+        (0x7F, 0x51, 0),
+        (0x7F, 0x7F, 0),
+        (0, 0x7F, 0),
+        (0, 0, 0x7F),
+        (0x7F, 0, 0x7F),
+        (0x7F, 0x7F, 0x7F),
+    ]
     payload = effect.build_show(0, colors, speed=0x64)
     assert payload == bytearray.fromhex(
         "1c 00 03 02 00 64 07 7f0000 7f5100 7f7f00 007f00 00007f 7f007f 7f7f7f".replace(" ", "")
@@ -145,8 +152,7 @@ def test_rhythm_levels_matches_captured_frame():
     """Capture-exact 2026-07-25: a constant [21 00 01 02 00] prefix followed by
     16 level bytes. Byte 0 is 0x21 = 33, NOT the 21-byte frame length.
     """
-    levels = [0x00, 0x03, 0x07, 0x0D, 0x0A, 0x05, 0x02, 0x01,
-              0x01, 0x02, 0x05, 0x0A, 0x0D, 0x07, 0x03, 0x00]
+    levels = [0x00, 0x03, 0x07, 0x0D, 0x0A, 0x05, 0x02, 0x01, 0x01, 0x02, 0x05, 0x0A, 0x0D, 0x07, 0x03, 0x00]
     frame = music_sync.build_rhythm_levels(levels)
     assert frame == bytearray([0x21, 0x00, 0x01, 0x02, 0x00, *levels])
     assert len(frame) == 21

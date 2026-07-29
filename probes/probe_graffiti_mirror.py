@@ -59,9 +59,7 @@ def _build_raw_pixels_payload(color: tuple[int, int, int], xys: list[tuple[int, 
     header_size = 8
     red, green, blue = color
     size = header_size + 2 * len(xys)
-    payload = bytearray(
-        [size % 256, size // 256, 5, mirror, 0, red, green, blue] + [0] * (size - header_size)
-    )
+    payload = bytearray([size % 256, size // 256, 5, mirror, 0, red, green, blue] + [0] * (size - header_size))
     for i, (x, y) in enumerate(xys):
         payload[header_size + 2 * i] = x
         payload[header_size + 2 * i + 1] = y

@@ -72,9 +72,9 @@ def build_set_pixels(
     size = _HEADER_SIZE + 2 * len(xys)
     payload = bytearray(
         [
-            size % 256,   # length LSB
+            size % 256,  # length LSB
             size // 256,  # length MSB (0 or 1)
-            5,            # graffiti mode
+            5,  # graffiti mode
             _REQUIRED_BYTE3,
             move_type,
             red,

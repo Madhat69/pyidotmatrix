@@ -18,6 +18,8 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Ruff
         run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
       - name: Mypy
         run: mypy pyidotmatrix
 

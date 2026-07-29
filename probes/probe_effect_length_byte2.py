@@ -145,7 +145,7 @@ APP_EFFECT_COLORS = bytes.fromhex(
 APP_EFFECT_STYLE = 0
 
 LENGTH_MALFORMED = 0x0D  # our lab-era `6 + len(colors)` for 7 colors -- wrong
-LENGTH_CORRECT = 0x1C    # 7 header + 21 color bytes, as the vendor app sends it
+LENGTH_CORRECT = 0x1C  # 7 header + 21 color bytes, as the vendor app sends it
 LENGTH_TWO_COLORS = 0x0D  # 7 header + 6 color bytes -- genuinely correct here
 
 SPEED_FAST = 100  # 0x64, the app's fast dial position
@@ -191,27 +191,41 @@ async def countdown(phase: str, watch_for: str, n: int = COUNTDOWN_SECONDS) -> N
 # comparison inverted the entire verdict, and a relative chain has no way to
 # detect that. Absolute ratings are independently checkable after the fact.
 PHASES = (
-    ("A1 CORRECT 0x1c, 7 colors, speed 100",
-     build_seven_color_frame(LENGTH_CORRECT, SPEED_FAST),
-     "rate the pace ABSOLUTELY (1=crawling, 5=racing). This is the A-leg opener"),
-    ("B1 CORRECT 0x1c, 7 colors, speed 5",
-     build_seven_color_frame(LENGTH_CORRECT, SPEED_SLOW),
-     "rate the pace ABSOLUTELY -- do NOT compare to A1, just rate it"),
-    ("A2 CORRECT 0x1c, 7 colors, speed 100 (ABA return)",
-     build_seven_color_frame(LENGTH_CORRECT, SPEED_FAST),
-     "rate ABSOLUTELY -- must match A1's rating or the A/B pair is void (drift)"),
-    ("C1 MALFORMED 0x0d, 7 colors sent, speed 100",
-     build_seven_color_frame(LENGTH_MALFORMED, SPEED_FAST),
-     "rate ABSOLUTELY, and COUNT THE COLORS if you can -- 7 or 2?"),
-    ("D1 MALFORMED 0x0d, 7 colors sent, speed 5",
-     build_seven_color_frame(LENGTH_MALFORMED, SPEED_SLOW),
-     "rate ABSOLUTELY, and count the colors again -- 7 or 2?"),
-    ("C2 MALFORMED 0x0d, 7 colors sent, speed 100 (ABA return)",
-     build_seven_color_frame(LENGTH_MALFORMED, SPEED_FAST),
-     "rate ABSOLUTELY -- must match C1's rating or the C/D pair is void (drift)"),
-    ("E WELL-FORMED 2-color control, 0x0d, speed 100",
-     build_two_color_frame(SPEED_FAST),
-     "rate ABSOLUTELY. Same as C1 => the device truncates the palette to 2 colors"),
+    (
+        "A1 CORRECT 0x1c, 7 colors, speed 100",
+        build_seven_color_frame(LENGTH_CORRECT, SPEED_FAST),
+        "rate the pace ABSOLUTELY (1=crawling, 5=racing). This is the A-leg opener",
+    ),
+    (
+        "B1 CORRECT 0x1c, 7 colors, speed 5",
+        build_seven_color_frame(LENGTH_CORRECT, SPEED_SLOW),
+        "rate the pace ABSOLUTELY -- do NOT compare to A1, just rate it",
+    ),
+    (
+        "A2 CORRECT 0x1c, 7 colors, speed 100 (ABA return)",
+        build_seven_color_frame(LENGTH_CORRECT, SPEED_FAST),
+        "rate ABSOLUTELY -- must match A1's rating or the A/B pair is void (drift)",
+    ),
+    (
+        "C1 MALFORMED 0x0d, 7 colors sent, speed 100",
+        build_seven_color_frame(LENGTH_MALFORMED, SPEED_FAST),
+        "rate ABSOLUTELY, and COUNT THE COLORS if you can -- 7 or 2?",
+    ),
+    (
+        "D1 MALFORMED 0x0d, 7 colors sent, speed 5",
+        build_seven_color_frame(LENGTH_MALFORMED, SPEED_SLOW),
+        "rate ABSOLUTELY, and count the colors again -- 7 or 2?",
+    ),
+    (
+        "C2 MALFORMED 0x0d, 7 colors sent, speed 100 (ABA return)",
+        build_seven_color_frame(LENGTH_MALFORMED, SPEED_FAST),
+        "rate ABSOLUTELY -- must match C1's rating or the C/D pair is void (drift)",
+    ),
+    (
+        "E WELL-FORMED 2-color control, 0x0d, speed 100",
+        build_two_color_frame(SPEED_FAST),
+        "rate ABSOLUTELY. Same as C1 => the device truncates the palette to 2 colors",
+    ),
 )
 
 

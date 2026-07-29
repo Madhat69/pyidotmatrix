@@ -32,8 +32,10 @@ async def main() -> None:
         now = datetime.now()
         start = now - timedelta(hours=1)
         end = now + timedelta(hours=1)
-        await guarded("eco ON", lambda: client.eco.set_mode(
-            True, start.hour, start.minute, end.hour, end.minute, eco_brightness=5))
+        await guarded(
+            "eco ON",
+            lambda: client.eco.set_mode(True, start.hour, start.minute, end.hour, end.minute, eco_brightness=5),
+        )
         print("STEP 1a: ECO ON, window covers now, brightness 5 -- panel dimmed? (8s)", flush=True)
         await asyncio.sleep(8)
         await guarded("eco OFF", lambda: client.eco.set_mode(False))

@@ -128,8 +128,13 @@ def test_timer_data_header_multi_chunk_continuation():
 
 def test_timer_data_packets_rejects_empty_payload():
     t = timer.Timer(
-        num=0, week=0, hour=0, minute=0,
-        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_GIF, buzzer_enable=False,
+        num=0,
+        week=0,
+        hour=0,
+        minute=0,
+        duration_bucket=timer.DURATION_10S,
+        content_type=timer.CONTENT_GIF,
+        buzzer_enable=False,
     )
     with pytest.raises(ValueError):
         timer.build_timer_data_packets(t, b"")
@@ -159,8 +164,13 @@ def test_content_type_wire_values():
 
 def _valid_timer_kwargs(**overrides):
     base = dict(
-        num=0, week=0, hour=0, minute=0,
-        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_GIF, buzzer_enable=False,
+        num=0,
+        week=0,
+        hour=0,
+        minute=0,
+        duration_bucket=timer.DURATION_10S,
+        content_type=timer.CONTENT_GIF,
+        buzzer_enable=False,
     )
     base.update(overrides)
     return base

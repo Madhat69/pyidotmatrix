@@ -54,9 +54,7 @@ async def main() -> None:
         await asyncio.sleep(1.0)
         for byte4, color, origin, label in STEPS:
             print(label)
-            await client.write_gatt_char(
-                WRITE_UUID, bytes(square(color, origin, byte4)), response=True
-            )
+            await client.write_gatt_char(WRITE_UUID, bytes(square(color, origin, byte4)), response=True)
             await asyncio.sleep(4.0)
         print("done. squares left on screen.")
 

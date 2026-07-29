@@ -9,4 +9,5 @@ async def main():
         print("device reset sent", flush=True)
         await asyncio.sleep(5)
 
+
 asyncio.run(main())

@@ -145,8 +145,11 @@ STYLES: tuple[tuple[int, str], ...] = (
     (clock_protocol.STYLE_RGB_SWIPE_OUTLINE, "STYLE_RGB_SWIPE_OUTLINE (previously tried)"),
     (clock_protocol.STYLE_CHRISTMAS_TREE, "STYLE_CHRISTMAS_TREE (never sent before)"),
     (clock_protocol.STYLE_CHECKERS, "STYLE_CHECKERS (never sent before)"),
-    (clock_protocol.STYLE_COLOR, "STYLE_COLOR (previously tried; colours the DIGITS, not the "
-                                 "background -- the background reading was P17b's, and is void)"),
+    (
+        clock_protocol.STYLE_COLOR,
+        "STYLE_COLOR (previously tried; colours the DIGITS, not the "
+        "background -- the background reading was P17b's, and is void)",
+    ),
     (clock_protocol.STYLE_HOURGLASS, "STYLE_HOURGLASS (never sent before)"),
     (clock_protocol.STYLE_ALARM_CLOCK, "STYLE_ALARM_CLOCK (never sent before)"),
     (clock_protocol.STYLE_OUTLINES, "STYLE_OUTLINES (never sent before)"),
@@ -209,8 +212,7 @@ def print_visual_script(colour_name: str) -> None:
     print("  0. BEFORE THE SWEEP: whatever the panel is showing right now stays up while", flush=True)
     print("     the client connects (a few seconds). Nothing is sent to change it, and", flush=True)
     print("     it is NOT part of the measurement. Most likely the ordinary clock face.", flush=True)
-    print(f"  1. THE SWEEP: {len(STYLES)} clock faces, {STYLE_SECONDS:.0f} s each, "
-          f"{total:.0f} s in total.", flush=True)
+    print(f"  1. THE SWEEP: {len(STYLES)} clock faces, {STYLE_SECONDS:.0f} s each, {total:.0f} s in total.", flush=True)
     print("     THEY ARE NOT LABELLED. No number, no scoreboard, no text appears on the", flush=True)
     print("     panel at any point -- a label would be a native-mode command and would", flush=True)
     print("     wreck the very thing being measured. The panel stays in clock mode the", flush=True)
@@ -249,14 +251,16 @@ async def main(sequence: str) -> None:
             for index, (style, name) in enumerate(STYLES, start=1):
                 mark = len(acks)
                 wall = datetime.now()
-                print(f"\n  [{index}/{len(STYLES)}]  {wall:%H:%M:%S}  style {style} -- {name}",
-                      flush=True)
+                print(f"\n  [{index}/{len(STYLES)}]  {wall:%H:%M:%S}  style {style} -- {name}", flush=True)
                 sent_at = time.perf_counter()
                 try:
                     await client.clock.show(style=style, color=SEQUENCE_COLOURS[sequence])
                 except Exception as ex:
-                    print(f"      SEND FAILED: {ex!r} (continuing -- the face on the panel is "
-                          f"still the PREVIOUS style, note the gap)", flush=True)
+                    print(
+                        f"      SEND FAILED: {ex!r} (continuing -- the face on the panel is "
+                        f"still the PREVIOUS style, note the gap)",
+                        flush=True,
+                    )
 
                 await asyncio.sleep(SETTLE_SECONDS)
                 window = acks[mark:]
@@ -265,24 +269,27 @@ async def main(sequence: str) -> None:
                     for at, text in window:
                         print(f"        {at - sent_at:+.2f}s after send  {text}", flush=True)
                 else:
-                    print(f"      acks: NONE within {SETTLE_SECONDS:.1f}s -- record it as silence, "
-                          f"not as a failure; a later reply will appear under a later style",
-                          flush=True)
+                    print(
+                        f"      acks: NONE within {SETTLE_SECONDS:.1f}s -- record it as silence, "
+                        f"not as a failure; a later reply will appear under a later style",
+                        flush=True,
+                    )
                 await asyncio.sleep(STYLE_SECONDS - SETTLE_SECONDS)
 
-            print(f"\n  {datetime.now():%H:%M:%S}  sweep complete -- the LAST style shown was "
-                  f"{STYLES[-1][0]} ({STYLES[-1][1]}).", flush=True)
+            print(
+                f"\n  {datetime.now():%H:%M:%S}  sweep complete -- the LAST style shown was "
+                f"{STYLES[-1][0]} ({STYLES[-1][1]}).",
+                flush=True,
+            )
         finally:
-            print("\nleaving the panel on style 0, ordinary white face (cleanup, not a phase) ...",
-                  flush=True)
+            print("\nleaving the panel on style 0, ordinary white face (cleanup, not a phase) ...", flush=True)
             try:
                 await client.clock.show(style=clock_protocol.STYLE_RGB_SWIPE_OUTLINE, color=WHITE)
             except Exception as ex:
                 print(f"  cleanup clock.show FAILED: {ex!r}", flush=True)
             unsubscribe()
 
-    print("\ndisconnected. Now answer: (a) how many DISTINCT faces, (b) at which transitions.",
-          flush=True)
+    print("\ndisconnected. Now answer: (a) how many DISTINCT faces, (b) at which transitions.", flush=True)
 
 
 asyncio.run(main(select_sequence(sys.argv[1:])))

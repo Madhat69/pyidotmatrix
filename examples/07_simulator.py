@@ -68,8 +68,7 @@ async def main() -> None:
 
     # The framebuffer property is a synchronous snapshot -- handy for
     # assertions in tests, or a preview UI that polls rather than subscribes.
-    print(f"\nframebuffer is {len(display.framebuffer)} bytes "
-          f"({width}x{height}x3 = {width * height * 3})")
+    print(f"\nframebuffer is {len(display.framebuffer)} bytes ({width}x{height}x3 = {width * height * 3})")
 
     await display.disconnect()
 

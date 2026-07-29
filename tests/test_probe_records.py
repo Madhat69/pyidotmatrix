@@ -26,41 +26,45 @@ _PROBE_PLAN = _REPO_ROOT / "docs" / "PROBE_PLAN.md"
 # Files under probes/ that are shared helpers rather than probes in their own
 # right, so they have no result to record. Keep this list short and justified:
 # anything that talks to the panel and answers a question is a probe.
-_NOT_PROBES = frozenset({
-    "_reset_once.py",  # one-shot reset helper, invoked by hand between probes
-})
+_NOT_PROBES = frozenset(
+    {
+        "_reset_once.py",  # one-shot reset helper, invoked by hand between probes
+    }
+)
 
 # Probes written before the RESULT convention existed. Their findings ARE
 # recorded -- in capabilities.py and docs/PROBE_PLAN.md -- but not in the probe
 # file, so a reader opening one of these cannot tell what it found or whether it
 # ever ran. This list is a visible backlog, not an exemption: shrink it whenever
 # one of these is touched, and never add to it. New probes must record a RESULT.
-_PREDATES_RESULT_CONVENTION = frozenset({
-    "probe_capability_sweep1.py",
-    "probe_capability_sweep2.py",
-    "probe_capability_sweep3.py",
-    "probe_chronograph_clean.py",
-    "probe_content_image_and_recolor.py",
-    "probe_diy_modes.py",
-    "probe_effect_set_speed.py",
-    "probe_effect_speed.py",
-    "probe_effect_speed2.py",
-    "probe_graffiti_byte3_final.py",
-    "probe_graffiti_byte3_state.py",
-    "probe_graffiti_byte3_state2.py",
-    "probe_graffiti_mirror.py",
-    "probe_graffiti_movement.py",
-    "probe_graffiti_movetype.py",
-    "probe_graffiti_transform.py",
-    "probe_graffiti_transform2.py",
-    "probe_schedule_gif.py",
-    "probe_schedule_master_switch.py",
-    "probe_screen_timeout.py",
-    "probe_timer_close.py",
-    "probe_timer_image.py",
-    "probe_timer_weekbit.py",
-    "probe_verify_password.py",  # never run, and gated behind an interlock
-})
+_PREDATES_RESULT_CONVENTION = frozenset(
+    {
+        "probe_capability_sweep1.py",
+        "probe_capability_sweep2.py",
+        "probe_capability_sweep3.py",
+        "probe_chronograph_clean.py",
+        "probe_content_image_and_recolor.py",
+        "probe_diy_modes.py",
+        "probe_effect_set_speed.py",
+        "probe_effect_speed.py",
+        "probe_effect_speed2.py",
+        "probe_graffiti_byte3_final.py",
+        "probe_graffiti_byte3_state.py",
+        "probe_graffiti_byte3_state2.py",
+        "probe_graffiti_mirror.py",
+        "probe_graffiti_movement.py",
+        "probe_graffiti_movetype.py",
+        "probe_graffiti_transform.py",
+        "probe_graffiti_transform2.py",
+        "probe_schedule_gif.py",
+        "probe_schedule_master_switch.py",
+        "probe_screen_timeout.py",
+        "probe_timer_close.py",
+        "probe_timer_image.py",
+        "probe_timer_weekbit.py",
+        "probe_verify_password.py",  # never run, and gated behind an interlock
+    }
+)
 
 # A probe records its outcome with a RESULT block in the module docstring.
 # "pending" is allowed -- an authored-but-unrun probe is a legitimate state, and
@@ -81,12 +85,9 @@ def _probe_files() -> list[Path]:
 
 def test_grandfather_list_has_no_stale_entries():
     """The backlog must shrink honestly, not accumulate names of deleted files."""
-    missing = sorted(
-        name for name in _PREDATES_RESULT_CONVENTION if not (_PROBES_DIR / name).exists()
-    )
-    assert not missing, (
-        "_PREDATES_RESULT_CONVENTION names files that no longer exist; remove them:\n  "
-        + "\n  ".join(missing)
+    missing = sorted(name for name in _PREDATES_RESULT_CONVENTION if not (_PROBES_DIR / name).exists())
+    assert not missing, "_PREDATES_RESULT_CONVENTION names files that no longer exist; remove them:\n  " + "\n  ".join(
+        missing
     )
 
 
@@ -97,9 +98,7 @@ def test_grandfathered_probes_still_lack_a_result():
     exempting probes that had long since been documented.
     """
     documented = sorted(
-        name
-        for name in _PREDATES_RESULT_CONVENTION
-        if _RESULT.search((_PROBES_DIR / name).read_text(encoding="utf-8"))
+        name for name in _PREDATES_RESULT_CONVENTION if _RESULT.search((_PROBES_DIR / name).read_text(encoding="utf-8"))
     )
     assert not documented, (
         "these probes now have a RESULT block -- remove them from "
@@ -139,8 +138,7 @@ def test_probe_plan_headings_all_carry_a_status():
         if not any(marker in match.group(0) for marker in _STATUS_MARKERS)
     ]
     assert not unmarked, (
-        "PROBE_PLAN.md headings without a status marker "
-        f"({', '.join(_STATUS_MARKERS)}):\n  " + "\n  ".join(unmarked)
+        f"PROBE_PLAN.md headings without a status marker ({', '.join(_STATUS_MARKERS)}):\n  " + "\n  ".join(unmarked)
     )
 
 

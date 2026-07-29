@@ -60,9 +60,7 @@ async def main() -> None:
         for byte4, color, origin, label in CASES:
             notifies.clear()
             print(f"byte4={byte4}: {label}")
-            await client.write_gatt_char(
-                WRITE_UUID, bytes(square(color, origin, byte4)), response=True
-            )
+            await client.write_gatt_char(WRITE_UUID, bytes(square(color, origin, byte4)), response=True)
             await asyncio.sleep(2.5)
             print(f"  notifies: {[n.hex() for n in notifies] or 'none (normal for graffiti)'}")
 

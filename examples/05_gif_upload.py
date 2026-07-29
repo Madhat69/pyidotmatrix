@@ -41,8 +41,7 @@ async def main() -> None:
         # would do this internally, but activate_stored() later needs the
         # literal bytes that ended up on the device, so we adapt ourselves
         # and reuse the same bytes for both calls.
-        print(f"adapting {gif_path} to the {client.screen_size.width}x"
-              f"{client.screen_size.height} canvas ...")
+        print(f"adapting {gif_path} to the {client.screen_size.width}x{client.screen_size.height} canvas ...")
         gif_data = gif_protocol.adapt_gif(gif_path, canvas_size=client.screen_size.width)
 
         print("uploading ...")

@@ -20,7 +20,10 @@ def build_set_mode(
         raise ValueError("eco_brightness must be 0..255")
     return bytearray(
         [
-            10, 0, 2, 128,
+            10,
+            0,
+            2,
+            128,
             1 if enabled else 0,
             start_hour % 256,
             start_minute % 256,

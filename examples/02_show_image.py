@@ -55,7 +55,7 @@ async def main() -> None:
         rgb_bytes = adapt_image(
             image_path,
             canvas_size=client.screen_size.width,
-            resize_mode=ResizeMode.FILL,       # this time: crop to fill, no letterbox
+            resize_mode=ResizeMode.FILL,  # this time: crop to fill, no letterbox
             background_color=(0, 0, 0),
         )
         # rgb_bytes is exactly width*height*3 bytes -- show_frame enforces that.

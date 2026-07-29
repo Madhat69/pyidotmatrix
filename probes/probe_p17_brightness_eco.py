@@ -152,7 +152,7 @@ from pyidotmatrix import IDotMatrixClient, ScreenSize
 
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 
-PROBE_NUMBER = 17          # scoreboard count1 on every label -- "this is P17"
+PROBE_NUMBER = 17  # scoreboard count1 on every label -- "this is P17"
 
 # Every brightness sent here is inside the firmware-valid 5..100 (P13). The
 # ladder is deliberately coarse: 100 -> 40 -> 5 is unmistakable to the eye, and
@@ -161,11 +161,11 @@ BRIGHT = 100
 MID = 40
 DIM = 5
 
-LABEL_SECONDS = 3          # scoreboard hold: phase label AND phase boundary
-SETTLE_SECONDS = 3         # after entering a mode, before touching brightness
-WATCH_SECONDS = 6          # after each brightness step
-ECO_WATCH_SECONDS = 9      # eco changes may not be instant; give them room
-ACK_SETTLE = 2.5           # never report an ack list sooner than this after a send
+LABEL_SECONDS = 3  # scoreboard hold: phase label AND phase boundary
+SETTLE_SECONDS = 3  # after entering a mode, before touching brightness
+WATCH_SECONDS = 6  # after each brightness step
+ECO_WATCH_SECONDS = 9  # eco changes may not be instant; give them room
+ACK_SETTLE = 2.5  # never report an ack list sooner than this after a send
 
 # Effect phase content. Style 0 with three saturated colors at the default
 # speed -- the point is that SOMETHING animated and colorful is on the panel,
@@ -173,7 +173,7 @@ ACK_SETTLE = 2.5           # never report an ack list sooner than this after a s
 EFFECT_STYLE = 0
 EFFECT_COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
 
-_SIZE = 32                 # this probe is written for the reference 32x32
+_SIZE = 32  # this probe is written for the reference 32x32
 
 
 def build_diy_frame() -> bytes:
@@ -188,7 +188,7 @@ def build_diy_frame() -> bytes:
     for i in range(_SIZE):
         for x, y in ((i, _SIZE // 2), (_SIZE // 2, i)):
             offset = (y * _SIZE + x) * 3
-            frame[offset:offset + 3] = b"\x00\x00\x00"
+            frame[offset : offset + 3] = b"\x00\x00\x00"
     return bytes(frame)
 
 
@@ -237,11 +237,13 @@ class AckLog:
 
     async def report(self, label: str, sent_at: float) -> None:
         await asyncio.sleep(ACK_SETTLE)
-        fresh = self._entries[self._reported:]
+        fresh = self._entries[self._reported :]
         self._reported = len(self._entries)
         if not fresh:
-            print(f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send"
-                  f" -- record it, silence is itself a result", flush=True)
+            print(
+                f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send -- record it, silence is itself a result",
+                flush=True,
+            )
             return
         print(f"  ACK {label}: {len(fresh)}", flush=True)
         for at, text in fresh:
@@ -275,8 +277,8 @@ async def run_mode_phase(
     log: AckLog,
     code: int,
     name: str,
-    enter,          # awaitable factory: puts the mode on the panel
-    reissue,        # awaitable factory: re-sends the SAME mode, the redraw probe
+    enter,  # awaitable factory: puts the mode on the panel
+    reissue,  # awaitable factory: re-sends the SAME mode, the redraw probe
 ) -> None:
     """The identical four-step choreography for one display mode.
 
@@ -302,8 +304,11 @@ async def run_mode_phase(
     sent_at = time.perf_counter()
     await reissue()
     await log.report(f"re-issue {name} at brightness {DIM}", sent_at)
-    print(f"  WATCH ({WATCH_SECONDS}s): the mode was just RE-SENT with brightness still {DIM}."
-          f" If the panel dims only NOW, brightness in {name} is REDRAW-GATED", flush=True)
+    print(
+        f"  WATCH ({WATCH_SECONDS}s): the mode was just RE-SENT with brightness still {DIM}."
+        f" If the panel dims only NOW, brightness in {name} is REDRAW-GATED",
+        flush=True,
+    )
     await asyncio.sleep(WATCH_SECONDS)
 
     await step_brightness(client, log, BRIGHT, f"did {name} return to full brightness immediately?")
@@ -336,8 +341,9 @@ async def part_a(client: IDotMatrixClient, log: AckLog) -> None:
     async def enter_gif() -> None:
         recognized = await client.gif.activate_stored(gif_bytes)
         if not recognized:
-            print("  activate_stored did NOT recognize the bytes (device holds a different gif);"
-                  " re-uploading", flush=True)
+            print(
+                "  activate_stored did NOT recognize the bytes (device holds a different gif); re-uploading", flush=True
+            )
             await client.gif.upload_bytes(gif_bytes)
 
     async def enter_effect() -> None:
@@ -365,10 +371,13 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     start = now - timedelta(minutes=2)
     end = now + timedelta(minutes=20)
     if end.date() != start.date():
-        print("\n*** WARNING: the eco window wraps midnight (start hour > end hour)."
-              " The firmware may treat that as an empty window and never dim."
-              " If Part B shows no dimming at all, re-run away from midnight before"
-              " concluding anything. ***", flush=True)
+        print(
+            "\n*** WARNING: the eco window wraps midnight (start hour > end hour)."
+            " The firmware may treat that as an empty window and never dim."
+            " If Part B shows no dimming at all, re-run away from midnight before"
+            " concluding anything. ***",
+            flush=True,
+        )
     window = (start.hour, start.minute, end.hour, end.minute)
     print(f"\neco window for this run: {start:%H:%M} -> {end:%H:%M} (now {now:%H:%M})", flush=True)
 
@@ -377,8 +386,10 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     await label_phase(client, 5, "clock at a KNOWN brightness (100), pre-eco baseline")
     await client.clock.show()
     await client.device.set_brightness(BRIGHT)
-    print(f"  panel should be clock at {BRIGHT}% ({ECO_WATCH_SECONDS}s) -- this is the value eco"
-          f" must restore later", flush=True)
+    print(
+        f"  panel should be clock at {BRIGHT}% ({ECO_WATCH_SECONDS}s) -- this is the value eco must restore later",
+        flush=True,
+    )
     await asyncio.sleep(ECO_WATCH_SECONDS)
 
     # Phase 6: eco ON with the window covering now.
@@ -396,8 +407,11 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     sent_at = time.perf_counter()
     await client.eco.set_mode(False, *window, eco_brightness=DIM)
     await log.report("eco OFF", sent_at)
-    print(f"  WATCH ({ECO_WATCH_SECONDS}s): FULL brightness => eco restored the host's {BRIGHT}."
-          f" Still dim => the eco value STICKS and every caller must re-send brightness", flush=True)
+    print(
+        f"  WATCH ({ECO_WATCH_SECONDS}s): FULL brightness => eco restored the host's {BRIGHT}."
+        f" Still dim => the eco value STICKS and every caller must re-send brightness",
+        flush=True,
+    )
     await asyncio.sleep(ECO_WATCH_SECONDS)
 
     # Phase 8: does a host brightness write win against an ACTIVE eco window?
@@ -405,13 +419,15 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     await client.clock.show()
     await client.eco.set_mode(True, *window, eco_brightness=DIM)
     await asyncio.sleep(ECO_WATCH_SECONDS)
-    print("  eco should be dimming the panel now; sending set_brightness(100) INTO the eco window",
-          flush=True)
+    print("  eco should be dimming the panel now; sending set_brightness(100) INTO the eco window", flush=True)
     sent_at = time.perf_counter()
     await client.device.set_brightness(BRIGHT)
     await log.report("set_brightness(100) during eco", sent_at)
-    print(f"  WATCH ({ECO_WATCH_SECONDS}s): bright => host writes WIN, eco is a one-shot dim."
-          f" Still dim (or dims again) => eco CLAMPS", flush=True)
+    print(
+        f"  WATCH ({ECO_WATCH_SECONDS}s): bright => host writes WIN, eco is a one-shot dim."
+        f" Still dim (or dims again) => eco CLAMPS",
+        flush=True,
+    )
     await asyncio.sleep(ECO_WATCH_SECONDS)
 
     # Phase 9: does the eco configuration survive a BLE disconnect/reconnect?
@@ -421,13 +437,19 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     await label_phase(client, 9, "eco survives disconnect/reconnect?")
     await client.clock.show()
     await asyncio.sleep(2)
-    print("  disconnecting for 12s -- WATCH THE PANEL THROUGH THE WHOLE GAP:"
-          " does it stay dim, dim later on its own, or go bright?", flush=True)
+    print(
+        "  disconnecting for 12s -- WATCH THE PANEL THROUGH THE WHOLE GAP:"
+        " does it stay dim, dim later on its own, or go bright?",
+        flush=True,
+    )
     await client.disconnect()
     await asyncio.sleep(12)
     await client.connect()
-    print(f"  reconnected (is_connected={client.is_connected}). WATCH ({ECO_WATCH_SECONDS}s):"
-          f" dim now => the eco CONFIG lives on the device and runs without a host", flush=True)
+    print(
+        f"  reconnected (is_connected={client.is_connected}). WATCH ({ECO_WATCH_SECONDS}s):"
+        f" dim now => the eco CONFIG lives on the device and runs without a host",
+        flush=True,
+    )
     await asyncio.sleep(ECO_WATCH_SECONDS)
 
     # Still inside the eco window: what does the screen power state do with it?
@@ -439,8 +461,11 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     sent_at = time.perf_counter()
     await client.device.turn_on()
     await log.report("turn_on during eco", sent_at)
-    print(f"  WATCH ({ECO_WATCH_SECONDS}s): back DIM => eco re-applies on wake."
-          f" Back BRIGHT => turn_on defeats an active eco window", flush=True)
+    print(
+        f"  WATCH ({ECO_WATCH_SECONDS}s): back DIM => eco re-applies on wake."
+        f" Back BRIGHT => turn_on defeats an active eco window",
+        flush=True,
+    )
     await asyncio.sleep(ECO_WATCH_SECONDS)
 
 
@@ -453,8 +478,10 @@ async def restore(client: IDotMatrixClient) -> None:
     separately: a failure to restore eco must not also cost us the clock.
     """
     for label, action in (
-        ("eco disabled (window 22:00-06:00, eco brightness 100 -- inert either way)",
-         lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100)),
+        (
+            "eco disabled (window 22:00-06:00, eco brightness 100 -- inert either way)",
+            lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100),
+        ),
         (f"brightness {BRIGHT}", lambda: client.device.set_brightness(BRIGHT)),
         ("clock", lambda: client.clock.show()),
     ):
@@ -488,12 +515,13 @@ async def main() -> None:
 
             print("\nverdict to record:", flush=True)
             print("  per mode (DIY/GIF/effect/clock): IMMEDIATE / REDRAW-GATED / IGNORED.", flush=True)
-            print("  eco OFF -> 100 = eco restores the host's brightness;"
-                  " -> still dim = the eco value sticks.", flush=True)
+            print(
+                "  eco OFF -> 100 = eco restores the host's brightness; -> still dim = the eco value sticks.",
+                flush=True,
+            )
             print("  brightness write during eco: WINS (one-shot dim) or LOSES (eco clamps).", flush=True)
             print("  dim through the disconnect gap = eco config is autonomous device state.", flush=True)
-            print("  after turn_on inside the window: DIM = eco re-applies; BRIGHT = power defeats eco.",
-                  flush=True)
+            print("  after turn_on inside the window: DIM = eco re-applies; BRIGHT = power defeats eco.", flush=True)
         finally:
             # Restoration runs even if a phase raised: an eco window left armed
             # would keep dimming the operator's desk display for the next 20

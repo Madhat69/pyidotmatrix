@@ -39,7 +39,7 @@ def test_text_header_crc_matches_body():
     payload = text.build_text_packet("HI", str(FONT))
     body = bytes(payload[16:])
     assert int.from_bytes(payload[0:2], "little") == len(payload)  # total length
-    assert int.from_bytes(payload[5:9], "little") == len(body)     # body length
+    assert int.from_bytes(payload[5:9], "little") == len(body)  # body length
     assert int.from_bytes(payload[9:13], "little") == zlib.crc32(body)  # body CRC
 
 
@@ -110,7 +110,14 @@ def test_text_32x32_8x16_glyph_branch_matches_captured_structure():
     """
     payload = bytes(
         text.build_text_packet_32x32(
-            "HI", str(FONT), 16, text.MODE_REPLACE, 0, text.COLOR_RGB, (127, 0, 0), None,
+            "HI",
+            str(FONT),
+            16,
+            text.MODE_REPLACE,
+            0,
+            text.COLOR_RGB,
+            (127, 0, 0),
+            None,
             glyph_height=16,
         )[0][0]
     )
@@ -121,14 +128,14 @@ def test_text_32x32_8x16_glyph_branch_matches_captured_structure():
     assert int.from_bytes(header[9:13], "little") == zlib.crc32(payload[16:])
 
     assert int.from_bytes(metadata[0:2], "little") == 2  # char count
-    assert metadata[2] == 1                              # row-class flag
+    assert metadata[2] == 1  # row-class flag
     assert (metadata[4], metadata[5], metadata[6]) == (text.MODE_REPLACE, 0, text.COLOR_RGB)
     assert metadata[7:10] == bytes([127, 0, 0])
 
     # Two glyph cells of 4 separator bytes + 16 packed bytes each.
     assert len(glyphs) == 2 * (4 + 16)
     for start in (0, 20):
-        assert glyphs[start:start + 4] == b"\x02\xff\xff\xff"
+        assert glyphs[start : start + 4] == b"\x02\xff\xff\xff"
 
 
 def test_text_32x32_default_glyph_branch_still_uses_64_byte_cells_and_tag_5():
@@ -136,7 +143,7 @@ def test_text_32x32_default_glyph_branch_still_uses_64_byte_cells_and_tag_5():
     glyphs = payload[30:]
     assert len(glyphs) == 2 * (4 + 64)
     for start in (0, 68):
-        assert glyphs[start:start + 4] == b"\x05\xff\xff\xff"
+        assert glyphs[start : start + 4] == b"\x05\xff\xff\xff"
 
 
 def test_text_32x32_rejects_unknown_glyph_height():
@@ -180,9 +187,7 @@ def test_gif_build_packets_framing_golden_on_fixed_bytes():
     data = bytes(range(256)) * 40  # 10240 bytes: multi-chunk
     packets = gif.build_packets(data, gif.GIF_TYPE_NO_TIME_SIGNATURE, 1)
     flat = b"".join(bytes(p) for chunk in packets for p in chunk)
-    assert hashlib.sha256(flat).hexdigest() == (
-        "3922650b8af50f963a9c4fbd72f2b8b31477ce27deaa4150ed31da74df2a0fcf"
-    )
+    assert hashlib.sha256(flat).hexdigest() == ("3922650b8af50f963a9c4fbd72f2b8b31477ce27deaa4150ed31da74df2a0fcf")
 
 
 def test_gif_time_sign_field_is_little_endian_five_for_the_default_key():
@@ -237,6 +242,7 @@ def test_adapt_gif_restores_loading_strategy_global(monkeypatch):
 
 def _frames(count):
     from PIL import Image
+
     return [Image.new("P", (8, 8)) for _ in range(count)]
 
 

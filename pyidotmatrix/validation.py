@@ -32,9 +32,7 @@ def validate_byte(value: int, name: str = "value") -> None:
 
 def validate_brightness(percent: int) -> None:
     if not (MIN_BRIGHTNESS_PERCENT <= percent <= MAX_BRIGHTNESS_PERCENT):
-        raise ValueError(
-            f"brightness must be {MIN_BRIGHTNESS_PERCENT}..{MAX_BRIGHTNESS_PERCENT}, got {percent}"
-        )
+        raise ValueError(f"brightness must be {MIN_BRIGHTNESS_PERCENT}..{MAX_BRIGHTNESS_PERCENT}, got {percent}")
 
 
 def validate_percent(value: int, name: str = "value") -> None:

@@ -79,8 +79,8 @@ async def main() -> None:
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
         unsubscribe = client.add_response_listener(lambda a: acks.append((time.perf_counter(), repr(a))))
 
-        stored = gif.build_packets(make_big_gif(seed=7))     # stored on device
-        unknown = gif.build_packets(make_big_gif(seed=99))   # never uploaded
+        stored = gif.build_packets(make_big_gif(seed=7))  # stored on device
+        unknown = gif.build_packets(make_big_gif(seed=99))  # never uploaded
 
         await client.clock.show()
         print("clock up as the baseline.", flush=True)

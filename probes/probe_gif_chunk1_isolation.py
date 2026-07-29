@@ -91,8 +91,8 @@ async def main() -> None:
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
         unsubscribe = client.add_response_listener(lambda a: acks.append((time.perf_counter(), repr(a))))
 
-        stored = gif.build_packets(make_big_gif(seed=7))     # stored on device (cache2/cache3)
-        unknown = gif.build_packets(make_big_gif(seed=101))   # never uploaded, uncontaminated
+        stored = gif.build_packets(make_big_gif(seed=7))  # stored on device (cache2/cache3)
+        unknown = gif.build_packets(make_big_gif(seed=101))  # never uploaded, uncontaminated
 
         await client.clock.show()
         await countdown("BASELINE: clock up -- panel healthy? artifacts gone from last session?")

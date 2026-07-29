@@ -451,16 +451,16 @@ FONT_PATH = Path(__file__).resolve().parent.parent / "tests" / "Rain-DRM3.otf"
 # Anything under 1.5 s reads an empty list and invents a "no ack" finding.
 ACK_SETTLE_SECONDS = 3.0
 
-WATCH_SECONDS = 8        # operator's look at the panel after each event
-BLE_GAP_SECONDS = 6      # link left down long enough to be a real disconnect
-POWER_OFF_SECONDS = 5    # software off held long enough to be unambiguous
-SETTLE_SECONDS = 2       # after a reconnect, before judging anything
+WATCH_SECONDS = 8  # operator's look at the panel after each event
+BLE_GAP_SECONDS = 6  # link left down long enough to be a real disconnect
+POWER_OFF_SECONDS = 5  # software off held long enough to be unambiguous
+SETTLE_SECONDS = 2  # after a reconnect, before judging anything
 CHECK_HOLD_SECONDS = 30  # `check` touches nothing at all for this long
 
 NEUTRAL_BRIGHTNESS = 100  # what every restore path puts the panel back to
-DIM_BRIGHTNESS = 10       # the brightness row's value: dim beyond argument
+DIM_BRIGHTNESS = 10  # the brightness row's value: dim beyond argument
 ECO_BRIGHTNESS = 5
-ECO_WINDOW_MINUTES = 20   # an abandoned eco window expires on its own
+ECO_WINDOW_MINUTES = 20  # an abandoned eco window expires on its own
 
 BLUE = (0, 0, 220)
 CYAN = (0, 200, 200)
@@ -477,6 +477,7 @@ GIF_FRAME_MS = 250  # 4 fps: one corner per frame, slow enough to read the phase
 
 # --- test content -----------------------------------------------------------
 
+
 def build_diy_frame() -> bytes:
     """The DIY row's frame: asymmetric under rotation AND under mirroring.
 
@@ -491,7 +492,7 @@ def build_diy_frame() -> bytes:
 
     def put(x: int, y: int, color: tuple[int, int, int]) -> None:
         offset = (y * w + x) * 3
-        pixels[offset:offset + 3] = bytes(color)
+        pixels[offset : offset + 3] = bytes(color)
 
     for y in range(h):
         for x in range(w):
@@ -500,7 +501,7 @@ def build_diy_frame() -> bytes:
             elif x >= w // 2 and y >= h // 2:
                 put(x, y, CYAN)
 
-    for y in range(1, 4):           # white square inset from the top-right
+    for y in range(1, 4):  # white square inset from the top-right
         for x in range(w - 4, w - 1):
             put(x, y, WHITE)
     return bytes(pixels)
@@ -544,6 +545,7 @@ def build_test_gif() -> bytes:
 
 # --- ack instrumentation ----------------------------------------------------
 
+
 class AckLog:
     """Timestamped device replies, read only after the device has had time.
 
@@ -561,8 +563,11 @@ class AckLog:
     async def settle_and_report(self, label: str, sent_at: float) -> None:
         await asyncio.sleep(ACK_SETTLE_SECONDS)
         if not self.entries:
-            print(f"  acks [{label}]: *** NONE within {ACK_SETTLE_SECONDS:.1f}s *** -- record it, "
-                  f"but a later reply will still show up in the next report", flush=True)
+            print(
+                f"  acks [{label}]: *** NONE within {ACK_SETTLE_SECONDS:.1f}s *** -- record it, "
+                f"but a later reply will still show up in the next report",
+                flush=True,
+            )
             return
         print(f"  acks [{label}]: {len(self.entries)}", flush=True)
         for at, text in self.entries:
@@ -574,6 +579,7 @@ class AckLog:
 
 # --- state setters ----------------------------------------------------------
 # Each takes the connected client and leaves exactly one row's state in force.
+
 
 async def set_clock(client: IDotMatrixClient) -> None:
     await client.clock.show()
@@ -630,8 +636,10 @@ async def set_eco(client: IDotMatrixClient) -> None:
     end = start + timedelta(minutes=ECO_WINDOW_MINUTES + 2)
     await client.eco.set_mode(
         enabled=True,
-        start_hour=start.hour, start_minute=start.minute,
-        end_hour=end.hour, end_minute=end.minute,
+        start_hour=start.hour,
+        start_minute=start.minute,
+        end_hour=end.hour,
+        end_minute=end.minute,
         eco_brightness=ECO_BRIGHTNESS,
     )
 
@@ -655,8 +663,8 @@ class Row:
     key: str
     label: str
     setter: Callable[[IDotMatrixClient], Awaitable[None]]
-    look: str          # what the panel shows while the state IS in force
-    reset_look: str    # what a RESETS TO CLOCK reading looks like
+    look: str  # what the panel shows while the state IS in force
+    reset_look: str  # what a RESETS TO CLOCK reading looks like
     automated: bool = True
     software_power_cycle: bool = True
     extra_question: str = ""  # row-specific question the four verdicts don't ask
@@ -665,43 +673,62 @@ class Row:
 CLOCK_LOOK = "the ordinary clock face, right way up, normal brightness"
 
 ROWS: tuple[Row, ...] = (
-    Row("clock", "clock (control row)", set_clock,
-        "the ordinary clock face", CLOCK_LOOK),
-    Row("diy", "DIY frame", set_diy,
+    Row("clock", "clock (control row)", set_clock, "the ordinary clock face", CLOCK_LOOK),
+    Row(
+        "diy",
+        "DIY frame",
+        set_diy,
         "BLUE block top-left, CYAN block bottom-right, small WHITE square near the TOP-RIGHT",
-        CLOCK_LOOK),
-    Row("color", "fullscreen colour", set_color,
-        "the whole panel flat ORANGE", CLOCK_LOOK),
-    Row("gif", "GIF playback", set_gif,
+        CLOCK_LOOK,
+    ),
+    Row("color", "fullscreen colour", set_color, "the whole panel flat ORANGE", CLOCK_LOOK),
+    Row(
+        "gif",
+        "GIF playback",
+        set_gif,
         "a small WHITE block hopping CLOCKWISE around the four corners "
         "(top-left -> top-right -> bottom-right -> bottom-left) on a dim GREEN field, 4 fps",
         CLOCK_LOOK,
         extra_question="IF IT IS STILL HOPPING: did it RESTART FROM THE FIRST CORNER "
-                       "(top-left) or CONTINUE FROM WHERE IT WAS? That is the whole "
-                       "difference between RESUMES and PERSISTS for this row.",),
-    Row("text", "scrolling text", set_text,
-        f"the word {TEXT_WORD} scrolling in MAGENTA", CLOCK_LOOK),
-    Row("effect", "built-in effect", set_effect,
-        "the built-in animation in RED and BLUE only", CLOCK_LOOK),
-    Row("flip", "screen flip", set_flip,
-        "the clock face UPSIDE DOWN", CLOCK_LOOK),
-    Row("brightness", "brightness", set_brightness,
+        "(top-left) or CONTINUE FROM WHERE IT WAS? That is the whole "
+        "difference between RESUMES and PERSISTS for this row.",
+    ),
+    Row("text", "scrolling text", set_text, f"the word {TEXT_WORD} scrolling in MAGENTA", CLOCK_LOOK),
+    Row("effect", "built-in effect", set_effect, "the built-in animation in RED and BLUE only", CLOCK_LOOK),
+    Row("flip", "screen flip", set_flip, "the clock face UPSIDE DOWN", CLOCK_LOOK),
+    Row(
+        "brightness",
+        "brightness",
+        set_brightness,
         f"flat WHITE, clearly DIM (brightness {DIM_BRIGHTNESS})",
-        "flat WHITE at full glare, or the clock at full glare"),
-    Row("eco", "eco configuration", set_eco,
+        "flat WHITE at full glare, or the clock at full glare",
+    ),
+    Row(
+        "eco",
+        "eco configuration",
+        set_eco,
         f"flat WHITE but DIM, because eco is holding it at {ECO_BRIGHTNESS} "
         f"even though brightness is {NEUTRAL_BRIGHTNESS}",
-        "flat WHITE at full glare -- eco no longer applied"),
+        "flat WHITE at full glare -- eco no longer applied",
+    ),
     # The software power cycle IS this row's state, so column 2 is meaningless
     # for it; the mains column is where it gets interesting.
-    Row("power", "software power off", set_power,
-        "the panel DARK -- nothing lit at all", CLOCK_LOOK,
-        software_power_cycle=False),
-    Row("combo", "flip + brightness + DIY frame together", set_combo,
-        "DIM, and ROTATED 180: CYAN block top-left, BLUE block bottom-right, small WHITE "
-        "square near the BOTTOM-LEFT",
+    Row(
+        "power",
+        "software power off",
+        set_power,
+        "the panel DARK -- nothing lit at all",
         CLOCK_LOOK,
-        automated=False),
+        software_power_cycle=False,
+    ),
+    Row(
+        "combo",
+        "flip + brightness + DIY frame together",
+        set_combo,
+        "DIM, and ROTATED 180: CYAN block top-left, BLUE block bottom-right, small WHITE square near the BOTTOM-LEFT",
+        CLOCK_LOOK,
+        automated=False,
+    ),
 )
 
 ROWS_BY_KEY = {row.key: row for row in ROWS}
@@ -735,6 +762,7 @@ VERDICTS = (
 
 # --- shared device operations -----------------------------------------------
 
+
 async def neutralize(client: IDotMatrixClient, acks: AckLog) -> None:
     """Power on, unflipped, brightness 100, eco off, clock. Every restore path
     and every phase entry goes through here, so no row inherits the previous
@@ -746,7 +774,11 @@ async def neutralize(client: IDotMatrixClient, acks: AckLog) -> None:
     # eco_brightness is set high as well as disabled: if the enable bit were
     # ever misread by firmware, the window still could not dim anything.
     await client.eco.set_mode(
-        enabled=False, start_hour=0, start_minute=0, end_hour=0, end_minute=0,
+        enabled=False,
+        start_hour=0,
+        start_minute=0,
+        end_hour=0,
+        end_minute=0,
         eco_brightness=NEUTRAL_BRIGHTNESS,
     )
     await client.clock.show()
@@ -787,21 +819,26 @@ def print_verdict_menu(row: Row) -> None:
 
 # --- mode: automated (columns 1 and 2) --------------------------------------
 
-async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row, ...],
-                        options: "AutoOptions") -> None:
-    print(f"automated run: {len(rows)} row(s) x "
-          f"(BLE disconnect/reconnect, software power off/on)", flush=True)
+
+async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row, ...], options: "AutoOptions") -> None:
+    print(f"automated run: {len(rows)} row(s) x (BLE disconnect/reconnect, software power off/on)", flush=True)
     print(f"rows to run, in order: {', '.join(r.key for r in rows)}", flush=True)
-    print(f"prelude: reset={'SKIPPED' if options.skip_reset else 'yes'}  "
-          f"delay={options.delay:.0f}s  preamble={options.preamble}", flush=True)
+    print(
+        f"prelude: reset={'SKIPPED' if options.skip_reset else 'yes'}  "
+        f"delay={options.delay:.0f}s  preamble={options.preamble}",
+        flush=True,
+    )
 
     if options.skip_reset:
         # --no-reset asked whether the loss was about common.reset() at all.
         # ANSWERED 2026-07-27: it never was -- this died twice, identically to
         # the runs that did reset. Kept as the reproduction path, and as the
         # matched ~8s control that `--preamble ble` is read against.
-        print("\n*** --no-reset: common.reset() SKIPPED. The prelude is a clock baseline "
-              "only, on a connection that has been re-initialised by nothing. ***", flush=True)
+        print(
+            "\n*** --no-reset: common.reset() SKIPPED. The prelude is a clock baseline "
+            "only, on a connection that has been re-initialised by nothing. ***",
+            flush=True,
+        )
         try:
             sent_at = time.perf_counter()
             await client.clock.show()
@@ -811,7 +848,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
     else:
         try:
             sent_at = time.perf_counter()
-            await client.device.reset()   # 04 00 03 80, VERIFIED non-destructive
+            await client.device.reset()  # 04 00 03 80, VERIFIED non-destructive
             await asyncio.sleep(4)
             await acks.settle_and_report("reset", sent_at)
         except Exception as ex:
@@ -823,17 +860,19 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
         # content, NOT dwell after it -- 2026-07-27's `--delay 120 gif` died,
         # which is why time-before-the-write is ruled out while DWELL is
         # condition (A). See LAZY DISPLAY-STATE PERSISTENCE above.
-        print(f"\nwaiting {options.delay:.0f}s before the first row "
-              f"(no commands sent during the wait) ...", flush=True)
+        print(f"\nwaiting {options.delay:.0f}s before the first row (no commands sent during the wait) ...", flush=True)
         await asyncio.sleep(options.delay)
 
     if options.preamble != PREAMBLE_NONE:
         # One interruption, fired BEFORE any row establishes content, using the
         # row loop's own interruption code. Splits the two events a rescuing
         # preceding row performs together.
-        print(f"\n-- PREAMBLE ({options.preamble}): a PREAMBLE, NOT a row interruption. "
-              f"No row content exists yet; this fires before the first row establishes "
-              f"anything, purely to re-initialise the device.", flush=True)
+        print(
+            f"\n-- PREAMBLE ({options.preamble}): a PREAMBLE, NOT a row interruption. "
+            f"No row content exists yet; this fires before the first row establishes "
+            f"anything, purely to re-initialise the device.",
+            flush=True,
+        )
         try:
             if options.preamble == PREAMBLE_BLE:
                 await interrupt_ble(client)
@@ -842,8 +881,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
                 await interrupt_power(client, acks, "preamble power off/on")
             print(f"-- PREAMBLE ({options.preamble}) complete; rows start now --", flush=True)
         except Exception as ex:
-            print(f"  PREAMBLE FAILED -- the run's premise is void, read results with care: {ex!r}",
-                  flush=True)
+            print(f"  PREAMBLE FAILED -- the run's premise is void, read results with care: {ex!r}", flush=True)
 
     try:
         for row in rows:
@@ -861,20 +899,26 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
                 print(f"  -- INTERRUPTION 1: BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
                 await interrupt_ble(client)
                 print(f"  transport: {client.snapshot()!r}", flush=True)
-                print(f"  WATCH ({WATCH_SECONDS}s) AFTER RECONNECT -- verdict for "
-                      f"{row.key} x BLE reconnect:", flush=True)
+                print(
+                    f"  WATCH ({WATCH_SECONDS}s) AFTER RECONNECT -- verdict for {row.key} x BLE reconnect:", flush=True
+                )
                 print_verdict_menu(row)
                 await asyncio.sleep(WATCH_SECONDS)
 
                 # --- column 2: software power off / on
                 if not row.software_power_cycle:
-                    print("  -- INTERRUPTION 2 SKIPPED: a software power cycle IS this row's "
-                          "state, so the cell is meaningless. The mains column covers it.", flush=True)
+                    print(
+                        "  -- INTERRUPTION 2 SKIPPED: a software power cycle IS this row's "
+                        "state, so the cell is meaningless. The mains column covers it.",
+                        flush=True,
+                    )
                     continue
                 print(f"  -- INTERRUPTION 2: software power off for {POWER_OFF_SECONDS}s, then on", flush=True)
                 await interrupt_power(client, acks, f"{row.key} power off/on")
-                print(f"  WATCH ({WATCH_SECONDS}s) AFTER POWER ON -- verdict for "
-                      f"{row.key} x software power cycle:", flush=True)
+                print(
+                    f"  WATCH ({WATCH_SECONDS}s) AFTER POWER ON -- verdict for {row.key} x software power cycle:",
+                    flush=True,
+                )
                 print_verdict_menu(row)
                 await asyncio.sleep(WATCH_SECONDS)
             except Exception as ex:
@@ -894,6 +938,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
 
 
 # --- mode: set (arm a state, then get out of the way) -----------------------
+
 
 async def run_set(client: IDotMatrixClient, acks: AckLog, row: Row) -> None:
     print(f"arming row {row.key}: {row.label}", flush=True)
@@ -927,13 +972,17 @@ async def run_set(client: IDotMatrixClient, acks: AckLog, row: Row) -> None:
     print(f"\nARMED. The panel should now show: {row.look}", flush=True)
     print(f"handoff written: {HANDOFF_PATH}", flush=True)
     if record["eco_armed"]:
-        print(f"eco window is live and ENDS in ~{ECO_WINDOW_MINUTES} minutes -- "
-              f"do the power-cycle and the check inside that window", flush=True)
+        print(
+            f"eco window is live and ENDS in ~{ECO_WINDOW_MINUTES} minutes -- "
+            f"do the power-cycle and the check inside that window",
+            flush=True,
+        )
     print("\nNOW: pull the panel's power at the wall, wait a few seconds, plug it back in,", flush=True)
     print("let it boot, then run:  python probes/probe_p11_persistence.py check", flush=True)
 
 
 # --- mode: check (after the operator's power-cycle) -------------------------
+
 
 async def run_check(client: IDotMatrixClient, acks: AckLog, record: dict) -> None:
     armed_at = record.get("armed_at", "unknown")
@@ -949,19 +998,22 @@ async def run_check(client: IDotMatrixClient, acks: AckLog, record: dict) -> Non
     for verdict in VERDICTS:
         print(f"    {verdict}", flush=True)
     print("", flush=True)
-    print(f"holding for {CHECK_HOLD_SECONDS}s WITHOUT SENDING ANYTHING -- go look at the panel now.",
-          flush=True)
-    print("(reconnecting alone does not change what is displayed; nothing below is sent until "
-          "the hold ends)", flush=True)
+    print(f"holding for {CHECK_HOLD_SECONDS}s WITHOUT SENDING ANYTHING -- go look at the panel now.", flush=True)
+    print(
+        "(reconnecting alone does not change what is displayed; nothing below is sent until the hold ends)", flush=True
+    )
     await asyncio.sleep(CHECK_HOLD_SECONDS)
 
     if record.get("eco_armed"):
-        print("\ndisabling eco (unconditional -- it is the only state that could outlive this run)",
-              flush=True)
+        print("\ndisabling eco (unconditional -- it is the only state that could outlive this run)", flush=True)
         try:
             sent_at = time.perf_counter()
             await client.eco.set_mode(
-                enabled=False, start_hour=0, start_minute=0, end_hour=0, end_minute=0,
+                enabled=False,
+                start_hour=0,
+                start_minute=0,
+                end_hour=0,
+                end_minute=0,
                 eco_brightness=NEUTRAL_BRIGHTNESS,
             )
             await acks.settle_and_report("eco disable", sent_at)
@@ -974,9 +1026,11 @@ async def run_check(client: IDotMatrixClient, acks: AckLog, record: dict) -> Non
 
 # --- mode: shadow-recover (pointer or payload?) -----------------------------
 
-SHADOW_RECOVER_HOP = ("a small WHITE block hopping CLOCKWISE around the four corners "
-                      "(top-left -> top-right -> bottom-right -> bottom-left) on a dim GREEN "
-                      "field, 4 fps")
+SHADOW_RECOVER_HOP = (
+    "a small WHITE block hopping CLOCKWISE around the four corners "
+    "(top-left -> top-right -> bottom-right -> bottom-left) on a dim GREEN "
+    "field, 4 fps"
+)
 
 
 def print_shadow_recover_script() -> None:
@@ -1021,61 +1075,65 @@ async def run_shadow_recover(client: IDotMatrixClient, acks: AckLog) -> None:
     """
     gif_bytes = build_test_gif()
     print(f"\nfixture: {len(gif_bytes)}B, the same 4-corner hop the gif row uses.", flush=True)
-    print("nothing has been sent to the panel yet -- the upload below is this session's "
-          "FIRST command.", flush=True)
+    print("nothing has been sent to the panel yet -- the upload below is this session's FIRST command.", flush=True)
 
     try:
-        print("\n=== STEP 1: upload the hop, nothing before it (no reset, no baseline)",
-              flush=True)
+        print("\n=== STEP 1: upload the hop, nothing before it (no reset, no baseline)", flush=True)
         sent_at = time.perf_counter()
         await client.gif.upload_bytes(gif_bytes)
         await acks.settle_and_report("gif upload", sent_at)
-        print(f"  WATCH ({WATCH_SECONDS}s) BASELINE -- you should now see: {SHADOW_RECOVER_HOP}",
-              flush=True)
+        print(f"  WATCH ({WATCH_SECONDS}s) BASELINE -- you should now see: {SHADOW_RECOVER_HOP}", flush=True)
         await asyncio.sleep(WATCH_SECONDS)
 
         print(f"\n=== STEP 2: BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
         await interrupt_ble(client)
         print(f"  transport: {client.snapshot()!r}", flush=True)
-        print(f"  WATCH ({WATCH_SECONDS}s) -- EXPECTED: {CLOCK_LOOK}, i.e. the panel reverted to "
-              f"its last PERSISTED mode. Still hopping => the write dwelt long enough after "
-              f"all; the rest of this run is void.",
-              flush=True)
+        print(
+            f"  WATCH ({WATCH_SECONDS}s) -- EXPECTED: {CLOCK_LOOK}, i.e. the panel reverted to "
+            f"its last PERSISTED mode. Still hopping => the write dwelt long enough after "
+            f"all; the rest of this run is void.",
+            flush=True,
+        )
         await asyncio.sleep(WATCH_SECONDS)
 
         print("\n=== STEP 3: gif.activate_stored() with the SAME bytes -- NO re-upload", flush=True)
         sent_at = time.perf_counter()
         recognized = await client.gif.activate_stored(gif_bytes)
-        print(f"  activate_stored returned {recognized!r} "
-              f"(True = the device recognized its stored CRC)", flush=True)
+        print(f"  activate_stored returned {recognized!r} (True = the device recognized its stored CRC)", flush=True)
         await acks.settle_and_report("activate_stored", sent_at)
         print(f"  WATCH ({WATCH_SECONDS}s) -- THE QUESTION: is the hop BACK?", flush=True)
-        print("    HOP        -- the stored payload SURVIVED; only the current-mode pointer "
-              "was lost. Recovery = re-activate, not re-transfer.", flush=True)
-        print("    CLOCK      -- the payload went with the pointer; activate_stored is no use "
-              "after such a loss.", flush=True)
+        print(
+            "    HOP        -- the stored payload SURVIVED; only the current-mode pointer "
+            "was lost. Recovery = re-activate, not re-transfer.",
+            flush=True,
+        )
+        print(
+            "    CLOCK      -- the payload went with the pointer; activate_stored is no use after such a loss.",
+            flush=True,
+        )
         await asyncio.sleep(WATCH_SECONDS)
 
-        print(f"\n=== STEP 4: control -- BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect",
-              flush=True)
+        print(f"\n=== STEP 4: control -- BLE disconnect, {BLE_GAP_SECONDS}s down, reconnect", flush=True)
         await interrupt_ble(client)
         print(f"  transport: {client.snapshot()!r}", flush=True)
-        print(f"  WATCH ({WATCH_SECONDS}s) -- this session has reconnected twice now and the "
-              f"content has dwelt, so it is PROTECTED on both counts. Whatever step 3 left up "
-              f"is expected to STILL BE THERE; if it vanished, step 3's restore was not durable "
-              f"and says nothing about recovery.",
-              flush=True)
+        print(
+            f"  WATCH ({WATCH_SECONDS}s) -- this session has reconnected twice now and the "
+            f"content has dwelt, so it is PROTECTED on both counts. Whatever step 3 left up "
+            f"is expected to STILL BE THERE; if it vanished, step 3's restore was not durable "
+            f"and says nothing about recovery.",
+            flush=True,
+        )
         await asyncio.sleep(WATCH_SECONDS)
     finally:
         print("\nrestoring neutral state ...", flush=True)
         try:
             await neutralize(client, acks)
         except Exception as ex:
-            print(f"  RESTORE FAILED -- check the panel by hand (eco, flip, brightness): {ex!r}",
-                  flush=True)
+            print(f"  RESTORE FAILED -- check the panel by hand (eco, flip, brightness): {ex!r}", flush=True)
 
 
 # --- mode: restore ----------------------------------------------------------
+
 
 async def run_restore(client: IDotMatrixClient, acks: AckLog) -> None:
     print("restoring: power on, unflipped, brightness 100, eco off, clock", flush=True)
@@ -1085,6 +1143,7 @@ async def run_restore(client: IDotMatrixClient, acks: AckLog) -> None:
 
 # --- entry point ------------------------------------------------------------
 
+
 def take_option(argv: list[str], name: str, hint: str) -> tuple[list[str], str | None]:
     """Pulls `name VALUE` out of argv wherever it sits, returning the rest."""
     if name not in argv:
@@ -1093,7 +1152,7 @@ def take_option(argv: list[str], name: str, hint: str) -> tuple[list[str], str |
     if index + 1 >= len(argv):
         print(f"{name} needs a value, e.g. {hint}", flush=True)
         raise SystemExit(2)
-    return argv[:index] + argv[index + 2:], argv[index + 1]
+    return argv[:index] + argv[index + 2 :], argv[index + 1]
 
 
 def take_flag(argv: list[str], name: str) -> tuple[list[str], bool]:
@@ -1139,8 +1198,7 @@ def take_auto_options(argv: list[str]) -> tuple[list[str], "AutoOptions"]:
     preamble = PREAMBLE_NONE
     if raw_preamble is not None:
         if raw_preamble not in PREAMBLES:
-            print(f"unrecognized --preamble {raw_preamble!r}; accepted: {', '.join(PREAMBLES)}",
-                  flush=True)
+            print(f"unrecognized --preamble {raw_preamble!r}; accepted: {', '.join(PREAMBLES)}", flush=True)
             raise SystemExit(2)
         preamble = raw_preamble
 
@@ -1153,9 +1211,11 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
     Done before the device is touched so a typo cannot half-arm a state, leave
     an eco window behind, or burn a twelve-minute run on the wrong rows.
     """
-    modes = ("no argument (all automated rows), "
-             "[--delay N] [--preamble ble|power] [--no-reset] <row> [<row> ...], "
-             "shadow-recover, set [state], check, restore")
+    modes = (
+        "no argument (all automated rows), "
+        "[--delay N] [--preamble ble|power] [--no-reset] <row> [<row> ...], "
+        "shadow-recover, set [state], check, restore"
+    )
     states = ", ".join(row.key for row in ROWS)
     automated_keys = tuple(row.key for row in AUTOMATED_ROWS)
     argv, options = take_auto_options(argv)
@@ -1164,8 +1224,7 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
 
     mode = argv[0]
     if mode in ("check", "restore", "set", "shadow-recover") and options != AutoOptions():
-        print(f"--delay / --preamble / --no-reset apply to the automated mode only, not {mode}",
-              flush=True)
+        print(f"--delay / --preamble / --no-reset apply to the automated mode only, not {mode}", flush=True)
         raise SystemExit(2)
     if mode in ("check", "restore", "shadow-recover"):
         if len(argv) > 1:
@@ -1196,8 +1255,7 @@ def parse_mode(argv: list[str]) -> tuple[str, Row | None, tuple[Row, ...], "Auto
 def load_handoff() -> dict:
     if not HANDOFF_PATH.is_file():
         print(f"no handoff file at {HANDOFF_PATH}", flush=True)
-        print("run `python probes/probe_p11_persistence.py set` first, then power-cycle the panel.",
-              flush=True)
+        print("run `python probes/probe_p11_persistence.py set` first, then power-cycle the panel.", flush=True)
         raise SystemExit(2)
     return json.loads(HANDOFF_PATH.read_text(encoding="utf-8"))
 
@@ -1209,8 +1267,11 @@ async def main(mode: str, row: Row | None, rows: tuple[Row, ...], options: AutoO
         print_shadow_recover_script()
     if mode == "auto":
         print(f"rows selected: {', '.join(r.key for r in rows)}", flush=True)
-        print(f"delay: {options.delay:.0f}s   preamble: {options.preamble}   "
-              f"reset: {'SKIPPED (--no-reset)' if options.skip_reset else 'yes'}", flush=True)
+        print(
+            f"delay: {options.delay:.0f}s   preamble: {options.preamble}   "
+            f"reset: {'SKIPPED (--no-reset)' if options.skip_reset else 'yes'}",
+            flush=True,
+        )
     print("connecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, SCREEN) as client:
         acks = AckLog()

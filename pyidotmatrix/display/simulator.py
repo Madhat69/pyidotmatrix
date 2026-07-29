@@ -87,7 +87,7 @@ class SimulatorDisplay:
         validate_coordinates(xys, self.width, self.height)
         for x, y in xys:
             offset = (y * self.width + x) * 3
-            self._framebuffer[offset:offset + 3] = bytes(color)
+            self._framebuffer[offset : offset + 3] = bytes(color)
         if self._emulate_timing:
             await asyncio.sleep(_PIXEL_COMMAND_SECONDS)
         self._emit_frame()

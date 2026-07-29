@@ -45,31 +45,38 @@ def build_test_gif(size: int) -> bytes:
             pa[x, y] = (255, 255, 0) if on else (200, 0, 0)
             pb[x, y] = (200, 0, 0) if on else (255, 255, 0)
     buf = io.BytesIO()
-    frame_a.save(buf, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=500, disposal=2)
+    frame_a.save(
+        buf, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=500, disposal=2
+    )
     return buf.getvalue()
 
 
 def make_timer(week: int, fire_at: datetime) -> timer.Timer:
     return timer.Timer(
-        num=SLOT, week=week, hour=fire_at.hour, minute=fire_at.minute,
-        duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_GIF,
+        num=SLOT,
+        week=week,
+        hour=fire_at.hour,
+        minute=fire_at.minute,
+        duration_bucket=timer.DURATION_10S,
+        content_type=timer.CONTENT_GIF,
         buzzer_enable=True,
     )
 
 
-async def arm_and_wait(client: IDotMatrixClient, payload: bytes, week: int,
-                       device_now: datetime, label: str, expect: str) -> None:
+async def arm_and_wait(
+    client: IDotMatrixClient, payload: bytes, week: int, device_now: datetime, label: str, expect: str
+) -> None:
     fire_at = device_now + timedelta(seconds=75)
     t = make_timer(week, fire_at)
     await client.experimental.timer_set(t, payload)
     wait_s = 75 + 40  # to fire time, plus its "clock first, then content" grace
-    print(f"{label}: armed slot {SLOT} week=0b{week:08b} for device-time "
-          f"{fire_at.strftime('%H:%M')} -- EXPECT {expect}. waiting ~{wait_s}s ...",
-          flush=True)
+    print(
+        f"{label}: armed slot {SLOT} week=0b{week:08b} for device-time "
+        f"{fire_at.strftime('%H:%M')} -- EXPECT {expect}. waiting ~{wait_s}s ...",
+        flush=True,
+    )
     await asyncio.sleep(wait_s)
-    print(f"{label}: window over. << operator: did it fire (checkerboard + buzzer)?",
-          flush=True)
+    print(f"{label}: window over. << operator: did it fire (checkerboard + buzzer)?", flush=True)
     await client.experimental.timer_close(t)
 
 
@@ -85,26 +92,30 @@ async def main() -> None:
         tomorrow_bit = 1 << (tomorrow.weekday() + 1)
         enable = 1  # bit0
 
-        print(f"real time {real_now:%A %H:%M:%S}: today bit={today_bit:#04x}, "
-              f"tomorrow ({tomorrow:%A}) bit={tomorrow_bit:#04x}", flush=True)
+        print(
+            f"real time {real_now:%A %H:%M:%S}: today bit={today_bit:#04x}, "
+            f"tomorrow ({tomorrow:%A}) bit={tomorrow_bit:#04x}",
+            flush=True,
+        )
 
         # A: real time, today's bit -> must fire
         await client.device.set_time(datetime.now())  # make sure RTC matches host
-        await arm_and_wait(client, payload, enable | today_bit,
-                           datetime.now(), "TEST A (today's bit, real day)", "FIRE")
+        await arm_and_wait(
+            client, payload, enable | today_bit, datetime.now(), "TEST A (today's bit, real day)", "FIRE"
+        )
 
         # B: spoof tomorrow, same today-bit mask -> must NOT fire
         fake = datetime.now() + timedelta(days=1)
         await client.device.set_time(fake)
         print(f"RTC spoofed to {fake:%A %H:%M:%S}", flush=True)
-        await arm_and_wait(client, payload, enable | today_bit,
-                           fake, "TEST B (today's bit, fake tomorrow)", "NO FIRE")
+        await arm_and_wait(client, payload, enable | today_bit, fake, "TEST B (today's bit, fake tomorrow)", "NO FIRE")
 
         # C: still spoofed tomorrow, tomorrow's bit -> must fire
         fake2 = datetime.now() + timedelta(days=1)
         await client.device.set_time(fake2)  # resync fake clock before arming
-        await arm_and_wait(client, payload, enable | tomorrow_bit,
-                           fake2, "TEST C (tomorrow's bit, fake tomorrow)", "FIRE")
+        await arm_and_wait(
+            client, payload, enable | tomorrow_bit, fake2, "TEST C (tomorrow's bit, fake tomorrow)", "FIRE"
+        )
 
         # restore reality
         await client.device.set_time(datetime.now())

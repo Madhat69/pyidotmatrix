@@ -10,8 +10,19 @@ from pyidotmatrix.screen import ScreenSize
 # The feature namespaces IDotMatrixClient exposes (mirrors
 # test_client.test_all_feature_namespaces_present).
 CLIENT_NAMESPACES = (
-    "chronograph", "countdown", "clock", "scoreboard", "eco",
-    "color", "graffiti", "effect", "music_sync", "text", "gif", "device", "display",
+    "chronograph",
+    "countdown",
+    "clock",
+    "scoreboard",
+    "eco",
+    "color",
+    "graffiti",
+    "effect",
+    "music_sync",
+    "text",
+    "gif",
+    "device",
+    "display",
     "experimental",
 )
 

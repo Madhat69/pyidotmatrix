@@ -68,7 +68,7 @@ class BleDisplay:
         validate_coordinates(xys, self.width, self.height)
         # Split into device-sized batches; the protocol builder caps one command.
         for start in range(0, len(xys), graffiti.MAX_PIXELS_PER_COMMAND):
-            batch = xys[start:start + graffiti.MAX_PIXELS_PER_COMMAND]
+            batch = xys[start : start + graffiti.MAX_PIXELS_PER_COMMAND]
             await self._transport.write(graffiti.build_set_pixels(color, batch), response=wait_for_device)
 
     async def set_brightness(self, percent: int) -> None:

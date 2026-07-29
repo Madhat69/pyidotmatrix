@@ -5,7 +5,6 @@ bytes, each chunk gets a 9-byte header (length, continuation flag, total size),
 and each header+chunk is split into BLE packets. Pure functions, no I/O.
 """
 
-
 from pyidotmatrix.protocol import bytes_
 
 # DIY mode values for the set-mode command (byte 4 of the payload), named after

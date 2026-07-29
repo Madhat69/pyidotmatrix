@@ -85,7 +85,7 @@ APP_EFFECT_COLORS = bytes.fromhex(
 )
 APP_EFFECT_STYLE = 0
 
-LENGTH_OLD = 0x0D   # our lab-era `6 + len(colors)` for 7 colors -- malformed
+LENGTH_OLD = 0x0D  # our lab-era `6 + len(colors)` for 7 colors -- malformed
 LENGTH_CORRECT = 0x1C  # 7 header + 21 color bytes, as the vendor app sends it
 
 SPEED_FAST = 100  # 0x64, the app's fast dial position
@@ -137,14 +137,25 @@ async def main() -> None:
         # judges "did it slow?" against the immediately preceding frame rather
         # than against a memory of a different length byte.
         phases = (
-            ("P1 OLD length 0x0d", LENGTH_OLD, SPEED_FAST,
-             "effect starts -- fix this pace in mind, it is the OLD-frame baseline"),
-            ("P2 OLD length 0x0d", LENGTH_OLD, SPEED_SLOW,
-             "SAME pace as P1, or slower? SAME => the malformed length byte hid the speed field"),
-            ("P3 CORRECT length 0x1c", LENGTH_CORRECT, SPEED_FAST,
-             "fast again -- the CORRECT-frame baseline"),
-            ("P4 CORRECT length 0x1c", LENGTH_CORRECT, SPEED_SLOW,
-             "visibly SLOW vs P3? (this must reproduce 2026-07-25 group A for the run to count)"),
+            (
+                "P1 OLD length 0x0d",
+                LENGTH_OLD,
+                SPEED_FAST,
+                "effect starts -- fix this pace in mind, it is the OLD-frame baseline",
+            ),
+            (
+                "P2 OLD length 0x0d",
+                LENGTH_OLD,
+                SPEED_SLOW,
+                "SAME pace as P1, or slower? SAME => the malformed length byte hid the speed field",
+            ),
+            ("P3 CORRECT length 0x1c", LENGTH_CORRECT, SPEED_FAST, "fast again -- the CORRECT-frame baseline"),
+            (
+                "P4 CORRECT length 0x1c",
+                LENGTH_CORRECT,
+                SPEED_SLOW,
+                "visibly SLOW vs P3? (this must reproduce 2026-07-25 group A for the run to count)",
+            ),
         )
 
         for label, length_byte, speed, watch_for in phases:

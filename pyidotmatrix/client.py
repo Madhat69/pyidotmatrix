@@ -79,10 +79,10 @@ class _UploadOutcome(Enum):
     reports its terminal state, which each caller then interprets (fatal for
     Timer/Schedule, retryable for GIF)."""
 
-    SAVED = auto()         # a STATUS_SAVED (3) arrived -> success
-    FAILED = auto()        # a STATUS_FAILED (0) arrived -> the transfer is doomed
-    TIMEOUT = auto()       # no ack within _CHUNK_ACK_TIMEOUT_SECONDS
-    NO_TERMINAL = auto()   # every chunk sent, only NEXT_CHUNK (1) ever seen, no SAVED
+    SAVED = auto()  # a STATUS_SAVED (3) arrived -> success
+    FAILED = auto()  # a STATUS_FAILED (0) arrived -> the transfer is doomed
+    TIMEOUT = auto()  # no ack within _CHUNK_ACK_TIMEOUT_SECONDS
+    NO_TERMINAL = auto()  # every chunk sent, only NEXT_CHUNK (1) ever seen, no SAVED
     UNRECOGNIZED = auto()  # a status this driver doesn't know (not 0/1/3)
 
 
@@ -91,9 +91,9 @@ class _UploadPass:
     """The result of one pass of _run_upload_pass."""
 
     outcome: _UploadOutcome
-    ack: StatusAck | None      # the terminal StatusAck (FAILED/UNRECOGNIZED/SAVED); None for TIMEOUT/NO_TERMINAL
-    chunk_index: int           # zero-based index of the chunk the pass stopped on
-    chunk_count: int           # how many outer chunks this pass would send
+    ack: StatusAck | None  # the terminal StatusAck (FAILED/UNRECOGNIZED/SAVED); None for TIMEOUT/NO_TERMINAL
+    chunk_index: int  # zero-based index of the chunk the pass stopped on
+    chunk_count: int  # how many outer chunks this pass would send
 
 
 async def _run_upload_pass(
@@ -192,8 +192,7 @@ async def _send_chunked_upload(
     # FAILED or UNRECOGNIZED: never treated as "keep going" -- raise with the raw ack.
     assert result.ack is not None  # FAILED/UNRECOGNIZED always carry the terminal ack
     raise UploadError(
-        f"{label} upload rejected (status={result.ack.status}) at chunk "
-        f"{result.chunk_index + 1}/{result.chunk_count}",
+        f"{label} upload rejected (status={result.ack.status}) at chunk {result.chunk_index + 1}/{result.chunk_count}",
         raw=result.ack.raw,
     )
 
@@ -344,9 +343,7 @@ class EcoFeature(_Feature):
         end_minute: int = 0,
         eco_brightness: int = 10,
     ) -> None:
-        await self._send(
-            eco.build_set_mode(enabled, start_hour, start_minute, end_hour, end_minute, eco_brightness)
-        )
+        await self._send(eco.build_set_mode(enabled, start_hour, start_minute, end_hour, end_minute, eco_brightness))
 
 
 class FullscreenColorFeature(_Feature):
@@ -383,7 +380,7 @@ class GraffitiFeature(_Feature):
         """
         validate_coordinates(xys, self._screen_size.width, self._screen_size.height)
         for start in range(0, len(xys), graffiti.MAX_PIXELS_PER_COMMAND):
-            batch = xys[start:start + graffiti.MAX_PIXELS_PER_COMMAND]
+            batch = xys[start : start + graffiti.MAX_PIXELS_PER_COMMAND]
             await self._send(graffiti.build_set_pixels(color, batch, move_type))
 
 
@@ -485,15 +482,20 @@ class TextFeature(_Feature):
         """
         if self._screen_size == ScreenSize.SIZE_32x32:
             packets = text.build_text_packet_32x32(
-                text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color,
+                text_value,
+                font_path,
+                font_size,
+                text_mode,
+                speed,
+                color_mode,
+                color,
+                bg_color,
                 glyph_height,
             )
             await self._send_packets(packets)
         else:
             await self._send(
-                text.build_text_packet(
-                    text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color
-                )
+                text.build_text_packet(text_value, font_path, font_size, text_mode, speed, color_mode, color, bg_color)
             )
 
 
@@ -570,9 +572,7 @@ class GifFeature(_Feature):
         To guarantee a switch when recognition fails, fall back to upload_bytes.
         """
         chunks = gif.build_packets(gif_data)
-        result = await _run_upload_pass(
-            self._transport, chunks, _GIF_ACK_TYPE, _GIF_ACK_SUBTYPE, max_chunks=1
-        )
+        result = await _run_upload_pass(self._transport, chunks, _GIF_ACK_TYPE, _GIF_ACK_SUBTYPE, max_chunks=1)
         return result.outcome is _UploadOutcome.SAVED
 
 
@@ -798,9 +798,19 @@ class IDotMatrixClient:
         self.experimental = ExperimentalFeature(self._transport)
 
         self._features = (
-            self.chronograph, self.countdown, self.clock, self.scoreboard, self.eco,
-            self.color, self.graffiti, self.effect, self.music_sync, self.text,
-            self.gif, self.device, self.experimental,
+            self.chronograph,
+            self.countdown,
+            self.clock,
+            self.scoreboard,
+            self.eco,
+            self.color,
+            self.graffiti,
+            self.effect,
+            self.music_sync,
+            self.text,
+            self.gif,
+            self.device,
+            self.experimental,
         )
         if not verify_commands:
             self.set_command_verification(False)

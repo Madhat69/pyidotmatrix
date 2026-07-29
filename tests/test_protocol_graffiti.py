@@ -42,9 +42,7 @@ def test_byte3_is_pinned_to_the_only_drawing_value():
 
 def test_move_type_defaults_to_none_and_sets_byte_four():
     assert graffiti.build_set_pixels((1, 2, 3), [(0, 0)])[4] == graffiti.MOVE_NONE
-    payload = graffiti.build_set_pixels(
-        (1, 2, 3), [(0, 0)], move_type=graffiti.MOVE_VERTICAL_MIRROR
-    )
+    payload = graffiti.build_set_pixels((1, 2, 3), [(0, 0)], move_type=graffiti.MOVE_VERTICAL_MIRROR)
     assert payload[4] == graffiti.MOVE_VERTICAL_MIRROR
     assert payload[3] == 1  # byte 3 stays pinned regardless
 

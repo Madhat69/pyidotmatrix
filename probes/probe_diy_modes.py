@@ -40,7 +40,7 @@ def _build_test_frame(width: int, height: int) -> bytes:
         for x in range(width):
             offset = (y * width + x) * 3
             color = (255, 0, 0) if x < width // 2 else (0, 0, 255)
-            pixels[offset:offset + 3] = bytes(color)
+            pixels[offset : offset + 3] = bytes(color)
     return bytes(pixels)
 
 

@@ -97,9 +97,7 @@ def build_text_packet(
     bg_mode = 0 if bg_color is None else 1
     resolved_bg = bg_color if bg_color is not None else (0, 0, 0)
 
-    metadata = bytearray(
-        [0, 0, 0, 1, text_mode, speed, color_mode, *color, bg_mode, *resolved_bg]
-    )
+    metadata = bytearray([0, 0, 0, 1, text_mode, speed, color_mode, *color, bg_mode, *resolved_bg])
     metadata[0:2] = bitmaps.count(_CHAR_SEPARATOR).to_bytes(2, "little")  # character count
     packet = metadata + bitmaps
 
@@ -195,9 +193,7 @@ def build_text_packet_32x32(
     if fg[0] == 0 and fg[1] == 0 and fg[2] == 0:
         fg[2] = 1  # device quirk: pure-black foreground would be invisible text
 
-    metadata = bytearray(
-        [0, 0, 1, 1, text_mode, speed, color_mode, *fg, bg_mode, *resolved_bg]
-    )
+    metadata = bytearray([0, 0, 1, 1, text_mode, speed, color_mode, *fg, bg_mode, *resolved_bg])
     metadata[0:2] = len(text).to_bytes(2, "little")  # character count
     packet = bytes(metadata + bitmaps)
 
@@ -255,9 +251,7 @@ def _separator_tag(packed_size: int) -> int:
     return _SEPARATOR_TAGS.get(packed_size, _SEPARATOR_TAG_FALLBACK)
 
 
-def _pack_bitmap(
-    image: Image.Image, cell: tuple[int, int] = (_CHAR_WIDTH, _CHAR_HEIGHT)
-) -> bytearray:
+def _pack_bitmap(image: Image.Image, cell: tuple[int, int] = (_CHAR_WIDTH, _CHAR_HEIGHT)) -> bytearray:
     """Packs a 1-bit image into bytes, 8 pixels per byte, row by row."""
     cell_width, cell_height = cell
     bitmap = bytearray()

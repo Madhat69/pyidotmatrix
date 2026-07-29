@@ -34,9 +34,7 @@ def stripes_png(size: int) -> bytes:
 
 
 def square(color, origin, byte4, coords=None):
-    xys = coords if coords is not None else [
-        (origin[0] + dx, origin[1] + dy) for dy in range(6) for dx in range(6)
-    ]
+    xys = coords if coords is not None else [(origin[0] + dx, origin[1] + dy) for dy in range(6) for dx in range(6)]
     size = 8 + 2 * len(xys)
     p = bytearray([size % 256, size // 256, 5, 1, byte4, *color])
     for x, y in xys:
@@ -49,14 +47,17 @@ async def main() -> None:
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
         fire_at = datetime.now() + timedelta(seconds=100)
         t = timer.Timer(
-            num=SLOT, week=0xFF, hour=fire_at.hour, minute=fire_at.minute,
-            duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_IMAGE,
+            num=SLOT,
+            week=0xFF,
+            hour=fire_at.hour,
+            minute=fire_at.minute,
+            duration_bucket=timer.DURATION_10S,
+            content_type=timer.CONTENT_IMAGE,
             buzzer_enable=True,
         )
         await client.device.set_time(datetime.now())
         await client.experimental.timer_set(t, stripes_png(32))
-        print(f"alarm armed: CONTENT_IMAGE + PNG payload, fires {fire_at:%H:%M} "
-              "(buzzer will sound)", flush=True)
+        print(f"alarm armed: CONTENT_IMAGE + PNG payload, fires {fire_at:%H:%M} (buzzer will sound)", flush=True)
 
         print("meanwhile: byte4 exploit test in 5s ...", flush=True)
         await asyncio.sleep(5)
@@ -76,9 +77,12 @@ async def main() -> None:
         await asyncio.sleep(10)
 
         remaining = (fire_at - datetime.now()).total_seconds() + 40
-        print(f"now waiting ~{remaining:.0f}s for the alarm "
-              "<< buzzer + BLUE/WHITE DIAGONAL STRIPES = CONTENT_IMAGE solved; "
-              "buzzer + no stripes = still broken", flush=True)
+        print(
+            f"now waiting ~{remaining:.0f}s for the alarm "
+            "<< buzzer + BLUE/WHITE DIAGONAL STRIPES = CONTENT_IMAGE solved; "
+            "buzzer + no stripes = still broken",
+            flush=True,
+        )
         await asyncio.sleep(max(remaining, 5))
 
         await client.experimental.timer_close(t)

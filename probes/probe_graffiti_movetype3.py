@@ -31,12 +31,14 @@ def square(color, origin, byte4):
         p += bytes((x, y))
     return p
 
+
 STEPS = [
     (0, (255, 0, 0), (2, 2), "1. RED top-left, byte4=0"),
     (0, (0, 255, 0), (24, 2), "2. GREEN top-right, byte4=0"),
     (0, (0, 128, 255), (2, 24), "3. BLUE bottom-left, byte4=0"),
     (2, (255, 220, 0), (24, 24), "4. YELLOW bottom-right, byte4=2  << red=FIFO, green=two-back?"),
 ]
+
 
 async def main():
     print(f"connecting to {ADDRESS} ...")
@@ -49,5 +51,6 @@ async def main():
             await client.write_gatt_char(WRITE_UUID, bytes(square(color, origin, byte4)), response=True)
             await asyncio.sleep(4.0)
         print("done.")
+
 
 asyncio.run(main())

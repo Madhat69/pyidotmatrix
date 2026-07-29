@@ -223,7 +223,7 @@ PNG_THEME_INDEX = 1
 
 # Monday=0, matching datetime.weekday() and build_schedule_week. Non-adjacent on
 # purpose -- see WHY TWO DAYS ARE ENOUGH.
-HIT_WEEKDAY = 2   # Wednesday: the day whose bit gets armed
+HIT_WEEKDAY = 2  # Wednesday: the day whose bit gets armed
 MISS_WEEKDAY = 5  # Saturday: same wall time, different day, nothing re-armed
 
 # Read the ack list only after this long. The retracted 0x0d "ack silence"
@@ -272,8 +272,9 @@ def build_theme_gif(size: int) -> bytes:
     frame_a = Image.new("RGB", (size, size), (255, 0, 255))
     frame_b = Image.new("RGB", (size, size), (0, 255, 0))
     buffer = io.BytesIO()
-    frame_a.save(buffer, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=300, disposal=2)
+    frame_a.save(
+        buffer, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=300, disposal=2
+    )
     return buffer.getvalue()
 
 
@@ -341,8 +342,11 @@ async def main() -> None:
                     print(f"    [send +{stamp - sent_at:.2f}s] {text}", flush=True)
                 acks.clear()
             else:
-                print(f"  {label}: *** ZERO ACKS after {ACK_SETTLE_SECONDS}s *** -- record this,"
-                      f" it is a result (and this time it is a real one)", flush=True)
+                print(
+                    f"  {label}: *** ZERO ACKS after {ACK_SETTLE_SECONDS}s *** -- record this,"
+                    f" it is a result (and this time it is a real one)",
+                    flush=True,
+                )
 
         async def send_and_report(label: str, coro) -> None:
             sent_at = time.perf_counter()
@@ -352,8 +356,9 @@ async def main() -> None:
 
         async def set_rtc(offset: timedelta, note: str) -> None:
             spoofed = device_now(offset)
-            await send_and_report(f"set_time -> {spoofed:%A %Y-%m-%d %H:%M:%S} ({note})",
-                                  client.device.set_time(spoofed))
+            await send_and_report(
+                f"set_time -> {spoofed:%A %Y-%m-%d %H:%M:%S} ({note})", client.device.set_time(spoofed)
+            )
 
         async def label_phase(number: int, expectation: int, text: str) -> None:
             """Scoreboard phase label, then back to the clock as the neutral
@@ -366,8 +371,10 @@ async def main() -> None:
         async def sleep_until(offset: timedelta, target: datetime, what: str) -> None:
             seconds = (target - device_now(offset)).total_seconds()
             if seconds < 0:
-                print(f"  !! already {-seconds:.0f}s PAST device-time {target:%H:%M:%S};"
-                      f" this phase's timing is void", flush=True)
+                print(
+                    f"  !! already {-seconds:.0f}s PAST device-time {target:%H:%M:%S}; this phase's timing is void",
+                    flush=True,
+                )
                 return
             print(f"  waiting {seconds:.0f}s -> device-time {target:%H:%M:%S} ({what})", flush=True)
             await asyncio.sleep(seconds)
@@ -390,8 +397,10 @@ async def main() -> None:
                 print(f"  reset/clock baseline FAILED: {ex!r}", flush=True)
 
             try:
-                await send_and_report("master switch ON (buzzer off, keep it purely visual)",
-                                      client.experimental.schedule_master_switch(enable=True, buzzer=False))
+                await send_and_report(
+                    "master switch ON (buzzer off, keep it purely visual)",
+                    client.experimental.schedule_master_switch(enable=True, buzzer=False),
+                )
             except Exception as ex:
                 print(f"  master switch FAILED: {ex!r} -- every later phase is now suspect", flush=True)
 
@@ -404,10 +413,15 @@ async def main() -> None:
                 await set_rtc(offset, "phase 1 base")
 
                 theme = make_theme(GIF_THEME_INDEX, [HIT_WEEKDAY], clock_time(12, 1), clock_time(12, 4))
-                print(f"  arming theme {GIF_THEME_INDEX}: RAW week=0b{theme.week:08b} ->"
-                      f" patched 0b{schedule.patch_week(theme.week):08b}, window 12:01-12:04", flush=True)
-                await send_and_report("theme upload (expect StatusAck status=3 SAVED)",
-                                      client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF))
+                print(
+                    f"  arming theme {GIF_THEME_INDEX}: RAW week=0b{theme.week:08b} ->"
+                    f" patched 0b{schedule.patch_week(theme.week):08b}, window 12:01-12:04",
+                    flush=True,
+                )
+                await send_and_report(
+                    "theme upload (expect StatusAck status=3 SAVED)",
+                    client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF),
+                )
 
                 await sleep_until(offset, fake_datetime(HIT_WEEKDAY, 12, 1, 0), "window opens")
                 print("  WATCH (60s): MAGENTA/GREEN flash = FIRED. Clock face = DID NOT FIRE.", flush=True)
@@ -424,8 +438,11 @@ async def main() -> None:
                 await set_rtc(offset, "phase 2 base -- theme deliberately NOT re-armed")
 
                 await sleep_until(offset, fake_datetime(MISS_WEEKDAY, 12, 1, 0), "window would open")
-                print("  WATCH (60s): clock face throughout = the day mask WORKS."
-                      " Any magenta/green = the mask is IGNORED.", flush=True)
+                print(
+                    "  WATCH (60s): clock face throughout = the day mask WORKS."
+                    " Any magenta/green = the mask is IGNORED.",
+                    flush=True,
+                )
                 await asyncio.sleep(60)
             except Exception as ex:
                 print(f"  PHASE 2 FAILED: {ex!r}", flush=True)
@@ -441,8 +458,10 @@ async def main() -> None:
 
                 theme = make_theme(GIF_THEME_INDEX, [HIT_WEEKDAY], clock_time(12, 10), clock_time(12, 12))
                 print(f"  arming theme {GIF_THEME_INDEX}: window 12:10-12:12 (end minute = 12:12)", flush=True)
-                await send_and_report("theme upload (boundary test)",
-                                      client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF))
+                await send_and_report(
+                    "theme upload (boundary test)",
+                    client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF),
+                )
 
                 print("  OPERATOR: from here until this phase ends, this probe sends NOTHING to the", flush=True)
                 print("  display. Narrate, in order, what the panel does. Expected script:", flush=True)
@@ -477,8 +496,11 @@ async def main() -> None:
                 await set_rtc(offset, "phase 4 base")
 
                 theme = make_theme(PNG_THEME_INDEX, [HIT_WEEKDAY], clock_time(12, 21), clock_time(12, 24))
-                print(f"  arming theme {PNG_THEME_INDEX} as CONTENT_IMAGE, {len(png_payload)}B RGBA PNG,"
-                      f" window 12:21-12:24", flush=True)
+                print(
+                    f"  arming theme {PNG_THEME_INDEX} as CONTENT_IMAGE, {len(png_payload)}B RGBA PNG,"
+                    f" window 12:21-12:24",
+                    flush=True,
+                )
                 await send_and_report(
                     "PNG theme upload (expect StatusAck status=3 SAVED)",
                     client.experimental.schedule_set_theme(theme, png_payload, schedule.CONTENT_IMAGE),
@@ -501,8 +523,11 @@ async def main() -> None:
                 await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
-                print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
-                      f" Re-run any probe that calls common.set_time before trusting it. ***", flush=True)
+                print(
+                    f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
+                    f" Re-run any probe that calls common.set_time before trusting it. ***",
+                    flush=True,
+                )
 
             # No Schedule close command exists; overwrite with a mask no weekday
             # can match (RAW 0x00 -> patched 0x01: enabled flag, zero day bits).
@@ -510,8 +535,11 @@ async def main() -> None:
                 try:
                     dead = make_theme(index, [], clock_time(0, 0), clock_time(0, 0))
                     await client.experimental.schedule_set_theme(dead, gif_payload, schedule.CONTENT_GIF)
-                    print(f"theme {index} disarmed (RAW week=0x00 -> patched"
-                          f" 0b{schedule.patch_week(dead.week):08b}, no day bits).", flush=True)
+                    print(
+                        f"theme {index} disarmed (RAW week=0x00 -> patched"
+                        f" 0b{schedule.patch_week(dead.week):08b}, no day bits).",
+                        flush=True,
+                    )
                 except Exception as ex:
                     print(f"theme {index} disarm FAILED: {ex!r}", flush=True)
 

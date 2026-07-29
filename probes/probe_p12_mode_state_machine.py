@@ -243,7 +243,7 @@ BASELINE_COLOR = (0, 60, 220)
 
 # The app's 7-color effect palette from the 2026-07-25 HCI capture, byte-order
 # identical to probes/probe_effect_speed_sweep.py.
-APP_EFFECT_COLORS = bytes.fromhex("7f0000" "7f5100" "7f7f00" "007f00" "00007f" "7f007f" "7f7f7f")
+APP_EFFECT_COLORS = bytes.fromhex("7f00007f51007f7f00007f0000007f7f007f7f7f7f")
 APP_EFFECT_FRAME = bytearray([0x1C, 0x00, 0x03, 0x02, 0x00, 100, 0x07]) + APP_EFFECT_COLORS
 
 STATUS_NAMES = {
@@ -264,10 +264,7 @@ SEQUENCE_TITLES = {
 # order, before the reclaim pair. Written to be read to the operator verbatim --
 # literal colours and shapes, no shorthand.
 SEQUENCE_VISUALS = {
-    1: (
-        'SCROLLING TEXT reading "P12" replaces the blue frame. ~10 s.'
-        " This is the mode whose reclaim we are testing.",
-    ),
+    1: ('SCROLLING TEXT reading "P12" replaces the blue frame. ~10 s. This is the mode whose reclaim we are testing.',),
     2: (
         "The CLOCK replaces the blue frame -- normal time display, ticking. ~10 s.",
         "WHITE PIXELS are drawn ON TOP of the still-running clock: a 12-pixel"
@@ -293,8 +290,7 @@ SEQUENCE_VISUALS = {
         " the run only needs the panel to have been through the timer branch.",
     ),
     5: (
-        "The panel goes COMPLETELY DARK (software power off; BLE stays"
-        " connected). ~10 s.",
+        "The panel goes COMPLETELY DARK (software power off; BLE stays connected). ~10 s.",
         "The panel comes back on. ~10 s. Per P11 the blue frame will NOT return --"
         " native modes survive a power cycle but a DIY frame does not -- so expect"
         " the clock or the last native mode, not blue.",
@@ -346,8 +342,7 @@ def print_visual_script(sequence: int) -> None:
     """
     blocks = "block" if sequence == 1 else "blocks"
     visuals = [
-        "The CLOCK, for a few seconds. Start-up baseline after a device reset."
-        " Nothing to judge.",
+        "The CLOCK, for a few seconds. Start-up baseline after a device reset. Nothing to judge.",
         f"A SCOREBOARD reading  {sequence} | 0  for {LABEL_SECONDS:.0f} s. This is the run's"
         f" label: it confirms sequence {sequence} is what is running. It is the only"
         f" label all run.",
@@ -358,14 +353,16 @@ def print_visual_script(sequence: int) -> None:
         f" say so and stop.",
     ]
     visuals.extend(SEQUENCE_VISUALS[sequence])
-    visuals.extend([
-        f"*** ATTEMPT A *** A SOLID RED FRAME with the same {sequence} white {blocks} on top."
-        f" ~10 s. THE FIRST THING TO REPORT: does the panel actually turn RED, or does"
-        f" it stay on the previous visual?",
-        f"*** ATTEMPT B *** A SOLID GREEN FRAME with the same {sequence} white {blocks} on"
-        f" top. ~10 s. THE SECOND THING TO REPORT: does the panel turn GREEN?",
-        "The CLOCK returns. Cleanup, nothing to judge.",
-    ])
+    visuals.extend(
+        [
+            f"*** ATTEMPT A *** A SOLID RED FRAME with the same {sequence} white {blocks} on top."
+            f" ~10 s. THE FIRST THING TO REPORT: does the panel actually turn RED, or does"
+            f" it stay on the previous visual?",
+            f"*** ATTEMPT B *** A SOLID GREEN FRAME with the same {sequence} white {blocks} on"
+            f" top. ~10 s. THE SECOND THING TO REPORT: does the panel turn GREEN?",
+            "The CLOCK returns. Cleanup, nothing to judge.",
+        ]
+    )
 
     print("=" * 78, flush=True)
     print(f"P12 SEQUENCE {sequence}: {SEQUENCE_TITLES[sequence]}", flush=True)
@@ -428,11 +425,11 @@ def make_frame(base: tuple[int, int, int], sequence: int) -> bytes:
         for y in range(top, top + 3):
             for x in range(left, left + 3):
                 offset = (y * 32 + x) * 3
-                pixels[offset:offset + 3] = b"\xff\xff\xff"
+                pixels[offset : offset + 3] = b"\xff\xff\xff"
 
     for index in range(sequence):
         paint_block(1 + index * 4, 1)  # counting row, top edge
-    paint_block(1, 28)                 # orientation anchor, bottom-left
+    paint_block(1, 28)  # orientation anchor, bottom-left
     return bytes(pixels)
 
 
@@ -450,9 +447,7 @@ def make_noise_gif(seed: int, frames: int = 8) -> bytes:
         im = Image.new("RGB", (32, 32), (0, 0, 0))
         px = im.load()
         for _ in range(300):
-            px[rng.randrange(32), rng.randrange(32)] = (
-                rng.randrange(256), rng.randrange(256), rng.randrange(256)
-            )
+            px[rng.randrange(32), rng.randrange(32)] = (rng.randrange(256), rng.randrange(256), rng.randrange(256))
         images.append(im)
     buf = io.BytesIO()
     images[0].save(buf, format="GIF", save_all=True, append_images=images[1:], duration=150, loop=0)
@@ -501,8 +496,11 @@ async def main(sequence: int) -> None:
 
             await asyncio.sleep(SETTLE_SECONDS)
             window = acks[mark:]
-            print(f"     write completed in {t_written - t_send:.3f}s; {len(window)} ack(s)"
-                  f" in the {SETTLE_SECONDS:.0f}s settle window:", flush=True)
+            print(
+                f"     write completed in {t_written - t_send:.3f}s; {len(window)} ack(s)"
+                f" in the {SETTLE_SECONDS:.0f}s settle window:",
+                flush=True,
+            )
             for t, ack in window:
                 print(f"       +{t - t_written:6.3f}s after write  {describe(ack)}", flush=True)
             if not window:
@@ -518,8 +516,7 @@ async def main(sequence: int) -> None:
 
         async def reclaim_pair(after: str) -> None:
             """The two-frame test that makes "is DIY re-entry required?" visible."""
-            print(f"\n  ### RECLAIM PAIR after {after} -- RED = no re-entry, GREEN = re-entry forced",
-                  flush=True)
+            print(f"\n  ### RECLAIM PAIR after {after} -- RED = no re-entry, GREEN = re-entry forced", flush=True)
             await step(
                 f"ATTEMPT A (NAIVE): show_frame after {after}, NO invalidate_diy_mode",
                 lambda: client.display.show_frame(make_frame(NAIVE_COLOR, sequence)),
@@ -564,8 +561,11 @@ async def main(sequence: int) -> None:
         # shown: one placed between steps would become part of the transition
         # under test, and one placed before the reclaim pair would change the
         # question from "after TEXT" to "after SCOREBOARD".
-        print(f"\n=== PANEL LABEL (visual 2): scoreboard {sequence} | 0, held"
-              f" {LABEL_SECONDS:.0f}s. No further labels this run.", flush=True)
+        print(
+            f"\n=== PANEL LABEL (visual 2): scoreboard {sequence} | 0, held"
+            f" {LABEL_SECONDS:.0f}s. No further labels this run.",
+            flush=True,
+        )
         try:
             await client.scoreboard.show(sequence, 0)
             await asyncio.sleep(LABEL_SECONDS)
@@ -597,9 +597,12 @@ async def main(sequence: int) -> None:
                     'scrolling text reading "P12" should replace the blue frame.',
                 )
             else:
-                print(f"\n  -- MODE STEP SKIPPED: no font at {FONT_PATH}. The reclaim below"
-                      f" would measure the BASELINE, not TEXT -- abandon this run and"
-                      f" supply a font.", flush=True)
+                print(
+                    f"\n  -- MODE STEP SKIPPED: no font at {FONT_PATH}. The reclaim below"
+                    f" would measure the BASELINE, not TEXT -- abandon this run and"
+                    f" supply a font.",
+                    flush=True,
+                )
             await reclaim_pair("TEXT")
 
         elif sequence == 2:
@@ -609,8 +612,7 @@ async def main(sequence: int) -> None:
                 "the clock should replace the blue frame.",
             )
             await step(
-                "OBSERVATION (visual 5, its own result): graffiti onto the RUNNING clock,"
-                " no DIY mode",
+                "OBSERVATION (visual 5, its own result): graffiti onto the RUNNING clock, no DIY mode",
                 lambda: client.graffiti.set_pixels((255, 255, 255), graffiti_dots()),
                 "do WHITE PIXELS appear ON TOP of the still-ticking clock -- a 12-pixel"
                 " DIAGONAL from the upper-left going down-right, PLUS a 3-pixel hook near"
@@ -665,8 +667,7 @@ async def main(sequence: int) -> None:
                 await client.chronograph.start()
 
             await step(
-                "MODE 2 of 2 (visual 5): countdown.pause() then chronograph.start()"
-                " -- the P7-verified pair",
+                "MODE 2 of 2 (visual 5): countdown.pause() then chronograph.start() -- the P7-verified pair",
                 pause_then_chronograph,
                 "the countdown should freeze and an INDEPENDENT stopwatch should count up."
                 " Expected, per P7 -- nothing to judge. The run only needs the panel to"
@@ -676,8 +677,7 @@ async def main(sequence: int) -> None:
 
         elif sequence == 5:
             await step(
-                "MODE 1 of 2 (visual 4): common.turn_off() -- software power off,"
-                " BLE stays connected",
+                "MODE 1 of 2 (visual 4): common.turn_off() -- software power off, BLE stays connected",
                 lambda: client.device.turn_off(),
                 "the panel should go COMPLETELY DARK. BLE stays up.",
             )

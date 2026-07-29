@@ -38,7 +38,7 @@ def build_moving_column_frame(size: int, column: int) -> bytes:
     at x=column. Row-major, top-left origin (display.show_frame's contract)."""
     row = bytearray(BLACK * size)
     lit_row = bytearray(row)
-    lit_row[column * 3:column * 3 + 3] = WHITE
+    lit_row[column * 3 : column * 3 + 3] = WHITE
     return bytes(lit_row) * size
 
 

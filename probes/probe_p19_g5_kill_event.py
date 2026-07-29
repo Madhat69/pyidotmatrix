@@ -147,9 +147,7 @@ OWN_SESSION_DELAY_SECONDS = 90.0
 
 SEQUENCES = {
     "reconnect": "attach to existing content, one disconnect/reconnect, ask if it survived",
-    "own-delayed": (
-        f"set colour, WAIT {OWN_SESSION_DELAY_SECONDS:.0f}s, then the SAME session reconnects"
-    ),
+    "own-delayed": (f"set colour, WAIT {OWN_SESSION_DELAY_SECONDS:.0f}s, then the SAME session reconnects"),
 }
 
 
@@ -157,9 +155,12 @@ def print_usage() -> None:
     print("usage: python probes/probe_p19_g5_kill_event.py <sequence> [seconds]", flush=True)
     print("", flush=True)
     print("Runs exactly ONE sequence. The sequence argument is mandatory.", flush=True)
-    print(f"own-delayed takes an optional dwell in seconds "
-          f"({DWELL_MIN_SECONDS:.0f}..{DWELL_MAX_SECONDS:.0f}, "
-          f"default {OWN_SESSION_DELAY_SECONDS:.0f}).", flush=True)
+    print(
+        f"own-delayed takes an optional dwell in seconds "
+        f"({DWELL_MIN_SECONDS:.0f}..{DWELL_MAX_SECONDS:.0f}, "
+        f"default {OWN_SESSION_DELAY_SECONDS:.0f}).",
+        flush=True,
+    )
     for key, description in SEQUENCES.items():
         print(f"    {key:10s} {description}", flush=True)
 
@@ -204,8 +205,11 @@ def select_sequence(argv: list[str]) -> tuple[str, float]:
         print_usage()
         raise SystemExit(2) from None
     if not DWELL_MIN_SECONDS <= dwell <= DWELL_MAX_SECONDS:
-        print(f"error: dwell must be between {DWELL_MIN_SECONDS:.0f} and "
-              f"{DWELL_MAX_SECONDS:.0f} seconds, got {dwell:g}.\n", flush=True)
+        print(
+            f"error: dwell must be between {DWELL_MIN_SECONDS:.0f} and "
+            f"{DWELL_MAX_SECONDS:.0f} seconds, got {dwell:g}.\n",
+            flush=True,
+        )
         print_usage()
         raise SystemExit(2)
     return sequence, dwell

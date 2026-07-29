@@ -177,7 +177,9 @@ def make_big_gif(seed: int) -> bytes:
         px = im.load()
         for _ in range(300):
             px[rng.randrange(32), rng.randrange(32)] = (
-                rng.randrange(256), rng.randrange(256), rng.randrange(256),
+                rng.randrange(256),
+                rng.randrange(256),
+                rng.randrange(256),
             )
         frames.append(im)
     buf = io.BytesIO()

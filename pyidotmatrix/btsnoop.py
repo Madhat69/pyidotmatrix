@@ -104,9 +104,7 @@ def iter_records(data: bytes) -> Iterator[BtsnoopRecord]:
     offset = BTSNOOP_HEADER_SIZE
     total = len(data)
     while offset + BTSNOOP_RECORD_HEADER_SIZE <= total:
-        original, included, flags, drops, timestamp = struct.unpack_from(
-            ">IIIIq", data, offset
-        )
+        original, included, flags, drops, timestamp = struct.unpack_from(">IIIIq", data, offset)
         offset += BTSNOOP_RECORD_HEADER_SIZE
         if included > total - offset:
             return  # truncated tail
@@ -317,14 +315,10 @@ class HandleMap:
         return base[4:] if base.startswith("0000") else base
 
     def apply_heuristics(self) -> None:
-        if self.notify_counts and not any(
-            self.short_name(h) == "fa03" for h in self.notify_counts
-        ):
+        if self.notify_counts and not any(self.short_name(h) == "fa03" for h in self.notify_counts):
             handle, _ = self.notify_counts.most_common(1)[0]
             self.uuids.setdefault(handle, "0000fa03-0000-1000-8000-00805f9b34fb")
-        if self.write_counts and not any(
-            self.short_name(h) == "fa02" for h in self.write_counts
-        ):
+        if self.write_counts and not any(self.short_name(h) == "fa02" for h in self.write_counts):
             handle, _ = self.write_counts.most_common(1)[0]
             self.uuids.setdefault(handle, "0000fa02-0000-1000-8000-00805f9b34fb")
 
@@ -443,9 +437,7 @@ def _effect(p: bytes) -> str | None:
     count = p[6]
     if len(p) != 7 + 3 * count:
         return None
-    colors = " ".join(
-        f"#{p[7 + 3 * i]:02x}{p[8 + 3 * i]:02x}{p[9 + 3 * i]:02x}" for i in range(count)
-    )
+    colors = " ".join(f"#{p[7 + 3 * i]:02x}{p[8 + 3 * i]:02x}{p[9 + 3 * i]:02x}" for i in range(count))
     return f"effect style={p[4]} speed={p[5]} colors={count} [{colors}]"
 
 
@@ -453,10 +445,7 @@ def _set_time(p: bytes) -> str | None:
     # common.build_set_time -> [11, 0, 1, 128, yy, mm, dd, weekday, HH, MM, SS]
     if len(p) != 11:
         return None
-    return (
-        f"set_time 20{p[4]:02d}-{p[5]:02d}-{p[6]:02d} "
-        f"wd={p[7]} {p[8]:02d}:{p[9]:02d}:{p[10]:02d}"
-    )
+    return f"set_time 20{p[4]:02d}-{p[5]:02d}-{p[6]:02d} wd={p[7]} {p[8]:02d}:{p[9]:02d}:{p[10]:02d}"
 
 
 def _power(p: bytes) -> str | None:
@@ -499,10 +488,7 @@ def _eco(p: bytes) -> str | None:
     # eco.build_set_mode -> [10, 0, 2, 128, on, sh, sm, eh, em, brightness]
     if len(p) != 10:
         return None
-    return (
-        f"eco enabled={p[4]} {p[5]:02d}:{p[6]:02d}-{p[7]:02d}:{p[8]:02d} "
-        f"brightness={p[9]}"
-    )
+    return f"eco enabled={p[4]} {p[5]:02d}:{p[6]:02d}-{p[7]:02d}:{p[8]:02d} brightness={p[9]}"
 
 
 def _delete_device_data(p: bytes) -> str | None:
@@ -598,10 +584,7 @@ def _diy_frame_chunk(p: bytes) -> str | None:
     marker = {0: "first", 2: "cont"}.get(p[4])
     if marker is None:
         return None
-    return (
-        f"diy_frame_chunk {marker} declared={_u16(p, 0)} total={_u32(p, 5)} "
-        f"data={len(p) - 9}"
-    )
+    return f"diy_frame_chunk {marker} declared={_u16(p, 0)} total={_u32(p, 5)} data={len(p) - 9}"
 
 
 def _timer_chunk(p: bytes) -> str | None:
@@ -655,16 +638,11 @@ def _text_chunk(p: bytes) -> str | None:
     marker = {0: "first", 2: "cont"}.get(p[4])
     if marker is None:
         return None
-    base = (
-        f"text_chunk {marker} declared={_u16(p, 0)} total={_u32(p, 5)} "
-        f"crc=0x{_u32(p, 9):08x} trailer={p[15]}"
-    )
+    base = f"text_chunk {marker} declared={_u16(p, 0)} total={_u32(p, 5)} crc=0x{_u32(p, 9):08x} trailer={p[15]}"
     if marker == "cont" or len(p) < 30:
         return base
     meta = p[16:30]
-    family = {0: "8-row (sendTextTo832)", 1: "16/32-row (sendTextTo3232)"}.get(
-        meta[2], f"?{meta[2]}"
-    )
+    family = {0: "8-row (sendTextTo832)", 1: "16/32-row (sendTextTo3232)"}.get(meta[2], f"?{meta[2]}")
     return (
         f"{base} | chars={_u16(meta, 0)} row_family={meta[2]} ({family}) "
         f"b3={meta[3]} mode={meta[4]} ({_TEXT_MODE_NAMES.get(meta[4], '?')}) "
@@ -730,10 +708,7 @@ def _effect_subframe(payload: bytes) -> str | None:
     inner = payload[2:]
     if inner[1] != 0 or inner[2] != 3 or inner[3] != 2:
         return None
-    return (
-        f"effect_subchunk index=0 (flat_len={inner[0]} style={inner[4]} "
-        f"speed={inner[5]} colors={inner[6]})"
-    )
+    return f"effect_subchunk index=0 (flat_len={inner[0]} style={inner[4]} speed={inner[5]} colors={inner[6]})"
 
 
 def classify_write(payload: bytes) -> tuple[str, str]:
@@ -771,8 +746,7 @@ def classify_write(payload: bytes) -> tuple[str, str]:
     declared = _u16(payload, 0)
     length_note = "" if declared == len(payload) else f" declared={declared}"
     return (
-        f"UNKNOWN type=0x{command_type:02x} sub=0x{subtype:02x} "
-        f"len={len(payload)}{length_note}",
+        f"UNKNOWN type=0x{command_type:02x} sub=0x{subtype:02x} len={len(payload)}{length_note}",
         f"UNKNOWN type=0x{command_type:02x} sub=0x{subtype:02x}",
     )
 
@@ -829,8 +803,7 @@ class ProtocolReassembler:
             self._remaining -= consumed
             tail = "" if self._remaining else ", final"
             return (
-                f"cont part={self._part} of {self._label} "
-                f"({len(payload)} B, {self._remaining} left{tail})",
+                f"cont part={self._part} of {self._label} ({len(payload)} B, {self._remaining} left{tail})",
                 f"cont {self._label}",
             )
 
@@ -871,9 +844,7 @@ def parse_capture(data: bytes) -> Capture:
     version, datalink = parse_btsnoop_header(data)
     capture = Capture(version=version, datalink=datalink)
     if datalink != DATALINK_H4:
-        raise BtsnoopError(
-            f"unsupported datalink {datalink}, only {DATALINK_H4} (HCI UART H4) is decoded"
-        )
+        raise BtsnoopError(f"unsupported datalink {datalink}, only {DATALINK_H4} (HCI UART H4) is decoded")
 
     reassembler = L2capReassembler()
     protocol_streams: dict[int, ProtocolReassembler] = {}
@@ -950,10 +921,7 @@ def _decode_att(
         if len(value) >= 2:
             annotation = f"mtu={_u16(value, 0)}"
     elif opcode == ATT_ERROR_RESPONSE and len(value) >= 4:
-        annotation = (
-            f"error on op=0x{value[0]:02x} handle=0x{_u16(value, 1):04x} "
-            f"code=0x{value[3]:02x}"
-        )
+        annotation = f"error on op=0x{value[0]:02x} handle=0x{_u16(value, 1):04x} code=0x{value[3]:02x}"
 
     return AttEvent(
         index=index,
@@ -974,9 +942,7 @@ def _decode_att(
 # --------------------------------------------------------------------------
 
 
-def _filter_events(
-    events: list[AttEvent], only: str | None, grep: str | None
-) -> list[AttEvent]:
+def _filter_events(events: list[AttEvent], only: str | None, grep: str | None) -> list[AttEvent]:
     selected = events
     if only == "writes":
         selected = [e for e in selected if e.opcode in _WRITE_OPCODES]

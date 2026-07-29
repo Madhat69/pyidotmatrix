@@ -278,8 +278,9 @@ def build_alarm_gif(size: int, color: tuple[int, int, int]) -> bytes:
     frame_a = Image.new("RGB", (size, size), color)
     frame_b = Image.new("RGB", (size, size), (0, 0, 0))
     buffer = io.BytesIO()
-    frame_a.save(buffer, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=250, disposal=2)
+    frame_a.save(
+        buffer, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=250, disposal=2
+    )
     return buffer.getvalue()
 
 
@@ -344,8 +345,11 @@ async def main(mode: str) -> None:
                     print(f"    [send +{stamp - sent_at:.2f}s] {text}", flush=True)
                 acks.clear()
             else:
-                print(f"  {label}: *** ZERO ACKS after {ACK_SETTLE_SECONDS}s *** -- record this,"
-                      f" it is a result (and this time it is a real one)", flush=True)
+                print(
+                    f"  {label}: *** ZERO ACKS after {ACK_SETTLE_SECONDS}s *** -- record this,"
+                    f" it is a result (and this time it is a real one)",
+                    flush=True,
+                )
 
         async def send_and_report(label: str, coro) -> None:
             sent_at = time.perf_counter()
@@ -355,8 +359,7 @@ async def main(mode: str) -> None:
 
         async def set_rtc(offset: timedelta, note: str) -> None:
             spoofed = device_now(offset)
-            await send_and_report(f"set_time -> {spoofed:%Y-%m-%d %H:%M:%S} ({note})",
-                                  client.device.set_time(spoofed))
+            await send_and_report(f"set_time -> {spoofed:%Y-%m-%d %H:%M:%S} ({note})", client.device.set_time(spoofed))
 
         async def label_phase(number: int, expected_fires: int, text: str) -> None:
             print(f"\n=== PHASE {number} -- scoreboard {number} | {expected_fires} -- {text}", flush=True)
@@ -367,8 +370,10 @@ async def main(mode: str) -> None:
         async def sleep_until(offset: timedelta, target: datetime, what: str) -> None:
             seconds = (target - device_now(offset)).total_seconds()
             if seconds < 0:
-                print(f"  !! already {-seconds:.0f}s PAST device-time {target:%H:%M:%S};"
-                      f" this phase's timing is void", flush=True)
+                print(
+                    f"  !! already {-seconds:.0f}s PAST device-time {target:%H:%M:%S}; this phase's timing is void",
+                    flush=True,
+                )
                 return
             print(f"  waiting {seconds:.0f}s -> device-time {target:%H:%M:%S} ({what})", flush=True)
             await asyncio.sleep(seconds)
@@ -376,10 +381,14 @@ async def main(mode: str) -> None:
         async def arm(slot: int, fire_at: clock_time, bucket: int, buzzer: bool, payload: bytes) -> timer.Timer:
             alarm = make_alarm(slot, fire_at, bucket, buzzer)
             seconds = timer.DURATION_SECONDS[bucket]
-            print(f"  arming slot {slot} for device-time {fire_at:%H:%M}, {seconds}s,"
-                  f" buzzer={buzzer}, week=0b{alarm.week:08b} (all days)", flush=True)
-            await send_and_report(f"slot {slot} upload (expect StatusAck status=3 SAVED)",
-                                  client.experimental.timer_set(alarm, payload))
+            print(
+                f"  arming slot {slot} for device-time {fire_at:%H:%M}, {seconds}s,"
+                f" buzzer={buzzer}, week=0b{alarm.week:08b} (all days)",
+                flush=True,
+            )
+            await send_and_report(
+                f"slot {slot} upload (expect StatusAck status=3 SAVED)", client.experimental.timer_set(alarm, payload)
+            )
             return alarm
 
         red_gif = build_alarm_gif(client.screen_size.width, (255, 0, 0))
@@ -410,8 +419,11 @@ async def main(mode: str) -> None:
                 await set_rtc(offset, "arm base -- restored to real time before exit")
                 armed.append(await arm(SLOT_A, PERSIST_A_MINUTE, timer.DURATION_10S, True, red_gif))
                 armed.append(await arm(SLOT_B, PERSIST_B_MINUTE, timer.DURATION_10S, False, blue_gif))
-                print(f"\nBOTH SLOTS ARMED for device-time {PERSIST_A_MINUTE:%H:%M} /"
-                      f" {PERSIST_B_MINUTE:%H:%M}, every day.", flush=True)
+                print(
+                    f"\nBOTH SLOTS ARMED for device-time {PERSIST_A_MINUTE:%H:%M} /"
+                    f" {PERSIST_B_MINUTE:%H:%M}, every day.",
+                    flush=True,
+                )
                 print("They are left armed ON PURPOSE. Now: PHYSICALLY POWER-CYCLE THE PANEL,", flush=True)
                 print("then run `python probes/probe_p6_alarms.py check`.", flush=True)
 
@@ -443,8 +455,9 @@ async def main(mode: str) -> None:
 
                 print("\n  *** STATE ECHO FOLLOWS -- DO NOT FILTER THE ACK LINES ***", flush=True)
                 print("  status 3 = slot 0 HAD CONTENT SAVED, 1 = empty/unsaved.", flush=True)
-                await send_and_report(f"timer_close(slot {SLOT_A}) -- STATE ECHO",
-                                      client.experimental.timer_close(closed_target))
+                await send_and_report(
+                    f"timer_close(slot {SLOT_A}) -- STATE ECHO", client.experimental.timer_close(closed_target)
+                )
 
                 print("  WATCH: SILENCE at 12:02 then BLUE at 12:03 => close is PER-SLOT and works.", flush=True)
                 print("  RED+beep at 12:02 => close does not disarm. Nothing at either minute =>", flush=True)
@@ -534,8 +547,9 @@ async def main(mode: str) -> None:
                     print(f"  closing slot {SLOT_A}. Its ack is a STATE ECHO, not accept/reject:", flush=True)
                     print("  status 3 = the slot had content saved, 1 = empty/unsaved. Record it --", flush=True)
                     print("  it is the only arm-state readback the device offers.", flush=True)
-                    await send_and_report(f"timer_close(slot {SLOT_A}) -- state echo",
-                                          client.experimental.timer_close(closed_target))
+                    await send_and_report(
+                        f"timer_close(slot {SLOT_A}) -- state echo", client.experimental.timer_close(closed_target)
+                    )
 
                     print("  WATCH: SILENCE at 12:20 (slot 0 closed), BLUE at 12:21 => close is", flush=True)
                     print("  PER-SLOT. Nothing at all => close is GLOBAL. Red at 12:20 anyway =>", flush=True)
@@ -553,8 +567,11 @@ async def main(mode: str) -> None:
                 await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
-                print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
-                      f" Re-run any probe that calls common.set_time before trusting it. ***", flush=True)
+                print(
+                    f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
+                    f" Re-run any probe that calls common.set_time before trusting it. ***",
+                    flush=True,
+                )
 
             if mode == "arm":
                 print("slots 0 and 1 LEFT ARMED on purpose (the power-cycle experiment).", flush=True)
@@ -570,8 +587,9 @@ async def main(mode: str) -> None:
                         sent_at = time.perf_counter()
                         await client.experimental.timer_close(last)
                         await asyncio.sleep(ACK_SETTLE_SECONDS)
-                        report_acks(f"timer_close(slot {slot}) at cleanup -- status 3 = had content,"
-                                    f" 1 = empty/unsaved", sent_at)
+                        report_acks(
+                            f"timer_close(slot {slot}) at cleanup -- status 3 = had content, 1 = empty/unsaved", sent_at
+                        )
                         print(f"slot {slot} closed.", flush=True)
                     except Exception as ex:
                         print(f"slot {slot} close FAILED: {ex!r}", flush=True)

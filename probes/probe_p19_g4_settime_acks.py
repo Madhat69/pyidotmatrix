@@ -158,7 +158,7 @@ JUMPS: tuple[tuple[str, clock_time, str], ...] = (
 )
 
 SETTLE_SECONDS = 2.5  # read the ack list only after this long, never before
-WATCH_SECONDS = 6.0   # after each jump, so a window crossing is actually visible
+WATCH_SECONDS = 6.0  # after each jump, so a window crossing is actually visible
 
 SEQUENCES = {
     "full": "armed half, then control half -- the run that answers the question",
@@ -244,8 +244,9 @@ def build_theme_gif(size: int) -> bytes:
     frame_a = Image.new("RGB", (size, size), (255, 0, 255))
     frame_b = Image.new("RGB", (size, size), (0, 255, 0))
     buffer = io.BytesIO()
-    frame_a.save(buffer, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=300, disposal=2)
+    frame_a.save(
+        buffer, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=300, disposal=2
+    )
     return buffer.getvalue()
 
 
@@ -305,57 +306,69 @@ async def main(sequence: str) -> None:
                 for at, text in window:
                     print(f"      {at - sent_at:+.2f}s after send  {text}", flush=True)
             else:
-                print(f"    {label}: *** ZERO ACKS after {SETTLE_SECONDS:.1f}s *** -- genuine "
-                      f"silence, the list was not read early and is never cleared", flush=True)
+                print(
+                    f"    {label}: *** ZERO ACKS after {SETTLE_SECONDS:.1f}s *** -- genuine "
+                    f"silence, the list was not read early and is never cleared",
+                    flush=True,
+                )
             return len(window)
 
         async def run_jumps(half: str) -> None:
             """The three RTC jumps, identical in both halves -- that is the point."""
             for label, at, expected in JUMPS:
                 target = fake_datetime(HIT_WEEKDAY, at)
-                print(f"\n  {label} -> device time {target:%A %Y-%m-%d %H:%M:%S}  "
-                      f"(expect on panel: {expected if half == 'armed' else 'clock face'})",
-                      flush=True)
-                counts[half][label] = await send_and_count(f"set_time [{half}]",
-                                                           client.device.set_time(target))
+                print(
+                    f"\n  {label} -> device time {target:%A %Y-%m-%d %H:%M:%S}  "
+                    f"(expect on panel: {expected if half == 'armed' else 'clock face'})",
+                    flush=True,
+                )
+                counts[half][label] = await send_and_count(f"set_time [{half}]", client.device.set_time(target))
                 await asyncio.sleep(max(0.0, WATCH_SECONDS - SETTLE_SECONDS))
 
         gif_payload = build_theme_gif(client.screen_size.width)
         print(f"theme payload built: {len(gif_payload)}B", flush=True)
 
         try:
-            print("\n--- baseline: the ordinary clock face (announced, not a measurement) ---",
-                  flush=True)
+            print("\n--- baseline: the ordinary clock face (announced, not a measurement) ---", flush=True)
             await send_and_count("clock baseline", client.clock.show())
 
             if sequence in ("full", "armed"):
                 print("\n=== ARMED HALF ==========================================", flush=True)
-                await send_and_count("schedule master switch ON (buzzer off -- keep it visual)",
-                                     client.experimental.schedule_master_switch(enable=True, buzzer=False))
+                await send_and_count(
+                    "schedule master switch ON (buzzer off -- keep it visual)",
+                    client.experimental.schedule_master_switch(enable=True, buzzer=False),
+                )
                 # Put the RTC on the fabricated day BEFORE arming, so the theme
                 # is armed against the same day it will be evaluated on.
-                await send_and_count("set_time -> fabricated day, pre-arm (NOT one of the three "
-                                     "measured jumps)",
-                                     client.device.set_time(fake_datetime(HIT_WEEKDAY, clock_time(12, 0))))
+                await send_and_count(
+                    "set_time -> fabricated day, pre-arm (NOT one of the three measured jumps)",
+                    client.device.set_time(fake_datetime(HIT_WEEKDAY, clock_time(12, 0))),
+                )
                 theme = make_theme(GIF_THEME_INDEX, [HIT_WEEKDAY], WINDOW_START, WINDOW_END)
-                print(f"  arming theme {GIF_THEME_INDEX}: RAW week=0b{theme.week:08b} -> patched "
-                      f"0b{schedule.patch_week(theme.week):08b}, window "
-                      f"{WINDOW_START:%H:%M}-{WINDOW_END:%H:%M}", flush=True)
-                await send_and_count("theme upload (expect StatusAck status=3 SAVED)",
-                                     client.experimental.schedule_set_theme(theme, gif_payload,
-                                                                           schedule.CONTENT_GIF))
+                print(
+                    f"  arming theme {GIF_THEME_INDEX}: RAW week=0b{theme.week:08b} -> patched "
+                    f"0b{schedule.patch_week(theme.week):08b}, window "
+                    f"{WINDOW_START:%H:%M}-{WINDOW_END:%H:%M}",
+                    flush=True,
+                )
+                await send_and_count(
+                    "theme upload (expect StatusAck status=3 SAVED)",
+                    client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF),
+                )
                 await run_jumps("armed")
 
             if sequence in ("full", "control"):
                 print("\n=== CONTROL HALF ========================================", flush=True)
                 for index in (GIF_THEME_INDEX, SPARE_THEME_INDEX):
                     dead = make_theme(index, [], clock_time(0, 0), clock_time(0, 0))
-                    await send_and_count(f"disarm theme {index} (RAW week=0x00 -> patched "
-                                         f"0b{schedule.patch_week(dead.week):08b}, no day bits)",
-                                         client.experimental.schedule_set_theme(dead, gif_payload,
-                                                                                schedule.CONTENT_GIF))
-                await send_and_count("schedule master switch OFF",
-                                     client.experimental.schedule_master_switch(enable=False, buzzer=False))
+                    await send_and_count(
+                        f"disarm theme {index} (RAW week=0x00 -> patched "
+                        f"0b{schedule.patch_week(dead.week):08b}, no day bits)",
+                        client.experimental.schedule_set_theme(dead, gif_payload, schedule.CONTENT_GIF),
+                    )
+                await send_and_count(
+                    "schedule master switch OFF", client.experimental.schedule_master_switch(enable=False, buzzer=False)
+                )
                 await run_jumps("control")
         finally:
             # RESTORATION GUARANTEE. True time goes back FIRST, ahead of any
@@ -366,9 +379,11 @@ async def main(sequence: str) -> None:
                 await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
-                print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
-                      f" Re-run any probe that calls common.set_time before trusting it. ***",
-                      flush=True)
+                print(
+                    f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
+                    f" Re-run any probe that calls common.set_time before trusting it. ***",
+                    flush=True,
+                )
 
             for index in (GIF_THEME_INDEX, SPARE_THEME_INDEX):
                 try:
@@ -399,8 +414,10 @@ def print_verdict(counts: dict[str, dict[str, int]], sequence: str) -> None:
     for label, _, _ in JUMPS:
         armed = counts["armed"].get(label)
         control = counts["control"].get(label)
-        print(f"  {label:24s} {('-' if armed is None else armed):>7} "
-              f"{('-' if control is None else control):>9}", flush=True)
+        print(
+            f"  {label:24s} {('-' if armed is None else armed):>7} {('-' if control is None else control):>9}",
+            flush=True,
+        )
     print("  ('-' = that half was not run in this sequence)", flush=True)
     if sequence != "full":
         print("\n  Only one half ran, so there is no comparison yet -- run `full`, or the", flush=True)

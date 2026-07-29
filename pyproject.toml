@@ -61,7 +61,15 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-# Lint only -- no formatter takeover; the codebase's existing layout stands.
+# The formatter WAS adopted, 2026-07-29, reversing the earlier "lint only, the
+# codebase's existing layout stands" decision. It had gone unenforced long
+# enough that 82 of 126 files had drifted from it silently -- CI ran only
+# `ruff check`, so nothing ever said so. Cost of adopting it: 19 hand-aligned
+# trailing comments lost their column alignment, 3 of them in protocol/ byte
+# tables where the alignment was mild documentation. Judged worth it for a
+# public release; capabilities.py, whose hand-wrapped evidence strings would
+# genuinely have suffered, was left untouched by the formatter.
+# `ruff format --check` now runs in CI so this cannot drift again.
 # E/W/F core, I import order, UP modern syntax, B likely bugs.
 select = ["E", "W", "F", "I", "UP", "B"]
 

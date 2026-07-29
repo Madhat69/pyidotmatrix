@@ -107,10 +107,7 @@ async def main(mac: str | None, index: int) -> None:
             end_min=end.minute,
         )
         payload = _build_test_gif(client.screen_size.width)
-        print(
-            f"\n--- uploading theme {index}, active window "
-            f"{now.strftime('%H:%M')}-{end.strftime('%H:%M')} ---"
-        )
+        print(f"\n--- uploading theme {index}, active window {now.strftime('%H:%M')}-{end.strftime('%H:%M')} ---")
         try:
             await client.experimental.schedule_set_theme(theme, payload, schedule.CONTENT_GIF)
         except ChunkedUploadError as ex:
@@ -118,10 +115,7 @@ async def main(mac: str | None, index: int) -> None:
             print("Upload did not complete; nothing more to observe.")
             return
 
-        print(
-            "\nUpload acknowledged as SAVED. Since the active window starts now, watch the "
-            "panel immediately."
-        )
+        print("\nUpload acknowledged as SAVED. Since the active window starts now, watch the panel immediately.")
         print(
             "VISUAL CHECK: does the panel show the blue/green flashing pattern right now? "
             f"Does it stop showing it after {end.strftime('%H:%M')} (window end)? Does the day "

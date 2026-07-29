@@ -149,7 +149,7 @@ DECLARED_LENGTHS = (0x1C, 0x0D)
 # Inner loop. Disjoint from {13, 28} on purpose -- see DESIGN.
 SPEEDS = (5, 25, 50, 75, 100)
 
-LABEL_SECONDS = 4   # scoreboard hold: phase label AND phase boundary
+LABEL_SECONDS = 4  # scoreboard hold: phase label AND phase boundary
 WATCH_SECONDS = 10
 
 
@@ -238,17 +238,23 @@ async def main(declared_lengths: tuple[int, ...]) -> None:
                     await client.effect._send(frame, verify=False)
                     report_acks(f"{label} (expect 05 00 03 02 01)")
 
-                    print(f"  WATCH ({WATCH_SECONDS}s): rate the pace ABSOLUTELY (1=crawling, 5=racing);"
-                          f" if the scoreboard is STILL on screen, the frame did not render", flush=True)
+                    print(
+                        f"  WATCH ({WATCH_SECONDS}s): rate the pace ABSOLUTELY (1=crawling, 5=racing);"
+                        f" if the scoreboard is STILL on screen, the frame did not render",
+                        flush=True,
+                    )
                     await asyncio.sleep(WATCH_SECONDS)
                 except Exception as ex:
                     print(f"  {label} FAILED: {ex!r}", flush=True)
 
         print("\nverdict to record (absolute ratings, not comparisons):", flush=True)
-        print("  pace rises 5->100 at len 28  => byte 5 is a SPEED; group A stands, run 1 was"
-              " the artifact.", flush=True)
-        print("  pace falls 5->100 at len 28  => byte 5 is a DELAY/interval; capabilities.py"
-              " needs correcting.", flush=True)
+        print(
+            "  pace rises 5->100 at len 28  => byte 5 is a SPEED; group A stands, run 1 was the artifact.", flush=True
+        )
+        print(
+            "  pace falls 5->100 at len 28  => byte 5 is a DELAY/interval; capabilities.py needs correcting.",
+            flush=True,
+        )
         print("  no pace change at len 28     => field is INERT; revert the VERIFIED promotion.", flush=True)
         print("  scoreboard persists at len 13 => those frames are dropped, never executed; all 0x0d", flush=True)
         print("                                  pace readings ever taken are void.", flush=True)

@@ -73,7 +73,10 @@ def build_set_time(when: datetime) -> bytearray:
         raise ValueError("day must be 1..31")
     return bytearray(
         [
-            11, 0, 1, 128,
+            11,
+            0,
+            1,
+            128,
             when.year % 100,
             when.month,
             when.day,

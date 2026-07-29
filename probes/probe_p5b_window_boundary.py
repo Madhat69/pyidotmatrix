@@ -165,11 +165,9 @@ ACK_SETTLE_SECONDS = 2.0
 def usage() -> None:
     print(__doc__.strip().splitlines()[0], flush=True)
     print("\nusage: python probes/probe_p5b_window_boundary.py {control|test}\n", flush=True)
-    print("  control  RTC -> 12:11:30, inside the 12:10-12:12 window."
-          " Content MUST appear.", flush=True)
+    print("  control  RTC -> 12:11:30, inside the 12:10-12:12 window. Content MUST appear.", flush=True)
     print("           Run this FIRST. If it shows the clock, `test` proves nothing.", flush=True)
-    print("  test     RTC -> 12:12:30, 30s into the END minute."
-          " Content = INCLUSIVE, clock = EXCLUSIVE.", flush=True)
+    print("  test     RTC -> 12:12:30, 30s into the END minute. Content = INCLUSIVE, clock = EXCLUSIVE.", flush=True)
 
 
 def fake_datetime(weekday: int, hour: int, minute: int, second: int = 0) -> datetime:
@@ -195,8 +193,9 @@ def build_theme_gif(size: int) -> bytes:
     frame_a = Image.new("RGB", (size, size), (255, 0, 255))
     frame_b = Image.new("RGB", (size, size), (0, 255, 0))
     buffer = io.BytesIO()
-    frame_a.save(buffer, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=300, disposal=2)
+    frame_a.save(
+        buffer, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=300, disposal=2
+    )
     return buffer.getvalue()
 
 
@@ -223,16 +222,18 @@ async def main(mode: str) -> None:
 
     print(f"MODE: {mode}", flush=True)
     if mode == "control":
-        print("QUESTION: does the armed 12:10-12:12 theme show its content at 12:11:30,"
-              " i.e. does it fire at all?", flush=True)
+        print(
+            "QUESTION: does the armed 12:10-12:12 theme show its content at 12:11:30, i.e. does it fire at all?",
+            flush=True,
+        )
         print("EXPECT: magenta/green flash. A clock face here voids the `test` run.", flush=True)
     else:
-        print("QUESTION: is the armed 12:10-12:12 theme still showing its content at"
-              " 12:12:30, 30s into the END minute?", flush=True)
-        print("EXPECT: unknown -- flash = end minute INCLUSIVE, clock = end minute"
-              " EXCLUSIVE.", flush=True)
-    print(f"panel scoreboard will read {label} | {expectation}. Watch the panel, not this"
-          f" terminal.\n", flush=True)
+        print(
+            "QUESTION: is the armed 12:10-12:12 theme still showing its content at 12:12:30, 30s into the END minute?",
+            flush=True,
+        )
+        print("EXPECT: unknown -- flash = end minute INCLUSIVE, clock = end minute EXCLUSIVE.", flush=True)
+    print(f"panel scoreboard will read {label} | {expectation}. Watch the panel, not this terminal.\n", flush=True)
 
     print("connecting ...", flush=True)
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
@@ -275,8 +276,10 @@ async def main(mode: str) -> None:
                 print(f"  reset/clock baseline FAILED: {ex!r}", flush=True)
 
             try:
-                await send_and_report("master switch ON (buzzer off, keep it purely visual)",
-                                      client.experimental.schedule_master_switch(enable=True, buzzer=False))
+                await send_and_report(
+                    "master switch ON (buzzer off, keep it purely visual)",
+                    client.experimental.schedule_master_switch(enable=True, buzzer=False),
+                )
             except Exception as ex:
                 print(f"  master switch FAILED: {ex!r} -- the observation is now suspect", flush=True)
 
@@ -291,15 +294,21 @@ async def main(mode: str) -> None:
             # --- arm, on the spoofed Wednesday, BEFORE the window opens ------
             try:
                 base = fake_datetime(HIT_WEEKDAY, ARM_HOUR, ARM_MIN, 0)
-                await send_and_report(f"set_time -> {base:%A %Y-%m-%d %H:%M:%S} (pre-window base)",
-                                      client.device.set_time(base))
+                await send_and_report(
+                    f"set_time -> {base:%A %Y-%m-%d %H:%M:%S} (pre-window base)", client.device.set_time(base)
+                )
 
                 theme = make_theme([HIT_WEEKDAY], WINDOW_START, WINDOW_END)
-                print(f"  arming theme {THEME_INDEX}: RAW week=0b{theme.week:08b} ->"
-                      f" patched 0b{schedule.patch_week(theme.week):08b},"
-                      f" window {WINDOW_START:%H:%M}-{WINDOW_END:%H:%M}", flush=True)
-                await send_and_report("theme upload (expect StatusAck status=3 SAVED)",
-                                      client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF))
+                print(
+                    f"  arming theme {THEME_INDEX}: RAW week=0b{theme.week:08b} ->"
+                    f" patched 0b{schedule.patch_week(theme.week):08b},"
+                    f" window {WINDOW_START:%H:%M}-{WINDOW_END:%H:%M}",
+                    flush=True,
+                )
+                await send_and_report(
+                    "theme upload (expect StatusAck status=3 SAVED)",
+                    client.experimental.schedule_set_theme(theme, gif_payload, schedule.CONTENT_GIF),
+                )
             except Exception as ex:
                 print(f"  ARM FAILED: {ex!r} -- do not interpret the observation", flush=True)
 
@@ -309,19 +318,16 @@ async def main(mode: str) -> None:
             # closing, which is the measurand.
             try:
                 jump = fake_datetime(HIT_WEEKDAY, jump_hour, jump_min, jump_sec)
-                print(f"\n=== OBSERVE ({OBSERVE_SECONDS}s). Jumping RTC to"
-                      f" {jump:%H:%M:%S}, then silence.", flush=True)
+                print(f"\n=== OBSERVE ({OBSERVE_SECONDS}s). Jumping RTC to {jump:%H:%M:%S}, then silence.", flush=True)
                 if mode == "control":
-                    print("  FLASH = fired (expected). CLOCK = it never fired;"
-                          " the `test` run is void.", flush=True)
+                    print("  FLASH = fired (expected). CLOCK = it never fired; the `test` run is void.", flush=True)
                 else:
                     print("  FLASH = end minute INCLUSIVE. CLOCK = end minute EXCLUSIVE.", flush=True)
                 # 2026-07-26: set_time calls issued WHILE a schedule theme was
                 # firing drew ZERO acks, where every other set_time in that
                 # session drew two. Unexplained and not built on here -- just do
                 # not read a silent set_time as a failed one.
-                await send_and_report(f"set_time -> {jump:%H:%M:%S} (the single jump)",
-                                      client.device.set_time(jump))
+                await send_and_report(f"set_time -> {jump:%H:%M:%S} (the single jump)", client.device.set_time(jump))
                 await asyncio.sleep(OBSERVE_SECONDS)
             except Exception as ex:
                 print(f"  OBSERVATION FAILED: {ex!r}", flush=True)
@@ -335,16 +341,22 @@ async def main(mode: str) -> None:
                 await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
-                print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
-                      f" Re-run any probe that calls common.set_time before trusting it. ***", flush=True)
+                print(
+                    f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
+                    f" Re-run any probe that calls common.set_time before trusting it. ***",
+                    flush=True,
+                )
 
             # No Schedule close command exists; overwrite with a mask no weekday
             # can match (RAW 0x00 -> patched 0b00000001) over a zero-width window.
             try:
                 dead = make_theme([], clock_time(0, 0), clock_time(0, 0))
                 await client.experimental.schedule_set_theme(dead, gif_payload, schedule.CONTENT_GIF)
-                print(f"theme {THEME_INDEX} disarmed (RAW week=0x00 -> patched"
-                      f" 0b{schedule.patch_week(dead.week):08b}, no day bits).", flush=True)
+                print(
+                    f"theme {THEME_INDEX} disarmed (RAW week=0x00 -> patched"
+                    f" 0b{schedule.patch_week(dead.week):08b}, no day bits).",
+                    flush=True,
+                )
             except Exception as ex:
                 print(f"theme {THEME_INDEX} disarm FAILED: {ex!r}", flush=True)
 

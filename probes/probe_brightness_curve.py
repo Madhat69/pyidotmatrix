@@ -225,8 +225,8 @@ from pyidotmatrix.protocol import timer
 
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 
-WHITE = (255, 255, 255)    # the measurement target: maximum lit area, always
-PINNED = 100               # the level the panel is left at
+WHITE = (255, 255, 255)  # the measurement target: maximum lit area, always
+PINNED = 100  # the level the panel is left at
 
 # Denser at the bottom: hypothesis (a) predicts all the real dynamic range lives
 # below ~20, so a uniform 10-step ladder would waste most of its rungs.
@@ -237,18 +237,18 @@ LADDER = (5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
 RATIO_NUMERATOR = 40
 RATIO_DENOMINATOR = 100
 
-LABEL_SECONDS = 3          # scoreboard label: short, then get out of the way
-HOLD_SECONDS = 15          # every measurement hold: a flat plateau, nothing sent
-ACK_SETTLE = 2.5           # never report an ack list sooner than this after a send
+LABEL_SECONDS = 3  # scoreboard label: short, then get out of the way
+HOLD_SECONDS = 15  # every measurement hold: a flat plateau, nothing sent
+ACK_SETTLE = 2.5  # never report an ack list sooner than this after a send
 
 # --- intermission buzzer -----------------------------------------------------
 # One slot, reused for both buzzes and closed after each. Armed for all seven
 # days so the calendar date is irrelevant; see the docstring's BUZZER MECHANISM.
 BUZZ_SLOT = 0
-BUZZ_FIRE_AT = clock_time(12, 1)     # the armed minute
+BUZZ_FIRE_AT = clock_time(12, 1)  # the armed minute
 BUZZ_SPOOF_AT = clock_time(12, 0, 50)  # RTC is jumped here AFTER the upload -> fire in 10 s
-BUZZ_LEAD_SECONDS = 10               # spoof -> fire
-BUZZ_TAIL_SECONDS = 12               # the 10 s buzz plus the content's 1-2 s ritual
+BUZZ_LEAD_SECONDS = 10  # spoof -> fire
+BUZZ_TAIL_SECONDS = 12  # the 10 s buzz plus the content's 1-2 s ritual
 COUNTDOWN_MINUTES = 1
 
 
@@ -277,11 +277,13 @@ class AckLog:
 
     async def report(self, label: str, sent_at: float) -> None:
         await asyncio.sleep(ACK_SETTLE)
-        fresh = self._entries[self._reported:]
+        fresh = self._entries[self._reported :]
         self._reported = len(self._entries)
         if not fresh:
-            print(f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send"
-                  f" -- record it, silence is itself a result", flush=True)
+            print(
+                f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send -- record it, silence is itself a result",
+                flush=True,
+            )
             return
         print(f"  ACK {label}: {len(fresh)}", flush=True)
         for at, text in fresh:
@@ -322,8 +324,9 @@ def build_buzz_gif(size: int) -> bytes:
     frame_a = Image.new("RGB", (size, size), (255, 150, 0))
     frame_b = Image.new("RGB", (size, size), (0, 0, 0))
     buffer = io.BytesIO()
-    frame_a.save(buffer, format="GIF", save_all=True, optimize=True,
-                 append_images=[frame_b], loop=0, duration=250, disposal=2)
+    frame_a.save(
+        buffer, format="GIF", save_all=True, optimize=True, append_images=[frame_b], loop=0, duration=250, disposal=2
+    )
     return buffer.getvalue()
 
 
@@ -345,8 +348,7 @@ def make_buzz_alarm() -> timer.Timer:
     )
 
 
-async def buzz(client: IDotMatrixClient, log: AckLog, payload: bytes,
-               armed: list[timer.Timer], meaning: str) -> None:
+async def buzz(client: IDotMatrixClient, log: AckLog, payload: bytes, armed: list[timer.Timer], meaning: str) -> None:
     """Ten seconds of alarm buzzer, fired deterministically off a spoofed RTC.
 
     UPLOAD FIRST, THEN JUMP THE CLOCK. The upload takes multiple seconds on the
@@ -405,8 +407,7 @@ async def run_ladder(client: IDotMatrixClient, log: AckLog, run: int) -> None:
     Each rung is wrapped so a single failure cannot end the run: a ladder missing
     one rung still yields the 40:100 ratio the experiment turns on.
     """
-    print(f"\n{'=' * 78}\nRUN {run}: {len(LADDER)} rungs, {LADDER[0]} -> {LADDER[-1]}\n{'=' * 78}",
-          flush=True)
+    print(f"\n{'=' * 78}\nRUN {run}: {len(LADDER)} rungs, {LADDER[0]} -> {LADDER[-1]}\n{'=' * 78}", flush=True)
     for level in LADDER:
         try:
             await run_rung(client, log, level, run)
@@ -414,8 +415,7 @@ async def run_ladder(client: IDotMatrixClient, log: AckLog, run: int) -> None:
             print(f"  RUN {run} rung {level} FAILED: {ex!r}", flush=True)
 
 
-async def intermission(client: IDotMatrixClient, log: AckLog, payload: bytes,
-                       armed: list[timer.Timer]) -> None:
+async def intermission(client: IDotMatrixClient, log: AckLog, payload: bytes, armed: list[timer.Timer]) -> None:
     """Buzz, one minute of countdown, buzz -- then the true RTC back.
 
     Audible brackets because the operator is inside a light-tight chamber with
@@ -434,8 +434,7 @@ async def intermission(client: IDotMatrixClient, log: AckLog, payload: bytes,
         print(f"  BUZZ 1 FAILED: {ex!r} -- ANNOUNCE THE MOVE SOME OTHER WAY", flush=True)
 
     try:
-        print(f"\n--- {COUNTDOWN_MINUTES}-minute countdown on the panel"
-              f" (reposition the sensor now) ---", flush=True)
+        print(f"\n--- {COUNTDOWN_MINUTES}-minute countdown on the panel (reposition the sensor now) ---", flush=True)
         sent_at = time.perf_counter()
         await client.countdown.start(COUNTDOWN_MINUTES, 0)
         await log.report("countdown start", sent_at)
@@ -448,8 +447,7 @@ async def intermission(client: IDotMatrixClient, log: AckLog, payload: bytes,
     try:
         await buzz(client, log, payload, armed, "RUN B RESUMING -- HANDS OFF THE SENSOR")
     except Exception as ex:
-        print(f"  BUZZ 2 FAILED: {ex!r} -- run B starts in ~{ACK_SETTLE + LABEL_SECONDS:.0f}s anyway",
-              flush=True)
+        print(f"  BUZZ 2 FAILED: {ex!r} -- run B starts in ~{ACK_SETTLE + LABEL_SECONDS:.0f}s anyway", flush=True)
 
     try:
         real_now = datetime.now()
@@ -474,16 +472,22 @@ async def restore(client: IDotMatrixClient, armed: list[timer.Timer]) -> None:
         await client.device.set_time(real_now)
         print(f"restored: RTC -> true local time {real_now:%A %Y-%m-%d %H:%M:%S}", flush=True)
     except Exception as ex:
-        print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
-              f" Fix it before trusting any later run. ***", flush=True)
+        print(
+            f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
+            f" Fix it before trusting any later run. ***",
+            flush=True,
+        )
 
     for alarm in armed:
         try:
             await client.experimental.timer_close(alarm)
             print(f"restored: slot {alarm.num} closed", flush=True)
         except Exception as ex:
-            print(f"*** SLOT {alarm.num} CLOSE FAILED: {ex!r} -- IT IS ARMED FOR"
-                  f" {alarm.hour:02d}:{alarm.minute:02d} EVERY DAY. Close it by hand. ***", flush=True)
+            print(
+                f"*** SLOT {alarm.num} CLOSE FAILED: {ex!r} -- IT IS ARMED FOR"
+                f" {alarm.hour:02d}:{alarm.minute:02d} EVERY DAY. Close it by hand. ***",
+                flush=True,
+            )
 
     for label, action in (
         ("countdown stopped", lambda: client.countdown.stop()),
@@ -509,13 +513,14 @@ def print_banner() -> None:
     print("  RUN B: the identical ladder at position 2.", flush=True)
     print("", flush=True)
     print(f"Ladder ({len(LADDER)} rungs): {', '.join(str(n) for n in LADDER)}", flush=True)
-    print(f"Each rung: {LABEL_SECONDS}s scoreboard label (BRIGHTNESS | RUN), then {HOLD_SECONDS}s",
-          flush=True)
+    print(f"Each rung: {LABEL_SECONDS}s scoreboard label (BRIGHTNESS | RUN), then {HOLD_SECONDS}s", flush=True)
     print("of a STEADY full-white field. Nothing is sent during a hold, so the log", flush=True)
     print("shows a flat plateau per rung with clean edges between them.", flush=True)
     print("", flush=True)
-    print(f"THE MEASUREMENT IS A RATIO, NOT A VALUE: compute lux({RATIO_NUMERATOR}) /"
-          f" lux({RATIO_DENOMINATOR})", flush=True)
+    print(
+        f"THE MEASUREMENT IS A RATIO, NOT A VALUE: compute lux({RATIO_NUMERATOR}) / lux({RATIO_DENOMINATOR})",
+        flush=True,
+    )
     print("for EACH run. Distance scales every reading in a run by the same constant,", flush=True)
     print("so the ratio is distance-invariant if the sensor is honest.", flush=True)
     print("  both ratios ~0.95  => the panel's curve really is compressed.", flush=True)
@@ -556,8 +561,11 @@ async def main() -> None:
             await run_ladder(client, log, run=2)
 
             print("\nverdict to record (one lux plateau per rung, then two ratios):", flush=True)
-            print(f"  ratio = lux({RATIO_NUMERATOR}) / lux({RATIO_DENOMINATOR}), computed"
-                  f" SEPARATELY for run 1 and run 2.", flush=True)
+            print(
+                f"  ratio = lux({RATIO_NUMERATOR}) / lux({RATIO_DENOMINATOR}), computed"
+                f" SEPARATELY for run 1 and run 2.",
+                flush=True,
+            )
             print("  both ~0.95      => panel compression is REAL; usable dimming is ~5-30 and", flush=True)
             print("                     the SDK should say so. eco_brightness above 40 is a no-op.", flush=True)
             print("  run1 ~0.95, run2 ~0.4 => run 1 was SENSOR SATURATION. Tonight's 3-point", flush=True)

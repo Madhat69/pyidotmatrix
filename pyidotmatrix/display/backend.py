@@ -50,9 +50,7 @@ class DisplayBackend(Protocol):
         """
         ...
 
-    async def set_pixels(
-        self, color: Color, xys: list[Coordinate], wait_for_device: bool = False
-    ) -> None:
+    async def set_pixels(self, color: Color, xys: list[Coordinate], wait_for_device: bool = False) -> None:
         """Sets every coordinate in xys to color, over the current framebuffer."""
         ...
 

@@ -111,11 +111,11 @@ def build_raw_graffiti(color: tuple[int, int, int], xys: list[tuple[int, int]], 
     size = _HEADER_SIZE + 2 * len(xys)
     payload = bytearray(
         [
-            size % 256,   # length LSB
+            size % 256,  # length LSB
             size // 256,  # length MSB (2 at 256 pairs)
-            5,            # graffiti mode
-            1,            # byte 3 -- the only value the device draws for
-            byte4,        # byte 4 (0 = plain draw)
+            5,  # graffiti mode
+            1,  # byte 3 -- the only value the device draws for
+            byte4,  # byte 4 (0 = plain draw)
             red,
             green,
             blue,
@@ -255,8 +255,7 @@ async def main() -> None:
             assert len(coords) == 256
             await countdown(
                 "PHASE E graffiti 256-px batch (RAW, size=520, header (8,2))",
-                "nack ([5,0,5,2,0])? does a green sweep fill rows 24-31 (256)? "
-                "or only 255 of them? or nothing?",
+                "nack ([5,0,5,2,0])? does a green sweep fill rows 24-31 (256)? or only 255 of them? or nothing?",
             )
             await client.graffiti._send(build_raw_graffiti(GREEN, coords, 0), verify=False)
             report_acks("E graffiti 256")

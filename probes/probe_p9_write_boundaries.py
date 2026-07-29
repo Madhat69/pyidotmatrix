@@ -368,7 +368,7 @@ def parse_args(argv: list[str]) -> tuple[str | None, tuple[int, ...], bool]:
             overrequest = True
         elif argument.startswith("--"):
             usage_and_exit(f"unknown option {argument!r}")
-        elif argument.isdigit():          # decimal only, per the brief
+        elif argument.isdigit():  # decimal only, per the brief
             value = int(argument)
             if value < 1:
                 usage_and_exit(f"write size {argument!r} must be a positive integer")
@@ -400,22 +400,22 @@ def build_landmark_frame(bar_row: int = 20, corner_br: tuple[int, int, int] = (2
 
     def put(x: int, y: int, rgb: tuple[int, int, int]) -> None:
         offset = (y * CANVAS + x) * 3
-        buffer[offset:offset + 3] = bytes(rgb)
+        buffer[offset : offset + 3] = bytes(rgb)
 
     def block(x0: int, y0: int, size: int, rgb: tuple[int, int, int]) -> None:
         for y in range(y0, y0 + size):
             for x in range(x0, x0 + size):
                 put(x, y, rgb)
 
-    block(0, 0, 4, (255, 0, 0))               # top-left RED
-    block(CANVAS - 4, 0, 4, (0, 255, 0))      # top-right GREEN
-    block(0, CANVAS - 4, 4, (0, 0, 255))      # bottom-left BLUE
+    block(0, 0, 4, (255, 0, 0))  # top-left RED
+    block(CANVAS - 4, 0, 4, (0, 255, 0))  # top-right GREEN
+    block(0, CANVAS - 4, 4, (0, 0, 255))  # bottom-left BLUE
     block(CANVAS - 4, CANVAS - 4, 4, corner_br)  # bottom-right -- LAST pixels of the payload
 
-    for y in range(6, 26):                    # magenta vertical bar, LEFT of centre
+    for y in range(6, 26):  # magenta vertical bar, LEFT of centre
         put(6, y, (255, 0, 255))
         put(7, y, (255, 0, 255))
-    for x in range(6, 26):                    # cyan horizontal bar, drawn over the magenta
+    for x in range(6, 26):  # cyan horizontal bar, drawn over the magenta
         put(x, bar_row, (0, 255, 255))
         put(x, bar_row + 1, (0, 255, 255))
 
@@ -433,9 +433,7 @@ def build_hop_gif(tint: tuple[int, int, int]) -> bytes:
         ImageDraw.Draw(image).rectangle([x, y, x + 5, y + 5], fill=(255, 255, 255))
         frames.append(image)
     buffer = io.BytesIO()
-    frames[0].save(
-        buffer, format="GIF", save_all=True, append_images=frames[1:], duration=250, loop=0
-    )
+    frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:], duration=250, loop=0)
     return buffer.getvalue()
 
 
@@ -462,8 +460,10 @@ async def main(font_path: str | None, requested_sizes: tuple[int, ...], overrequ
     # watch. The resolved list (after clamping against the negotiated size) is
     # printed again once we are connected.
     if requested_sizes:
-        print(f"write sizes REQUESTED: {list(requested_sizes)} (clamped to the negotiated size once connected)",
-              flush=True)
+        print(
+            f"write sizes REQUESTED: {list(requested_sizes)} (clamped to the negotiated size once connected)",
+            flush=True,
+        )
     else:
         print(
             f"write sizes REQUESTED: none given -> full default matrix"
@@ -522,8 +522,7 @@ async def main(font_path: str | None, requested_sizes: tuple[int, ...], overrequ
         print(f"\nNEGOTIATED no-response write size: {negotiated} bytes", flush=True)
         print(f"  (protocol builders split at {MTU_SIZE_IF_ENABLED}; transport re-splits to the above)", flush=True)
         print(
-            f"  (constructor validation would allow only"
-            f" {_MIN_WRITE_SIZE_OVERRIDE}..{_MAX_WRITE_SIZE_OVERRIDE})",
+            f"  (constructor validation would allow only {_MIN_WRITE_SIZE_OVERRIDE}..{_MAX_WRITE_SIZE_OVERRIDE})",
             flush=True,
         )
 
@@ -715,9 +714,7 @@ async def main(font_path: str | None, requested_sizes: tuple[int, ...], overrequ
                 await asyncio.sleep(LABEL_SECONDS)
                 client.display.invalidate_diy_mode()
                 sent_at = time.perf_counter()
-                await client.display.show_frame(
-                    build_landmark_frame(bar_row, corner), wait_for_device=wait_for_device
-                )
+                await client.display.show_frame(build_landmark_frame(bar_row, corner), wait_for_device=wait_for_device)
                 elapsed = time.perf_counter() - sent_at
                 print(f"  {name}: sent in {elapsed:.2f}s", flush=True)
                 await report_acks(f"write mode wait_for_device={wait_for_device}", sent_at)

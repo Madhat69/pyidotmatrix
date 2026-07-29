@@ -21,10 +21,10 @@ _FEATURE_COMMAND_WIDTH = 28
 _STATUS_WIDTH = 15
 
 _STATUS_MARKERS = {
-    CapabilityStatus.VERIFIED: "✅",        # hardware-confirmed working
+    CapabilityStatus.VERIFIED: "✅",  # hardware-confirmed working
     CapabilityStatus.SOURCE_DERIVED: "⚠",  # bytes confirmed, not hardware-exercised
-    CapabilityStatus.UNKNOWN: "❓",         # wire bytes exist, meaning unknown
-    CapabilityStatus.KNOWN_BROKEN: "✖",    # sent to hardware, observed NOT working
+    CapabilityStatus.UNKNOWN: "❓",  # wire bytes exist, meaning unknown
+    CapabilityStatus.KNOWN_BROKEN: "✖",  # sent to hardware, observed NOT working
 }
 
 

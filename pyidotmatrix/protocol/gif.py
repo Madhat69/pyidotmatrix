@@ -133,9 +133,7 @@ def _convert_time_sign(key: int) -> int:
     return {1: 5, 2: 10, 3: 30, 4: 60, 5: 300}.get(key, 5)
 
 
-def _limit_frames(
-    source: Image.Image, frames: list, duration_ms: int | None
-) -> tuple[list, float]:
+def _limit_frames(source: Image.Image, frames: list, duration_ms: int | None) -> tuple[list, float]:
     """Caps frame count and total duration to what the device can handle."""
     # A caller-supplied duration is used as-is; otherwise derive one (which may
     # be fractional -- see _frame_duration), hence the float-typed local.

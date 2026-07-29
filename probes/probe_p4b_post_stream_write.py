@@ -261,8 +261,7 @@ async def main(sequence: str) -> None:
     print("NOTHING TO WATCH. The panel shows a shifting field while streaming; it is", flush=True)
     print("not a measurement. Every result is captured in code. You can leave.", flush=True)
     print("", flush=True)
-    print(f"max pixels per graffiti command this run: 255 "
-          f"(limit {graffiti.MAX_PIXELS_PER_COMMAND})", flush=True)
+    print(f"max pixels per graffiti command this run: 255 (limit {graffiti.MAX_PIXELS_PER_COMMAND})", flush=True)
 
     rows: list[dict] = []
     print("connecting ...", flush=True)
@@ -271,8 +270,7 @@ async def main(sequence: str) -> None:
             if sequence == "confirm":
                 for trial in (1, 2):
                     for kind in ("frames", "deltas"):
-                        print(f"\n--- streaming {kind} for {STREAM_SECONDS:.0f}s "
-                              f"(trial {trial}) ---", flush=True)
+                        print(f"\n--- streaming {kind} for {STREAM_SECONDS:.0f}s (trial {trial}) ---", flush=True)
                         sent = await stream(client, kind, STREAM_SECONDS)
                         print(f"    {sent} sends; now the probe write", flush=True)
                         rows.append(await probe_write(client, f"after {kind} #{trial}", "clock"))

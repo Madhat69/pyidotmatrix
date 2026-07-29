@@ -39,8 +39,7 @@ class CommandRejectedError(IDotMatrixError):
         self.ack = ack
         self.raw = ack.raw
         super().__init__(
-            f"device rejected command type={ack.command_type} subtype={ack.command_subtype} "
-            f"(raw {ack.raw.hex()})"
+            f"device rejected command type={ack.command_type} subtype={ack.command_subtype} (raw {ack.raw.hex()})"
         )
 
 

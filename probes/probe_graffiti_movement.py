@@ -27,14 +27,17 @@ async def main() -> None:
         print("PHASE 1: WHITE 4x4 block, byte4=3, sent ONCE -- static? (6s)", flush=True)
         await client.graffiti._send(block((255, 255, 255), (14, 14), 3))
         await asyncio.sleep(6)
-        print("PHASE 2: same block re-sent with byte4=3 ten times, 0.5s apart"
-              " -- does anything MOVE? (watch)", flush=True)
+        print(
+            "PHASE 2: same block re-sent with byte4=3 ten times, 0.5s apart -- does anything MOVE? (watch)", flush=True
+        )
         for _ in range(10):
             await client.graffiti._send(block((255, 255, 255), (14, 14), 3))
             await asyncio.sleep(0.5)
         await asyncio.sleep(4)
-        print("PHASE 3: byte4=3 blocks at MARCHING positions x=4,8,12,16,20"
-              " -- trail or single moving block? (watch)", flush=True)
+        print(
+            "PHASE 3: byte4=3 blocks at MARCHING positions x=4,8,12,16,20 -- trail or single moving block? (watch)",
+            flush=True,
+        )
         for x in (4, 8, 12, 16, 20):
             await client.graffiti._send(block((0, 255, 255), (x, 24), 3))
             await asyncio.sleep(1)

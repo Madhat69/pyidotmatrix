@@ -120,6 +120,7 @@ def transport(monkeypatch) -> BleTransport:
 
 # --- write sizing ---------------------------------------------------------
 
+
 async def test_frame_resplit_when_characteristic_reports_low_mtu(monkeypatch):
     # The characteristic itself reports 20 bytes (not just the cache). With the
     # automatic 20->514 override removed, writes must honor the real 20-byte limit.
@@ -157,6 +158,7 @@ async def test_default_trusts_reported_size(transport):
 # nothing at all, with no error. Construction must reject anything outside a
 # plausible BLE write-size range instead.
 
+
 @pytest.mark.parametrize("bad_value", [-1, -514, 0, 19, 518, 10_000])
 def test_write_size_override_rejects_out_of_range(bad_value):
     with pytest.raises(ValueError):
@@ -181,6 +183,7 @@ def test_write_size_override_none_is_always_allowed():
 # correctly. StubBleakClient.write_gatt_char yields control on every write
 # (see its comment above), so without a lock the two calls below would race
 # and their bytes would land mixed together.
+
 
 async def test_concurrent_write_packets_do_not_interleave(transport):
     await transport.connect()
@@ -222,6 +225,7 @@ async def test_concurrent_write_and_write_packets_do_not_interleave(transport):
 
 
 # --- reconnect lifecycle --------------------------------------------------
+
 
 async def test_reconnect_rearms_after_manual_disconnect_and_reconnect(transport):
     await transport.connect()
@@ -354,6 +358,7 @@ async def test_reconnect_backoff_resets_on_a_fresh_drop_after_recovering(monkeyp
 # and force a clean reconnect instead of writing into a client that will
 # raise.
 
+
 async def test_write_reconnects_when_connected_but_services_not_ready(transport):
     await transport.connect()
     stale_client = transport._client
@@ -406,6 +411,7 @@ async def test_write_connects_first_when_not_yet_connected(transport):
 # bleak's disconnected_callback never fires for it, so plain reconnect
 # supervision never starts on its own. _write_raw must force a reconnect and
 # retry once instead of just propagating the first failure.
+
 
 async def test_write_reconnects_and_retries_once_after_a_stale_client_write_failure(transport):
     await transport.connect()
@@ -469,8 +475,13 @@ class _StubDevice:
 
 def _adv(local_name, rssi=-52) -> AdvertisementData:
     return AdvertisementData(
-        local_name=local_name, manufacturer_data={}, service_data={},
-        service_uuids=[], tx_power=None, rssi=rssi, platform_data=(),
+        local_name=local_name,
+        manufacturer_data={},
+        service_data={},
+        service_uuids=[],
+        tx_power=None,
+        rssi=rssi,
+        platform_data=(),
     )
 
 
@@ -501,6 +512,7 @@ async def test_discover_returns_empty_when_none_match(monkeypatch):
 
 
 # --- device ack correlation ----------------------------------------------
+
 
 async def test_await_device_ack_correlates_by_type(transport):
     await transport.connect()
@@ -552,6 +564,7 @@ async def test_await_device_ack_rejects_duplicate_wait(transport):
 
 
 # --- observability & isolation -------------------------------------------
+
 
 async def test_write_failure_records_and_emits(transport):
     """A single failure is still recorded/emitted even though _write_raw's

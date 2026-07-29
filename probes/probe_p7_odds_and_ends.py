@@ -165,7 +165,7 @@ from pyidotmatrix import IDotMatrixClient, ScreenSize
 
 ADDRESS = "6D:FD:F8:A0:3E:AF"
 
-PROBE_NUMBER = 7           # scoreboard count1 on every label -- "this is P7"
+PROBE_NUMBER = 7  # scoreboard count1 on every label -- "this is P7"
 
 # Phase-2 evidence, not a label: if THIS is on the panel when the screen comes
 # back on, then a scoreboard command sent to an OFF screen was executed. 99 is
@@ -177,14 +177,14 @@ OFF_MARKER = 99
 # panel boots into.
 PERSIST_COLOR = (255, 0, 255)
 
-LABEL_SECONDS = 3          # scoreboard hold: phase label AND phase boundary
+LABEL_SECONDS = 3  # scoreboard hold: phase label AND phase boundary
 WATCH_SECONDS = 8
-LONG_WATCH_SECONDS = 12    # timer phases: long enough to see digits actually move
-OFF_SECONDS = 6            # how long the screen stays off
-DISCONNECT_SECONDS = 12    # phase 9's link gap
-ACK_SETTLE = 2.5           # never report an ack list sooner than this after a send
+LONG_WATCH_SECONDS = 12  # timer phases: long enough to see digits actually move
+OFF_SECONDS = 6  # how long the screen stays off
+DISCONNECT_SECONDS = 12  # phase 9's link gap
+ACK_SETTLE = 2.5  # never report an ack list sooner than this after a send
 
-_SIZE = 32                 # this probe is written for the reference 32x32
+_SIZE = 32  # this probe is written for the reference 32x32
 
 
 def build_split_frame() -> bytes:
@@ -228,11 +228,13 @@ class AckLog:
 
     async def report(self, label: str, sent_at: float) -> None:
         await asyncio.sleep(ACK_SETTLE)
-        fresh = self._entries[self._reported:]
+        fresh = self._entries[self._reported :]
         self._reported = len(self._entries)
         if not fresh:
-            print(f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send"
-                  f" -- record it, silence is itself a result", flush=True)
+            print(
+                f"  ACK {label}: NONE within {ACK_SETTLE:.1f}s of the send -- record it, silence is itself a result",
+                flush=True,
+            )
             return
         print(f"  ACK {label}: {len(fresh)}", flush=True)
         for at, text in fresh:
@@ -274,8 +276,9 @@ async def phase_power_restore(client: IDotMatrixClient, log: AckLog) -> None:
     # hardware-proven to take from any panel state.
     client.display.invalidate_diy_mode()
     await client.display.show_frame(build_split_frame())
-    print(f"  panel should now be RED over BLUE -- this is the state turn_on must restore"
-          f" ({WATCH_SECONDS}s)", flush=True)
+    print(
+        f"  panel should now be RED over BLUE -- this is the state turn_on must restore ({WATCH_SECONDS}s)", flush=True
+    )
     await asyncio.sleep(WATCH_SECONDS)
 
     await timed(client.device.turn_off, log, "turn_off")
@@ -283,8 +286,11 @@ async def phase_power_restore(client: IDotMatrixClient, log: AckLog) -> None:
     await asyncio.sleep(OFF_SECONDS)
 
     await timed(client.device.turn_on, log, "turn_on")
-    print(f"  WATCH ({LONG_WATCH_SECONDS}s): RED/BLUE SPLIT => turn_on restores the prior mode."
-          f" CLOCK => it resets to clock. RAINBOW => it falls back to the flash state", flush=True)
+    print(
+        f"  WATCH ({LONG_WATCH_SECONDS}s): RED/BLUE SPLIT => turn_on restores the prior mode."
+        f" CLOCK => it resets to clock. RAINBOW => it falls back to the flash state",
+        flush=True,
+    )
     await asyncio.sleep(LONG_WATCH_SECONDS)
 
 
@@ -311,15 +317,21 @@ async def phase_commands_while_off(client: IDotMatrixClient, log: AckLog) -> Non
 
     await timed(lambda: client.device.set_brightness(60), log, "set_brightness(60) while OFF")
     await timed(client.clock.show, log, "clock.show() while OFF")
-    await timed(lambda: client.scoreboard.show(OFF_MARKER, OFF_MARKER), log,
-                f"scoreboard.show({OFF_MARKER}, {OFF_MARKER}) while OFF")
+    await timed(
+        lambda: client.scoreboard.show(OFF_MARKER, OFF_MARKER),
+        log,
+        f"scoreboard.show({OFF_MARKER}, {OFF_MARKER}) while OFF",
+    )
     print("  did the panel light up at any point during those three? (it should not)", flush=True)
     await asyncio.sleep(3)
 
     await timed(client.device.turn_on, log, "turn_on")
-    print(f"  WATCH ({LONG_WATCH_SECONDS}s): {OFF_MARKER} | {OFF_MARKER} on the panel => commands"
-          f" sent to an OFF screen ARE executed, into an invisible framebuffer."
-          f" Clock or anything else => display commands were swallowed while off", flush=True)
+    print(
+        f"  WATCH ({LONG_WATCH_SECONDS}s): {OFF_MARKER} | {OFF_MARKER} on the panel => commands"
+        f" sent to an OFF screen ARE executed, into an invisible framebuffer."
+        f" Clock or anything else => display commands were swallowed while off",
+        flush=True,
+    )
     await asyncio.sleep(LONG_WATCH_SECONDS)
 
 
@@ -333,19 +345,33 @@ async def phase_timer_state_machine(client: IDotMatrixClient, log: AckLog) -> No
     direction the numbers go.
     """
     steps = (
-        (3, "countdown.start(5:00)", lambda: client.countdown.start(5, 0),
-         "digits counting DOWN from 5:00?"),
-        (4, "countdown.pause()", client.countdown.pause,
-         "did the digits FREEZE? note the frozen value"),
-        (5, "chronograph.start()  <-- THE HIJACK TEST", client.chronograph.start,
-         "does the PAUSED COUNTDOWN RESUME counting DOWN (hijack reproduces),"
-         " or does a stopwatch count UP from 0:00 (independent)?"),
-        (6, "chronograph.pause()", client.chronograph.pause,
-         "what froze -- the countdown or a stopwatch? note the value"),
-        (7, "chronograph.resume()", client.chronograph.resume,
-         "does it continue from the frozen value, restart from zero, or do nothing?"),
-        (8, "chronograph.reset()", client.chronograph.reset,
-         "zeroed stopwatch, the countdown still there, or back to the clock?"),
+        (3, "countdown.start(5:00)", lambda: client.countdown.start(5, 0), "digits counting DOWN from 5:00?"),
+        (4, "countdown.pause()", client.countdown.pause, "did the digits FREEZE? note the frozen value"),
+        (
+            5,
+            "chronograph.start()  <-- THE HIJACK TEST",
+            client.chronograph.start,
+            "does the PAUSED COUNTDOWN RESUME counting DOWN (hijack reproduces),"
+            " or does a stopwatch count UP from 0:00 (independent)?",
+        ),
+        (
+            6,
+            "chronograph.pause()",
+            client.chronograph.pause,
+            "what froze -- the countdown or a stopwatch? note the value",
+        ),
+        (
+            7,
+            "chronograph.resume()",
+            client.chronograph.resume,
+            "does it continue from the frozen value, restart from zero, or do nothing?",
+        ),
+        (
+            8,
+            "chronograph.reset()",
+            client.chronograph.reset,
+            "zeroed stopwatch, the countdown still there, or back to the clock?",
+        ),
     )
     for code, name, call, question in steps:
         try:
@@ -378,8 +404,7 @@ async def phase_timer_state_machine(client: IDotMatrixClient, log: AckLog) -> No
         await client.clock.show()
     except Exception as ex:
         print(f"  post-cleanup clock FAILED: {ex!r}", flush=True)
-    print(f"  WATCH ({WATCH_SECONDS}s): is the panel a plain clock again, with no timer digits?",
-          flush=True)
+    print(f"  WATCH ({WATCH_SECONDS}s): is the panel a plain clock again, with no timer digits?", flush=True)
     await asyncio.sleep(WATCH_SECONDS)
 
 
@@ -398,18 +423,27 @@ async def phase_color_persistence(client: IDotMatrixClient, log: AckLog) -> None
     print(f"  panel should be solid MAGENTA ({WATCH_SECONDS}s)", flush=True)
     await asyncio.sleep(WATCH_SECONDS)
 
-    print(f"  disconnecting for {DISCONNECT_SECONDS}s -- WATCH THE PANEL THROUGH THE WHOLE GAP."
-          f" Does it stay magenta, or revert (and after how long)?", flush=True)
+    print(
+        f"  disconnecting for {DISCONNECT_SECONDS}s -- WATCH THE PANEL THROUGH THE WHOLE GAP."
+        f" Does it stay magenta, or revert (and after how long)?",
+        flush=True,
+    )
     await client.disconnect()
     await asyncio.sleep(DISCONNECT_SECONDS)
     await client.connect()
-    print(f"  reconnected (is_connected={client.is_connected}). WATCH ({WATCH_SECONDS}s):"
-          f" still magenta => the color survived the disconnect."
-          f" Note that the reconnect ITSELF sends nothing that would repaint it", flush=True)
+    print(
+        f"  reconnected (is_connected={client.is_connected}). WATCH ({WATCH_SECONDS}s):"
+        f" still magenta => the color survived the disconnect."
+        f" Note that the reconnect ITSELF sends nothing that would repaint it",
+        flush=True,
+    )
     await asyncio.sleep(WATCH_SECONDS)
-    print("  NOTE FOR THE FUTURE: magenta is now most likely the panel's flash/boot state."
-          " If a power-cycle days from now comes up MAGENTA, that is the multi-day result;"
-          " if it comes up rainbow, the 3-day claim is stale.", flush=True)
+    print(
+        "  NOTE FOR THE FUTURE: magenta is now most likely the panel's flash/boot state."
+        " If a power-cycle days from now comes up MAGENTA, that is the multi-day result;"
+        " if it comes up rainbow, the 3-day claim is stale.",
+        flush=True,
+    )
 
 
 async def main() -> None:
@@ -448,8 +482,9 @@ async def main() -> None:
         print("\nverdict to record:", flush=True)
         print("  turn_on restored: PRIOR MODE / CLOCK / FLASH STATE (rainbow).", flush=True)
         print("  while off: which families acked, and did 99|99 appear on turn_on?", flush=True)
-        print("  chronograph.start onto a paused countdown: HIJACK (counts down) or"
-              " INDEPENDENT (counts up)?", flush=True)
+        print(
+            "  chronograph.start onto a paused countdown: HIJACK (counts down) or INDEPENDENT (counts up)?", flush=True
+        )
         print("  which command finally cleared the timer state.", flush=True)
         print("  magenta across the disconnect: SURVIVED / REVERTED (and when).", flush=True)
 

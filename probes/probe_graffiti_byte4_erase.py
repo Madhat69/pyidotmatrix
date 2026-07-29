@@ -85,11 +85,11 @@ def build_raw_graffiti(color: tuple[int, int, int], xys: list[tuple[int, int]], 
     size = _HEADER_SIZE + 2 * len(xys)
     payload = bytearray(
         [
-            size % 256,   # length LSB
+            size % 256,  # length LSB
             size // 256,  # length MSB (0 or 1)
-            5,            # graffiti mode
-            1,            # byte 3 -- the only value the device draws for
-            byte4,        # byte 4 under test (4-7 unmapped)
+            5,  # graffiti mode
+            1,  # byte 3 -- the only value the device draws for
+            byte4,  # byte 4 under test (4-7 unmapped)
             red,
             green,
             blue,

@@ -141,9 +141,9 @@ SPEED_SLOW = 5
 RHYTHM_HEADER = bytes([0x21, 0x00, 0x01, 0x02, 0x00])
 MIC_TYPE_FRAME = bytearray([0x06, 0x00, 0x0B, 0x80, 0x01, 0x64])
 
-BAND_COUNT = 8          # bands the app computes before mirroring
-LEVEL_BYTES = 16        # bands mirrored into a palindrome
-LEVEL_MAX = 13          # 0x0D, the highest level observed from the device
+BAND_COUNT = 8  # bands the app computes before mirroring
+LEVEL_BYTES = 16  # bands mirrored into a palindrome
+LEVEL_MAX = 13  # 0x0D, the highest level observed from the device
 STREAM_HZ = 10
 STREAM_SECONDS = 12
 
@@ -171,10 +171,7 @@ def mirrored_levels(tick: int) -> list[int]:
     the bands sweep the full observed range out of phase with each other -- a
     travelling wave is far easier to see on the panel than random noise.
     """
-    bands = [
-        max(0, min(LEVEL_MAX, int(6.5 + 6.5 * math.sin(tick / 3 + i * 0.8))))
-        for i in range(BAND_COUNT)
-    ]
+    bands = [max(0, min(LEVEL_MAX, int(6.5 + 6.5 * math.sin(tick / 3 + i * 0.8)))) for i in range(BAND_COUNT)]
     return bands + bands[::-1]
 
 

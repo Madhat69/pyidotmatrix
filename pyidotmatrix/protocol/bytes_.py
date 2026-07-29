@@ -33,7 +33,7 @@ def short_to_bytes_le(value: int) -> bytearray:
 
 def chunk_by_size(data: bytearray | bytes, chunk_size: int) -> list[bytearray]:
     """Splits data into consecutive chunks of at most chunk_size bytes."""
-    return [bytearray(data[i:i + chunk_size]) for i in range(0, len(data), chunk_size)]
+    return [bytearray(data[i : i + chunk_size]) for i in range(0, len(data), chunk_size)]
 
 
 def split_into_ble_packets(data: bytearray | bytes, mtu_enabled: bool = True) -> list[bytearray]:

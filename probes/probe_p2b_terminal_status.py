@@ -211,8 +211,10 @@ async def one_upload(client: IDotMatrixClient, log: StatusLog, label: str, data:
 
     statuses = log.since(mark)
     terminal = statuses[-1] if statuses else None
-    print(f"  {label}: {len(statuses)} status ack(s) in {elapsed:.2f}s, "
-          f"sequence={statuses}, TERMINAL={terminal}", flush=True)
+    print(
+        f"  {label}: {len(statuses)} status ack(s) in {elapsed:.2f}s, sequence={statuses}, TERMINAL={terminal}",
+        flush=True,
+    )
     if error:
         print(f"    upload raised: {error}", flush=True)
     return {"label": label, "statuses": statuses, "terminal": terminal, "error": error}

@@ -12,8 +12,8 @@ from PIL import Image, ImageOps
 
 
 class ResizeMode(Enum):
-    FIT = "fit"        # keep aspect ratio, letterbox with background
-    FILL = "fill"      # keep aspect ratio, crop overflow
+    FIT = "fit"  # keep aspect ratio, letterbox with background
+    FILL = "fill"  # keep aspect ratio, crop overflow
     STRETCH = "stretch"  # ignore aspect ratio
 
 

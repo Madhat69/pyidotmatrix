@@ -14,9 +14,9 @@ class TransportSnapshot:
 
     address: str | None
     is_connected: bool
-    write_size: int | None         # negotiated no-response write size; None until first write
-    reconnect_count: int              # successful reconnects since creation
-    last_failure: str | None       # human-readable, most recent
+    write_size: int | None  # negotiated no-response write size; None until first write
+    reconnect_count: int  # successful reconnects since creation
+    last_failure: str | None  # human-readable, most recent
     last_failure_at: float | None  # unix time of last_failure
 
 

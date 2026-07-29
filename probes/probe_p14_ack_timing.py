@@ -311,8 +311,11 @@ async def main() -> None:
             await asyncio.sleep(QUIET_SECONDS)
             window = acks[mark:]
 
-            print(f"  [{family}] repeat {repeat}/{REPEATS}: write completed in "
-                  f"{t_written - t_start:.3f}s, expected ack key {expected}", flush=True)
+            print(
+                f"  [{family}] repeat {repeat}/{REPEATS}: write completed in "
+                f"{t_written - t_start:.3f}s, expected ack key {expected}",
+                flush=True,
+            )
 
             seen: set[tuple[int, int, int]] = set()
             duplicates = 0
@@ -332,22 +335,25 @@ async def main() -> None:
                 if ack_key(ack) != expected:
                     unexpected += 1
                     tag += "  <UNEXPECTED KEY>"
-                print(f"      +{latency:6.3f}s after write "
-                      f"(+{t - t_start:6.3f}s after send start)  {describe(ack)}{tag}", flush=True)
+                print(
+                    f"      +{latency:6.3f}s after write (+{t - t_start:6.3f}s after send start)  {describe(ack)}{tag}",
+                    flush=True,
+                )
 
             if not window:
                 # Silence is a result, not an absence of one -- but only across
                 # all 5 repeats does it mean fire-and-forget. Say so loudly here
                 # and let the summary decide.
-                print(f"      *** NO ACKS in {QUIET_SECONDS:.0f}s *** -- record this, it is a result",
-                      flush=True)
+                print(f"      *** NO ACKS in {QUIET_SECONDS:.0f}s *** -- record this, it is a result", flush=True)
 
-            results.setdefault(family, []).append({
-                "first_latency": first_latency,
-                "acks": len(window),
-                "duplicates": duplicates,
-                "unexpected": unexpected,
-            })
+            results.setdefault(family, []).append(
+                {
+                    "first_latency": first_latency,
+                    "acks": len(window),
+                    "duplicates": duplicates,
+                    "unexpected": unexpected,
+                }
+            )
 
         async def run_family(label_value: int, family: str, expected: tuple[int, int], make_send) -> None:
             """Label the panel once, then run REPEATS measured sends."""
@@ -376,31 +382,41 @@ async def main() -> None:
 
         # --- family 10: a config command known to ack, valid value -------------
         await run_family(
-            10, "brightness 50 (valid)", (4, 128),
+            10,
+            "brightness 50 (valid)",
+            (4, 128),
             lambda repeat: lambda: client.device.set_brightness(50),
         )
 
         # --- family 20: same command, out of the firmware's 5..100 range -------
         await run_family(
-            20, "brightness 200 (out of range)", (4, 128),
+            20,
+            "brightness 200 (out of range)",
+            (4, 128),
             lambda repeat: lambda: client.device._send(OUT_OF_RANGE_BRIGHTNESS_FRAME, verify=False),
         )
 
         # --- family 30: native mode entry (type 10, subtype 128) ---------------
         await run_family(
-            30, "scoreboard.show", (10, 128),
+            30,
+            "scoreboard.show",
+            (10, 128),
             lambda repeat: lambda: client.scoreboard.show(repeat, 30),
         )
 
         # --- family 40: effect command, the app-exact captured frame -----------
         await run_family(
-            40, "effect (app-exact frame)", (3, 2),
+            40,
+            "effect (app-exact frame)",
+            (3, 2),
             lambda repeat: lambda: client.effect._send(APP_EFFECT_FRAME, verify=False),
         )
 
         # --- family 50: clock ---------------------------------------------------
         await run_family(
-            50, "clock.show", (6, 1),
+            50,
+            "clock.show",
+            (6, 1),
             lambda repeat: lambda: client.clock.show(),
         )
 
@@ -412,7 +428,9 @@ async def main() -> None:
         client.display.invalidate_diy_mode()
         frame_colors = [(200, 0, 0), (0, 200, 0), (0, 0, 200), (200, 200, 0), (0, 200, 200)]
         await run_family(
-            60, "full DIY frame", (0, 0),
+            60,
+            "full DIY frame",
+            (0, 0),
             lambda repeat: lambda: client.display.show_frame(make_marked_frame(frame_colors[repeat - 1])),
         )
 
@@ -422,7 +440,9 @@ async def main() -> None:
         # handshake. time.time() makes the seeds novel across runs too.
         seed_base = int(time.time())
         await run_family(
-            70, "gif upload (chunked)", (1, 0),
+            70,
+            "gif upload (chunked)",
+            (1, 0),
             lambda repeat: lambda: client.gif.upload_bytes(make_noise_gif(seed_base + repeat)),
         )
 
@@ -445,14 +465,14 @@ async def main() -> None:
                 hi = f"{max(latencies):7.3f}"
             else:
                 lo = mean = hi = "      -"
-            print(f"{family:32} {len(records):>2} {lo} {mean} {hi} {total_acks:>5} {duplicates:>4} "
-                  f"{silences:>7}", flush=True)
+            print(
+                f"{family:32} {len(records):>2} {lo} {mean} {hi} {total_acks:>5} {duplicates:>4} {silences:>7}",
+                flush=True,
+            )
             if unexpected:
-                print(f"{'':32} ^ {unexpected} unexpected-key ack(s) -- see the per-repeat log above",
-                      flush=True)
+                print(f"{'':32} ^ {unexpected} unexpected-key ack(s) -- see the per-repeat log above", flush=True)
 
-        print(f"\nfull ack log: {len(acks)} notification(s) captured across the whole run "
-              f"(never cleared).", flush=True)
+        print(f"\nfull ack log: {len(acks)} notification(s) captured across the whole run (never cleared).", flush=True)
         print("\nverdict to record:", flush=True)
         print("  any family with max > 2.0s  => await_device_ack's 2.0s default times out on a", flush=True)
         print("                                 HEALTHY device. Live SDK bug; this number is the fix.", flush=True)

@@ -77,9 +77,10 @@ def build_show(
     size = 7 + len(components)
     return bytearray(
         [
-            size % 256,   # length LSB
+            size % 256,  # length LSB
             size // 256,  # length MSB (0 across the whole legal range)
-            3, 2,
+            3,
+            2,
             style % 256,
             speed,
             len(colors) % 256,
@@ -125,6 +126,6 @@ def build_show_packets(
 
     packets: list[bytearray] = []
     for index, start in enumerate(range(0, len(flat), chunk_payload)):
-        chunk = flat[start:start + chunk_payload]
+        chunk = flat[start : start + chunk_payload]
         packets.append(bytearray([len(chunk) + 1, index]) + chunk)
     return packets

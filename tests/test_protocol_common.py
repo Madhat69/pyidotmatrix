@@ -66,8 +66,16 @@ def test_set_time_tz_aware_converts_via_astimezone():
     expected_local = when.astimezone()
     payload = common.build_set_time(when)
     assert payload[:8] == bytearray(
-        [11, 0, 1, 128, expected_local.year % 100, expected_local.month, expected_local.day,
-         expected_local.weekday() + 1]
+        [
+            11,
+            0,
+            1,
+            128,
+            expected_local.year % 100,
+            expected_local.month,
+            expected_local.day,
+            expected_local.weekday() + 1,
+        ]
     )
     assert payload[8:] == bytearray([expected_local.hour, expected_local.minute, expected_local.second])
 
@@ -103,6 +111,4 @@ def test_set_time_indicator_payload():
 
 
 def test_delete_device_data_payload():
-    assert common.build_delete_device_data() == bytearray(
-        [17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-    )
+    assert common.build_delete_device_data() == bytearray([17, 0, 2, 1, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
