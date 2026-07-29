@@ -174,9 +174,14 @@ await client.chronograph.resume()
 ```
 
 Caveat: starting after a pause **restarts from zero** rather than resuming —
-hardware-observed, not an SDK bug. Chronograph and countdown share
-device-side timer state; a paused countdown can be affected by chronograph
-commands.
+hardware-observed, not an SDK bug. Chronograph and countdown share some
+device-side timer state, but be careful with the specifics: an earlier report
+that a paused countdown gets hijacked (resumed) by a chronograph command was
+retested label-free and **falsified** for the one ordering that's actually
+been tried (`countdown.start` → `countdown.pause` → `chronograph.start`) —
+`chronograph.start()` always begins at zero, never inheriting the countdown's
+paused value. Only that ordering is tested, so treat other interleavings as
+unknown rather than assuming they're equally safe.
 
 ## `countdown` — timer
 

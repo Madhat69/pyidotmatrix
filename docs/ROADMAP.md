@@ -68,6 +68,19 @@ conventions above):
 | Experimental namespace | ❓/⚠ | verify_password, time-indicator, delete-device-data (destructive) |
 | Simulator | ✅ *(partial fidelity)* | framebuffer semantics faithful; no ack/DIY-mode modeling yet (§7) |
 
+**How to read the rest of this document.** This is the original architecture
+review, frozen at its 2026-07-20 preparation date — §§1–16 below describe the
+codebase and evidence as understood *then*. Later hardware work is layered on
+as dated "Status" addenda attached to the relevant milestone in §17, not as
+silent edits to the original review text, so a detail in §§1–16 (a hardcoded
+byte, an open question, a capability marked ⚠) can read as stale next to a
+newer finding elsewhere. The table above is current as of its own last edit;
+for the single always-current answer on any specific capability, prefer
+[Hardware Compatibility](hardware-compatibility.md) /
+`pyidotmatrix/capabilities.py` over this document's original prose — that
+table is the one place status tags are actively maintained rather than
+recorded as a point-in-time snapshot.
+
 ---
 
 ## Contributor philosophy
@@ -520,7 +533,7 @@ Known variation axes (all evidence 32×32 unless noted):
 | Screen-timeout family unsupported on this 32×32 | probe 2026-07-12 |
 | `set_time_indicator` "doesn't work" on some models (bytes identical in current APK) | lab note + APK |
 | Graffiti byte-3 semantics (legacy/firmware quirk) | probe 2026-07-12 |
-| Lazy display-state persistence (config-class vs display-class split) | probes 2026-07-12, 07-17, 07-27/28 |
+| Lazy display-state persistence (config-class vs display-class split; the reconnect-survival and power-cut/flash-commit questions are separate, see `docs/protocol-notes.md`) | probes 2026-07-12, 07-17, 07-27/28, 07-29 |
 
 **Strategy recommendation:** a static, versioned **capability table** in the SDK
 (`capabilities(ScreenSize/model) -> frozenset[Capability]`), consulted by

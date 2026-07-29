@@ -37,7 +37,7 @@ capability("text.show").evidence    # the probe/date/source behind that status
 | `display.set_pixels` | ✅ | 32×32 | Graffiti delta path, ~20 ms unacked, ≤255 px/command. Shares the full-frame coordinate space exactly. |
 | `display.diy_entry_no_clear` | ✖ | 32×32 | DIY entry mode 3 silently fails to take over an active effect/clock state — device acks anyway. |
 | `display.diy_quit_keep_frame` | ✅ | 32×32 | Quit mode 2 parks a kept frame that survives clean disconnect, not power-cycle. |
-| `display.persistence_matrix` | ✅ | 32×32 | Displayed mode commits to flash **lazily** — content written and disconnected-from within ~8 s is lost silently; 90 s survives, threshold unbisected. A prior reconnect in the same process also protects it. Config-class state (brightness, RTC, alarms, eco) is unaffected. |
+| `display.persistence_matrix` | ✅ | 32×32 | Displayed mode commits to flash **lazily**, and there are two separate questions with two separate numbers here (settled 2026-07-29, P19 G10–G12) — full account in [Protocol Notes § Persistence](protocol-notes.md#persistence-and-durability). **Surviving a BLE reconnect** (does the active display mode hold?): needs either ~100–180 s of dwell with no prior reconnect, or a prior reconnect earlier in the same session (~10 s of which is already enough). **Surviving a power cut** (the flash commit itself): wall-clock 5 s < t ≤ 10.3 s from the write, independent of link state — allow ~15 s. The 100–180 s figure is a reconnect-only number and must never be quoted for power-cut durability. Config-class state (brightness, RTC, alarms, eco) commits immediately and is unaffected by either. |
 
 ## Native modes
 

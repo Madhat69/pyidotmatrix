@@ -115,6 +115,14 @@ effect, DIY frame) is held in RAM when first written and committed to flash
 **lazily**. A clean BLE disconnect makes the device revert to its **last
 persisted** mode — usually the clock.
 
+Everything in this subsection answers one specific question: **does the
+active display mode survive a BLE reconnect?** That is a different question
+from "does a physical power cut lose my write?", which has its own, much
+smaller number — see
+[The flash commit: surviving a power cut](#the-flash-commit--surviving-a-power-cut)
+below. Keep the two apart; conflating them cost the lab two days of confused
+probing before the numbers below were sorted into the right buckets.
+
 **The practical rule: if you write content and disconnect immediately, expect
 to lose it.** The write is acked, the SDK reports success, and the panel
 reverts anyway. There is no error to catch and nothing the driver can do about
@@ -151,6 +159,45 @@ Multiple clients *can* share a panel without one stealing the other's content,
 but the reason is dwell, not ownership — there is no per-client scoping in
 this firmware.
 
+### The flash commit — surviving a power cut
+
+Separate question, separate clock. Everything above is about the *active
+display mode* reasserting after a **BLE reconnect**. This section is about
+whether a write is actually in flash before a **power cut** — pulling the
+plug, not just dropping the link.
+
+**Settled 2026-07-29 (`probes/probe_p19_g10_advert_watch.py` through
+`probe_p19_g12_*.py`): the commit runs on wall-clock time from the write,
+5 s < t ≤ 10.3 s, and the BLE link state — connected, cleanly disconnected, or
+yanked mid-session — does not matter.** The instrument that made this
+measurable: the panel advertises at ~9 Hz whenever it's powered and *not*
+connected, so a BLE scanner left running after the disconnect sees the power
+cut arrive, pinning it to the last advertisement (~110 ms typical, ~2.1 s
+worst case). That turns an otherwise-uncontrolled interval (the operator's own
+reaction time pulling the plug) into a measured one.
+
+| Trial | Write → power cut | Clean disconnect first? | Committed? |
+|---|---|---|---|
+| G12 yellow | < 5 s | yes | no |
+| G12 magenta | ~10.3 s | yes | yes |
+| G11 white | 47.9 s (only 2.1 s of that connected) | yes | yes |
+| G12 cyan | ~69 s | no — the plug killed a live link | yes |
+
+The white and cyan rows are what make this a wall-clock result rather than a
+dwell result: white committed after only 2.1 s of link-up time, and cyan
+committed with no clean teardown at all. Neither time-connected nor a clean
+disconnect is required — only elapsed time since the write.
+
+**Do not quote the 100–180 s dwell figure above for power-cut durability — it
+answers the reconnect question, not this one.** A reconnect can only read the
+*active display mode*; only a power cycle reads *flash*. Two probe sessions
+conflated the two before this was sorted out; see `docs/PROBE_PLAN.md` P19
+"THE FLASH COMMIT" for the full account, including which earlier readings that
+retracts.
+
+**Caller guidance: leave about 15 seconds between your last write and any
+power loss, connected or not, and the content is in flash.**
+
 ### Recovery: re-activate, don't re-transfer
 
 When a GIF is lost this way, **only the current-mode pointer is gone — the
@@ -175,6 +222,12 @@ lost frame has to be re-sent.
 | GIF / text | ✅ once persisted; otherwise recoverable with `activate_stored()` | payload ✅, mode pointer follows the lazy rule |
 | Clock | reverts to the clock — undetectable either way | ❌ |
 | DIY framebuffer | ❌ (reverts in ~2 s) — **unless** quit mode 2 (keep-frame) was used, in which case the kept frame survives a clean disconnect | ❌ (never) |
+
+"Once persisted" in the table above means the flash commit has had time to
+run — see
+[The flash commit: surviving a power cut](#the-flash-commit--surviving-a-power-cut):
+allow ~15 s, not the ~3 minutes the reconnect-dwell figure above might suggest.
+The two clocks are unrelated.
 
 *How* a connection ends also matters: a clean disconnect reverts an unparked
 DIY frame within about 2 seconds; an abrupt link loss (radio drop, crash)
