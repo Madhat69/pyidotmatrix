@@ -278,11 +278,11 @@ async def phase_power_restore(client: IDotMatrixClient, log: AckLog) -> None:
           f" ({WATCH_SECONDS}s)", flush=True)
     await asyncio.sleep(WATCH_SECONDS)
 
-    await timed(client.common.turn_off, log, "turn_off")
+    await timed(client.device.turn_off, log, "turn_off")
     print(f"  screen off for {OFF_SECONDS}s -- confirm it is actually dark", flush=True)
     await asyncio.sleep(OFF_SECONDS)
 
-    await timed(client.common.turn_on, log, "turn_on")
+    await timed(client.device.turn_on, log, "turn_on")
     print(f"  WATCH ({LONG_WATCH_SECONDS}s): RED/BLUE SPLIT => turn_on restores the prior mode."
           f" CLOCK => it resets to clock. RAINBOW => it falls back to the flash state", flush=True)
     await asyncio.sleep(LONG_WATCH_SECONDS)
@@ -306,17 +306,17 @@ async def phase_commands_while_off(client: IDotMatrixClient, log: AckLog) -> Non
     await client.clock.show()
     await asyncio.sleep(3)
 
-    await timed(client.common.turn_off, log, "turn_off")
+    await timed(client.device.turn_off, log, "turn_off")
     print("  screen off. Sending three command families into the dark ...", flush=True)
 
-    await timed(lambda: client.common.set_brightness(60), log, "set_brightness(60) while OFF")
+    await timed(lambda: client.device.set_brightness(60), log, "set_brightness(60) while OFF")
     await timed(client.clock.show, log, "clock.show() while OFF")
     await timed(lambda: client.scoreboard.show(OFF_MARKER, OFF_MARKER), log,
                 f"scoreboard.show({OFF_MARKER}, {OFF_MARKER}) while OFF")
     print("  did the panel light up at any point during those three? (it should not)", flush=True)
     await asyncio.sleep(3)
 
-    await timed(client.common.turn_on, log, "turn_on")
+    await timed(client.device.turn_on, log, "turn_on")
     print(f"  WATCH ({LONG_WATCH_SECONDS}s): {OFF_MARKER} | {OFF_MARKER} on the panel => commands"
           f" sent to an OFF screen ARE executed, into an invisible framebuffer."
           f" Clock or anything else => display commands were swallowed while off", flush=True)
@@ -362,11 +362,11 @@ async def phase_timer_state_machine(client: IDotMatrixClient, log: AckLog) -> No
     # phase -- so a verified-safe common.reset() follows it. Leaving an armed
     # countdown behind is exactly the contamination that forced
     # probe_chronograph_clean.py to exist.
-    print("\n  clearing timer state: countdown.stop, chronograph.reset, then common.reset", flush=True)
+    print("\n  clearing timer state: countdown.stop, chronograph.reset, then device.reset", flush=True)
     for label, call in (
         ("countdown.stop", client.countdown.stop),
         ("chronograph.reset", client.chronograph.reset),
-        ("common.reset", client.common.reset),
+        ("device.reset", client.device.reset),
     ):
         try:
             await call()
@@ -423,7 +423,7 @@ async def main() -> None:
         # from a device with no timer state pending. Nothing experimental used.
         try:
             print("resetting device to a known state ...", flush=True)
-            await client.common.reset()
+            await client.device.reset()
             await asyncio.sleep(4)
             await client.clock.show()
             await asyncio.sleep(3)
@@ -455,7 +455,7 @@ async def main() -> None:
 
         unsubscribe()
         try:
-            await client.common.set_brightness(100)
+            await client.device.set_brightness(100)
             await client.clock.show()
             print("clock restored. done.", flush=True)
         except Exception as ex:

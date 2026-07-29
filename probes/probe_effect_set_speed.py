@@ -21,15 +21,15 @@ async def main() -> None:
         print("STEP 0: effect style4 running at its default pace -- watch (6s)", flush=True)
         await asyncio.sleep(6)
 
-        await client.common.set_speed(5)
+        await client.device.set_speed(5)
         print("STEP 1: set_speed(5) sent mid-effect -- did it SLOW DOWN? (8s)", flush=True)
         await asyncio.sleep(8)
 
-        await client.common.set_speed(100)
+        await client.device.set_speed(100)
         print("STEP 2: set_speed(100) sent -- did it SPEED UP? (8s)", flush=True)
         await asyncio.sleep(8)
 
-        await client.common.set_speed(50)
+        await client.device.set_speed(50)
         print("STEP 3: set_speed(50) -- middle pace? (6s)", flush=True)
         await asyncio.sleep(6)
 

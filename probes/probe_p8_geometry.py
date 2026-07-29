@@ -109,7 +109,7 @@ async def main() -> None:
         await asyncio.sleep(10)
 
         await countdown("PHASE C (flip ON + resend frame)", "where did the RED corner go?")
-        await client.common.set_screen_flipped(True)
+        await client.device.set_screen_flipped(True)
         await client.display.show_frame(frame)
         print(
             "C: if flip=180deg rotation, RED lands bottom-right and YELLOW px lower-right area.\n"
@@ -124,7 +124,7 @@ async def main() -> None:
         await asyncio.sleep(10)
 
         print("\ncleanup: flip off, clock restored.", flush=True)
-        await client.common.set_screen_flipped(False)
+        await client.device.set_screen_flipped(False)
         await client.clock.show()
 
 

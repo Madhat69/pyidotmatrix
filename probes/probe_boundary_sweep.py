@@ -187,7 +187,7 @@ async def main() -> None:
                 except Exception as exc:  # noqa: BLE001 -- keep the ladder alive
                     print(f"  A brightness={value} FAILED: {exc!r}", flush=True)
             print("\nPHASE A restore: brightness 60 via the normal API.", flush=True)
-            await client.common.set_brightness(60)
+            await client.device.set_brightness(60)
             report_acks("A restore=60")
             await asyncio.sleep(3)
         except Exception as exc:  # noqa: BLE001

@@ -505,7 +505,7 @@ async def main(font_path: str | None, requested_sizes: tuple[int, ...], overrequ
         # --- baseline ---------------------------------------------------------
         try:
             print("resetting device to a known state ...", flush=True)
-            await client.common.reset()
+            await client.device.reset()
             await asyncio.sleep(4)
             await client.clock.show()
             await asyncio.sleep(3)

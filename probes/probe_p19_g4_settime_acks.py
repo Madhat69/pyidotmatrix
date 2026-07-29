@@ -119,9 +119,9 @@ NOT a hang hazard: transport.await_device_ack returns None on a bounded timeout
 by design. But it cost the FULL _DEFAULT_ACK_TIMEOUT (2.0 s, transport/ble.py)
 on every call, and set_time is typically a caller's first write of every
 connection -- so every startup, reconnect and self-heal silently paid it.
-CONSEQUENCE, implemented: IDotMatrixClient.common.set_time is now fire-and-
+CONSEQUENCE, implemented: IDotMatrixClient.device.set_time is now fire-and-
 forget (verify=False), alongside graffiti and verify_password. Full account in
-capabilities.py's common.set_time and common.ack_timing.
+capabilities.py's device.set_time and device.ack_timing.
 """
 
 import asyncio
@@ -317,7 +317,7 @@ async def main(sequence: str) -> None:
                       f"(expect on panel: {expected if half == 'armed' else 'clock face'})",
                       flush=True)
                 counts[half][label] = await send_and_count(f"set_time [{half}]",
-                                                           client.common.set_time(target))
+                                                           client.device.set_time(target))
                 await asyncio.sleep(max(0.0, WATCH_SECONDS - SETTLE_SECONDS))
 
         gif_payload = build_theme_gif(client.screen_size.width)
@@ -336,7 +336,7 @@ async def main(sequence: str) -> None:
                 # is armed against the same day it will be evaluated on.
                 await send_and_count("set_time -> fabricated day, pre-arm (NOT one of the three "
                                      "measured jumps)",
-                                     client.common.set_time(fake_datetime(HIT_WEEKDAY, clock_time(12, 0))))
+                                     client.device.set_time(fake_datetime(HIT_WEEKDAY, clock_time(12, 0))))
                 theme = make_theme(GIF_THEME_INDEX, [HIT_WEEKDAY], WINDOW_START, WINDOW_END)
                 print(f"  arming theme {GIF_THEME_INDEX}: RAW week=0b{theme.week:08b} -> patched "
                       f"0b{schedule.patch_week(theme.week):08b}, window "
@@ -363,7 +363,7 @@ async def main(sequence: str) -> None:
             print("\n--- cleanup ---", flush=True)
             try:
                 real_now = datetime.now()
-                await client.common.set_time(real_now)
+                await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
                 print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."

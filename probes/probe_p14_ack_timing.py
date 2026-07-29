@@ -66,10 +66,10 @@ rather than a single sample:
     60     full DIY frame (display)        (0, 0)    DeviceAck
     70     GIF upload (chunked)            (1, 0)    StatusAck x N
 
-Brightness 200 cannot be sent through client.common.set_brightness: the SDK's
+Brightness 200 cannot be sent through client.device.set_brightness: the SDK's
 validate_brightness raises ValueError at 5..100 before any bytes are built. The
 frame is therefore hand-built -- bytearray([5, 0, 4, 128, 200]) -- and pushed
-through client.common._send(verify=False), the same technique the effect sweep
+through client.device._send(verify=False), the same technique the effect sweep
 used to put a malformed frame back on the wire. The firmware's own range
 enforcement is the thing under test, and the SDK guard would hide it.
 
@@ -366,7 +366,7 @@ async def main() -> None:
         # Known-state entry: reset (04 00 03 80, non-destructive), settle, clock.
         try:
             print("resetting device to a known state ...", flush=True)
-            await client.common.reset()
+            await client.device.reset()
             await asyncio.sleep(4)
             await client.clock.show()
             await asyncio.sleep(3)
@@ -377,13 +377,13 @@ async def main() -> None:
         # --- family 10: a config command known to ack, valid value -------------
         await run_family(
             10, "brightness 50 (valid)", (4, 128),
-            lambda repeat: lambda: client.common.set_brightness(50),
+            lambda repeat: lambda: client.device.set_brightness(50),
         )
 
         # --- family 20: same command, out of the firmware's 5..100 range -------
         await run_family(
             20, "brightness 200 (out of range)", (4, 128),
-            lambda repeat: lambda: client.common._send(OUT_OF_RANGE_BRIGHTNESS_FRAME, verify=False),
+            lambda repeat: lambda: client.device._send(OUT_OF_RANGE_BRIGHTNESS_FRAME, verify=False),
         )
 
         # --- family 30: native mode entry (type 10, subtype 128) ---------------

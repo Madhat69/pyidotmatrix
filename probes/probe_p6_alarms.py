@@ -356,7 +356,7 @@ async def main(mode: str) -> None:
         async def set_rtc(offset: timedelta, note: str) -> None:
             spoofed = device_now(offset)
             await send_and_report(f"set_time -> {spoofed:%Y-%m-%d %H:%M:%S} ({note})",
-                                  client.common.set_time(spoofed))
+                                  client.device.set_time(spoofed))
 
         async def label_phase(number: int, expected_fires: int, text: str) -> None:
             print(f"\n=== PHASE {number} -- scoreboard {number} | {expected_fires} -- {text}", flush=True)
@@ -394,7 +394,7 @@ async def main(mode: str) -> None:
             if mode != "check":
                 try:
                     print("resetting device to a known state ...", flush=True)
-                    await client.common.reset()
+                    await client.device.reset()
                     await asyncio.sleep(4)
                     await client.clock.show()
                     await asyncio.sleep(3)
@@ -550,7 +550,7 @@ async def main(mode: str) -> None:
             print("\n--- cleanup ---", flush=True)
             try:
                 real_now = datetime.now()
-                await client.common.set_time(real_now)
+                await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
                 print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."

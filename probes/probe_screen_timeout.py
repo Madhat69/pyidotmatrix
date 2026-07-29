@@ -50,7 +50,7 @@ async def main(mac: str | None, value: int) -> None:
             )
 
         print(f"\n--- set_screen_timeout({value}) ---")
-        await client.common.set_screen_timeout(value)
+        await client.device.set_screen_timeout(value)
         print(
             f"VISUAL CHECK: watch the panel. Does it dim or turn off after approximately "
             f"{value} seconds? {value} minutes? Something else entirely? Time it with a "

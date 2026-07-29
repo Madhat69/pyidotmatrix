@@ -4,7 +4,7 @@ build_verify_password's bytes are confirmed from the APK, but the shape of the
 device's reply was never observed (see docs/APK_PROTOCOL_FINDINGS.md, finding #1).
 This probe sends it and prints the raw fa03 ack bytes so that shape can be
 recorded -- ideally run twice: once with a password that matches one already set
-via client.common.set_password(), and once with a wrong one, to see whether
+via client.device.set_password(), and once with a wrong one, to see whether
 accepted flips between the two.
 
 Usage:

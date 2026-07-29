@@ -576,7 +576,7 @@ class GifFeature(_Feature):
         return result.outcome is _UploadOutcome.SAVED
 
 
-class CommonFeature(_Feature):
+class DeviceFeature(_Feature):
     async def set_brightness(self, percent: int) -> None:
         await self._send(common.build_set_brightness(percent))
 
@@ -661,7 +661,7 @@ class ExperimentalFeature(_Feature):
     """Unverified-on-hardware and/or destructive commands.
 
     Bytes are confirmed from APK decompilation but have not been exercised
-    against real reference hardware. Prefer the stable namespaces (client.common,
+    against real reference hardware. Prefer the stable namespaces (client.device,
     etc.) unless you specifically need one of these.
     """
 
@@ -729,7 +729,7 @@ class ExperimentalFeature(_Feature):
         pre-encoding pixel source, not the wire payload. At fire
         time the panel shows the clock for a few seconds before the alarm's
         content takes over -- expected, not a bug. Set the device's clock
-        (client.common.set_time) before relying on a Timer firing at the
+        (client.device.set_time) before relying on a Timer firing at the
         intended wall-clock time.
         """
         chunks = timer.build_timer_data_packets(timer_obj, payload)
@@ -782,6 +782,7 @@ class IDotMatrixClient:
         self.display = BleDisplay(screen_size, self._transport)
 
         self.chronograph = ChronographFeature(self._transport)
+        self.stopwatch = self.chronograph  # alias: same instance, same transport (no second object)
         self.countdown = CountdownFeature(self._transport)
         self.clock = ClockFeature(self._transport)
         self.scoreboard = ScoreboardFeature(self._transport)
@@ -790,15 +791,16 @@ class IDotMatrixClient:
         self.graffiti = GraffitiFeature(self._transport, screen_size)
         self.effect = EffectFeature(self._transport)
         self.music_sync = MusicSyncFeature(self._transport)
+        self.music = self.music_sync  # alias: same instance, same transport (no second object)
         self.text = TextFeature(self._transport, screen_size)
         self.gif = GifFeature(self._transport, screen_size)
-        self.common = CommonFeature(self._transport)
+        self.device = DeviceFeature(self._transport)
         self.experimental = ExperimentalFeature(self._transport)
 
         self._features = (
             self.chronograph, self.countdown, self.clock, self.scoreboard, self.eco,
             self.color, self.graffiti, self.effect, self.music_sync, self.text,
-            self.gif, self.common, self.experimental,
+            self.gif, self.device, self.experimental,
         )
         if not verify_commands:
             self.set_command_verification(False)

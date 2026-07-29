@@ -78,11 +78,33 @@ async def test_countdown_routes_to_transport_with_ack():
 async def test_all_feature_namespaces_present():
     client, _ = _client()
     for name in (
-        "chronograph", "countdown", "clock", "scoreboard", "eco",
-        "color", "graffiti", "effect", "music_sync", "text", "gif", "common", "display",
+        "chronograph", "stopwatch", "countdown", "clock", "scoreboard", "eco",
+        "color", "graffiti", "effect", "music_sync", "music", "text", "gif", "device", "display",
         "experimental",
     ):
         assert hasattr(client, name), f"missing namespace: {name}"
+
+
+def test_common_namespace_removed():
+    """The M2 rename dropped `.common` with no back-compat alias: renames are
+    free before the package's first published user, and an alias here would
+    be permanent cruft (see the SDK-M2 rename note in client.py)."""
+    client, _ = _client()
+    assert not hasattr(client, "common")
+
+
+def test_stopwatch_is_chronograph_alias():
+    """`.stopwatch` is a user-facing alias for the protocol-named `.chronograph`
+    namespace -- same instance, same transport, not a second object."""
+    client, _ = _client()
+    assert client.stopwatch is client.chronograph
+
+
+def test_music_is_music_sync_alias():
+    """`.music` is a user-facing alias for the protocol-named `.music_sync`
+    namespace -- same instance, same transport, not a second object."""
+    client, _ = _client()
+    assert client.music is client.music_sync
 
 
 async def test_graffiti_move_type_passes_through():
@@ -164,7 +186,7 @@ async def test_response_listener_registers_with_transport():
 async def test_features_and_display_share_one_transport():
     client, transport = _client()
     await client.chronograph.start()
-    await client.common.set_brightness(50)
+    await client.device.set_brightness(50)
     # both commands went through the same transport instance
     assert len(transport.writes) == 2
     assert client._transport is transport
@@ -172,38 +194,38 @@ async def test_features_and_display_share_one_transport():
 
 async def test_reset_uses_packet_path():
     client, transport = _client()
-    await client.common.reset()
+    await client.device.reset()
     assert len(transport.packet_writes) == 1
 
 
 async def test_verify_password_routes_to_transport():
     client, transport = _client()
-    await client.common.verify_password(123456)
+    await client.device.verify_password(123456)
     assert transport.writes == [(bytes([7, 0, 5, 2, 12, 34, 56]), True)]
 
 
 async def test_set_password_requires_confirm():
     client, transport = _client()
     with pytest.raises(ValueError):
-        await client.common.set_password(123456)
+        await client.device.set_password(123456)
     assert transport.writes == []
 
 
 async def test_set_password_routes_to_transport_when_confirmed():
     client, transport = _client()
-    await client.common.set_password(123456, confirm=True)
+    await client.device.set_password(123456, confirm=True)
     assert transport.writes == [(bytes([8, 0, 4, 2, 1, 12, 34, 56]), True)]
 
 
 async def test_set_screen_timeout_routes_to_transport():
     client, transport = _client()
-    await client.common.set_screen_timeout(30)
+    await client.device.set_screen_timeout(30)
     assert transport.writes == [(bytes([5, 0, 15, 128, 30]), True)]
 
 
 async def test_read_screen_timeout_routes_to_transport():
     client, transport = _client()
-    await client.common.read_screen_timeout()
+    await client.device.read_screen_timeout()
     assert transport.writes == [(bytes([5, 0, 15, 128, 255]), True)]
 
 
@@ -675,7 +697,7 @@ async def test_send_does_not_raise_on_accept():
 async def test_send_does_not_raise_on_missing_ack():
     client, transport = _client()
     transport.next_ack = None  # bounded-timeout "no ack" case
-    await client.common.set_brightness(50)  # must not raise
+    await client.device.set_brightness(50)  # must not raise
 
 
 async def test_status_ack_saved_is_not_a_rejection():
@@ -694,7 +716,7 @@ async def test_set_command_verification_false_suppresses_the_raise():
     client, transport = _client()
     client.set_command_verification(False)
     transport.next_ack = _device_ack(4, 128, accepted=False)  # would nack if awaited
-    await client.common.set_brightness(50)  # fire-and-forget: must not raise
+    await client.device.set_brightness(50)  # fire-and-forget: must not raise
     # written directly (response via write(), not the await_device_ack path)
     assert transport.writes == [(bytes([5, 0, 4, 128, 50]), True)]
 
@@ -703,7 +725,7 @@ async def test_verify_commands_false_constructor_kwarg_suppresses_the_raise():
     transport = FakeTransport()
     transport.next_ack = _device_ack(4, 128, accepted=False)
     client = IDotMatrixClient(ScreenSize.SIZE_32x32, transport=transport, verify_commands=False)
-    await client.common.set_brightness(50)  # must not raise
+    await client.device.set_brightness(50)  # must not raise
 
 
 async def test_verify_password_is_fire_and_forget():
@@ -711,7 +733,7 @@ async def test_verify_password_is_fire_and_forget():
     collides with graffiti's nack (docs/APK_SECOND_PASS.md Q4)."""
     client, transport = _client()
     transport.next_ack = _device_ack(5, 2, accepted=False)  # a colliding graffiti-style nack
-    await client.common.verify_password(123456)  # must not raise despite the nack
+    await client.device.verify_password(123456)  # must not raise despite the nack
     assert transport.writes == [(bytes([7, 0, 5, 2, 12, 34, 56]), True)]
     assert transport.ack_waits == []  # never opened a pending (5, 2) ack wait
 
@@ -731,7 +753,7 @@ async def test_set_time_is_fire_and_forget():
     wait -- doing so burns the transport's 2.0 s timeout on every call."""
     client, transport = _client()
     transport.next_ack = _device_ack(1, 128, accepted=False)  # would raise if awaited
-    await client.common.set_time(datetime(2026, 7, 28, 2, 33, 0))
+    await client.device.set_time(datetime(2026, 7, 28, 2, 33, 0))
     assert transport.ack_waits == []  # never awaited an ack that does not come
     (data, _response), = transport.writes
     assert data[:4] == bytes([11, 0, 1, 128])

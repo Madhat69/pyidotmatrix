@@ -41,12 +41,12 @@ async def main() -> None:
     async with IDotMatrixClient.connect_to(ADDRESS, ScreenSize.SIZE_32x32) as client:
         print("connected (context manager entered).")
 
-        await guarded("flip on", lambda: client.common.set_screen_flipped(True))
+        await guarded("flip on", lambda: client.device.set_screen_flipped(True))
         await step("1. FLIPPED=True  << is the clock upside down?", 5)
-        await guarded("flip off", lambda: client.common.set_screen_flipped(False))
+        await guarded("flip off", lambda: client.device.set_screen_flipped(False))
         await step("2. FLIPPED=False << back to normal?", 4)
 
-        await guarded("freeze", client.common.freeze_screen)
+        await guarded("freeze", client.device.freeze_screen)
         await step("3. FREEZE sent   << did anything visibly change?", 3)
         row = graffiti.build_set_pixels((255, 255, 255), [(x, 16) for x in range(8, 24)])
         await guarded("graffiti row", lambda: client.graffiti._send(row))

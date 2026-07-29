@@ -549,10 +549,10 @@ async def main(sequence: int) -> None:
         # Known-state entry: reset (04 00 03 80, non-destructive), settle, clock.
         try:
             print("resetting device to a known state ...", flush=True)
-            await client.common.reset()
+            await client.device.reset()
             await asyncio.sleep(3)
-            await client.common.turn_on()
-            await client.common.set_brightness(60)
+            await client.device.turn_on()
+            await client.device.set_brightness(60)
             await client.clock.show()
             await asyncio.sleep(3)
             print("baseline: screen on, brightness 60, clock. (visual 1)", flush=True)
@@ -678,12 +678,12 @@ async def main(sequence: int) -> None:
             await step(
                 "MODE 1 of 2 (visual 4): common.turn_off() -- software power off,"
                 " BLE stays connected",
-                lambda: client.common.turn_off(),
+                lambda: client.device.turn_off(),
                 "the panel should go COMPLETELY DARK. BLE stays up.",
             )
             await step(
                 "MODE 2 of 2 (visual 5): common.turn_on()",
-                lambda: client.common.turn_on(),
+                lambda: client.device.turn_on(),
                 "the panel comes back. Per P11 the BLUE frame will NOT return -- native"
                 " modes survive a power cycle, a DIY frame does not -- so expect the clock"
                 " or the last native mode.",
@@ -711,7 +711,7 @@ async def main(sequence: int) -> None:
             if sequence == 4:
                 await client.countdown.stop()
                 await client.chronograph.reset()
-            await client.common.turn_on()
+            await client.device.turn_on()
         except Exception as ex:
             print(f"cleanup FAILED: {ex!r}", flush=True)
         await client.clock.show()

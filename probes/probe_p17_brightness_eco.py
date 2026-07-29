@@ -264,7 +264,7 @@ async def label_phase(client: IDotMatrixClient, code: int, description: str) -> 
 
 async def step_brightness(client: IDotMatrixClient, log: AckLog, percent: int, note: str) -> None:
     sent_at = time.perf_counter()
-    await client.common.set_brightness(percent)
+    await client.device.set_brightness(percent)
     await log.report(f"set_brightness({percent})", sent_at)
     print(f"  WATCH ({WATCH_SECONDS}s): {note}", flush=True)
     await asyncio.sleep(WATCH_SECONDS)
@@ -285,7 +285,7 @@ async def run_mode_phase(
     """
     await label_phase(client, code, f"brightness inside {name}")
 
-    await client.common.set_brightness(BRIGHT)
+    await client.device.set_brightness(BRIGHT)
     await asyncio.sleep(1)
 
     sent_at = time.perf_counter()
@@ -376,7 +376,7 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     # brightness" a falsifiable statement rather than sweep3's ambiguity.
     await label_phase(client, 5, "clock at a KNOWN brightness (100), pre-eco baseline")
     await client.clock.show()
-    await client.common.set_brightness(BRIGHT)
+    await client.device.set_brightness(BRIGHT)
     print(f"  panel should be clock at {BRIGHT}% ({ECO_WATCH_SECONDS}s) -- this is the value eco"
           f" must restore later", flush=True)
     await asyncio.sleep(ECO_WATCH_SECONDS)
@@ -408,7 +408,7 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     print("  eco should be dimming the panel now; sending set_brightness(100) INTO the eco window",
           flush=True)
     sent_at = time.perf_counter()
-    await client.common.set_brightness(BRIGHT)
+    await client.device.set_brightness(BRIGHT)
     await log.report("set_brightness(100) during eco", sent_at)
     print(f"  WATCH ({ECO_WATCH_SECONDS}s): bright => host writes WIN, eco is a one-shot dim."
           f" Still dim (or dims again) => eco CLAMPS", flush=True)
@@ -433,11 +433,11 @@ async def part_b(client: IDotMatrixClient, log: AckLog) -> None:
     # Still inside the eco window: what does the screen power state do with it?
     print("\n  eco + power: turning the screen OFF for 5s, then back ON", flush=True)
     sent_at = time.perf_counter()
-    await client.common.turn_off()
+    await client.device.turn_off()
     await log.report("turn_off during eco", sent_at)
     await asyncio.sleep(5)
     sent_at = time.perf_counter()
-    await client.common.turn_on()
+    await client.device.turn_on()
     await log.report("turn_on during eco", sent_at)
     print(f"  WATCH ({ECO_WATCH_SECONDS}s): back DIM => eco re-applies on wake."
           f" Back BRIGHT => turn_on defeats an active eco window", flush=True)
@@ -455,7 +455,7 @@ async def restore(client: IDotMatrixClient) -> None:
     for label, action in (
         ("eco disabled (window 22:00-06:00, eco brightness 100 -- inert either way)",
          lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100)),
-        (f"brightness {BRIGHT}", lambda: client.common.set_brightness(BRIGHT)),
+        (f"brightness {BRIGHT}", lambda: client.device.set_brightness(BRIGHT)),
         ("clock", lambda: client.clock.show()),
     ):
         try:
@@ -475,7 +475,7 @@ async def main() -> None:
             # settle, clock baseline. Nothing experimental is touched.
             try:
                 print("resetting device to a known state ...", flush=True)
-                await client.common.reset()
+                await client.device.reset()
                 await asyncio.sleep(4)
                 await client.clock.show()
                 await asyncio.sleep(3)

@@ -608,13 +608,13 @@ async def set_effect(client: IDotMatrixClient) -> None:
 
 
 async def set_flip(client: IDotMatrixClient) -> None:
-    await client.common.set_screen_flipped(True)
+    await client.device.set_screen_flipped(True)
     await client.clock.show()
 
 
 async def set_brightness(client: IDotMatrixClient) -> None:
     await client.color.show(WHITE)
-    await client.common.set_brightness(DIM_BRIGHTNESS)
+    await client.device.set_brightness(DIM_BRIGHTNESS)
 
 
 async def set_eco(client: IDotMatrixClient) -> None:
@@ -625,7 +625,7 @@ async def set_eco(client: IDotMatrixClient) -> None:
     eco_brightness on someone's desk all evening.
     """
     await client.color.show(WHITE)
-    await client.common.set_brightness(NEUTRAL_BRIGHTNESS)
+    await client.device.set_brightness(NEUTRAL_BRIGHTNESS)
     start = datetime.now() - timedelta(minutes=2)
     end = start + timedelta(minutes=ECO_WINDOW_MINUTES + 2)
     await client.eco.set_mode(
@@ -639,14 +639,14 @@ async def set_eco(client: IDotMatrixClient) -> None:
 async def set_power(client: IDotMatrixClient) -> None:
     await client.clock.show()
     await asyncio.sleep(1)
-    await client.common.turn_off()
+    await client.device.turn_off()
 
 
 async def set_combo(client: IDotMatrixClient) -> None:
     """flip + brightness + DIY frame, the three states that stay independently
     readable at the same time (see the docstring's ONE PHYSICAL RUN note)."""
-    await client.common.set_screen_flipped(True)
-    await client.common.set_brightness(DIM_BRIGHTNESS)
+    await client.device.set_screen_flipped(True)
+    await client.device.set_brightness(DIM_BRIGHTNESS)
     await client.display.show_frame(build_diy_frame())
 
 
@@ -740,9 +740,9 @@ async def neutralize(client: IDotMatrixClient, acks: AckLog) -> None:
     and every phase entry goes through here, so no row inherits the previous
     row's state."""
     sent_at = time.perf_counter()
-    await client.common.turn_on()
-    await client.common.set_screen_flipped(False)
-    await client.common.set_brightness(NEUTRAL_BRIGHTNESS)
+    await client.device.turn_on()
+    await client.device.set_screen_flipped(False)
+    await client.device.set_brightness(NEUTRAL_BRIGHTNESS)
     # eco_brightness is set high as well as disabled: if the enable bit were
     # ever misread by firmware, the window still could not dim anything.
     await client.eco.set_mode(
@@ -769,9 +769,9 @@ async def interrupt_ble(client: IDotMatrixClient) -> None:
 async def interrupt_power(client: IDotMatrixClient, acks: AckLog, label: str) -> None:
     """The software power off/on interruption -- ONE definition. See interrupt_ble."""
     sent_at = time.perf_counter()
-    await client.common.turn_off()
+    await client.device.turn_off()
     await asyncio.sleep(POWER_OFF_SECONDS)
-    await client.common.turn_on()
+    await client.device.turn_on()
     await asyncio.sleep(SETTLE_SECONDS)
     await acks.settle_and_report(label, sent_at)
 
@@ -811,7 +811,7 @@ async def run_automated(client: IDotMatrixClient, acks: AckLog, rows: tuple[Row,
     else:
         try:
             sent_at = time.perf_counter()
-            await client.common.reset()   # 04 00 03 80, VERIFIED non-destructive
+            await client.device.reset()   # 04 00 03 80, VERIFIED non-destructive
             await asyncio.sleep(4)
             await acks.settle_and_report("reset", sent_at)
         except Exception as ex:

@@ -265,7 +265,7 @@ async def main(mode: str) -> None:
         try:
             try:
                 print("resetting device to a known state ...", flush=True)
-                await client.common.reset()
+                await client.device.reset()
                 await asyncio.sleep(4)
                 await client.clock.show()
                 await asyncio.sleep(3)
@@ -292,7 +292,7 @@ async def main(mode: str) -> None:
             try:
                 base = fake_datetime(HIT_WEEKDAY, ARM_HOUR, ARM_MIN, 0)
                 await send_and_report(f"set_time -> {base:%A %Y-%m-%d %H:%M:%S} (pre-window base)",
-                                      client.common.set_time(base))
+                                      client.device.set_time(base))
 
                 theme = make_theme([HIT_WEEKDAY], WINDOW_START, WINDOW_END)
                 print(f"  arming theme {THEME_INDEX}: RAW week=0b{theme.week:08b} ->"
@@ -321,7 +321,7 @@ async def main(mode: str) -> None:
                 # session drew two. Unexplained and not built on here -- just do
                 # not read a silent set_time as a failed one.
                 await send_and_report(f"set_time -> {jump:%H:%M:%S} (the single jump)",
-                                      client.common.set_time(jump))
+                                      client.device.set_time(jump))
                 await asyncio.sleep(OBSERVE_SECONDS)
             except Exception as ex:
                 print(f"  OBSERVATION FAILED: {ex!r}", flush=True)
@@ -332,7 +332,7 @@ async def main(mode: str) -> None:
             print("\n--- cleanup ---", flush=True)
             try:
                 real_now = datetime.now()
-                await client.common.set_time(real_now)
+                await client.device.set_time(real_now)
                 print(f"RTC RESTORED to true local time {real_now:%A %Y-%m-%d %H:%M:%S}.", flush=True)
             except Exception as ex:
                 print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."

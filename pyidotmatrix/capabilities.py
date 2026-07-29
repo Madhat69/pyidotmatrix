@@ -49,7 +49,7 @@ class CapabilityStatus(Enum):
 class Capability:
     """One row of the capability table.
 
-    feature      client namespace the command lives on (e.g. "text", "common").
+    feature      client namespace the command lives on (e.g. "text", "device").
     command      method or sub-behavior name within that namespace.
     status       see CapabilityStatus.
     screen_size  the panel size the status statement applies to; None means the
@@ -204,7 +204,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "trusted wholesale on this account -- the void cell needs a re-run with DIY's state "
         "re-established between the two interruptions before it can be marked either way. "
         "Cross-validates two other findings from the same session: brightness persisting "
-        "matches common.set_brightness's 'persists until the next brightness command'; eco "
+        "matches device.set_brightness's 'persists until the next brightness command'; eco "
         "persisting matches eco.set_mode's 'autonomous device state'. CORRECTED CROSS-"
         "REFERENCE to P12 (probes/probe_p12_mode_state_machine.py, full five-sequence result -- "
         "see display.invalidate_diy_mode): DIY dying here is NOT explained by 'DIY re-entry is "
@@ -224,7 +224,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "DISPLAY-STATE PERSISTENCE, THE CORRECTED MODEL, 2026-07-28 -- THIS SUPERSEDES AND "
         "RETRACTS 'THE FIRST-CONNECTION SHADOW'. This entry twice named a novel phenomenon for "
         "what is an ALREADY-RECORDED PROPERTY OF THIS PANEL: first a 'reset shadow' blamed on "
-        "common.reset(), then a 'first-connection shadow' scoped to the client session. Both "
+        "device.reset(), then a 'first-connection shadow' scoped to the client session. Both "
         "framings are DISPROVEN and neither is to be repeated. PRIOR ART, in this lab's own "
         "record, cited so it cannot be rediscovered a third time: 2026-07-12 -- 'the device "
         "persists its current native mode to flash LAZILY (dwell somewhere under ~3 min) and "
@@ -329,7 +329,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "SURVIVED' READING IS WITHDRAWN FOR THE SAME REASON, and it is the one that first sent "
         "the model astray; the ladder's 90 s point, run under a valid discriminator, DIED. RULED "
         "OUT as the operative variable: "
-        "common.reset() (`--no-reset` died identically, twice, re-run with no variables changed "
+        "device.reset() (`--no-reset` died identically, twice, re-run with no variables changed "
         "and reproduced exactly); a device power blink over the same link (`--preamble power` "
         "died, so no cheap power-blink mitigation exists); elapsed time BEFORE the write "
         "(`--delay 120` died); GIF-SPECIFIC MACHINERY (`--no-reset color` carries no payload at "
@@ -533,9 +533,9 @@ _ENTRIES: tuple[Capability, ...] = (
         "countdown.restart() after a chronograph, and scoreboard interactions are all "
         "untested, so 'these two are independent for this sequence' is supported while 'no "
         "native timer modes share state' is NOT. Unrelated finding from the same phase: "
-        "common.reset() briefly "
+        "device.reset() briefly "
         "shows a RAINBOW pattern before the clock returns -- the device's flash/boot state "
-        "(see common.reset).",
+        "(see device.reset).",
     ),
     Capability(
         "countdown",
@@ -674,7 +674,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "lowlight modes): a full-white field held at brightness 100/20/10/5 showed NO colour "
         "shift at any level. The RGB channels appear to share a single turn-on threshold "
         "rather than dropping out independently at low brightness. Consequence: the night-mode "
-        "brightness recommendation (target 5-15, see common.set_brightness) stands with NO "
+        "brightness recommendation (target 5-15, see device.set_brightness) stands with NO "
         "colour caveat. This is also the evidence that RETRACTS the earlier claim, previously "
         "recorded on eco.set_mode, that the magenta clock digits seen in an early P17 run were "
         "'traced to the dim brightness level itself' -- that explanation is now EXCLUDED, not "
@@ -703,7 +703,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "display.persistence_matrix). This caveat twice said otherwise -- first blaming a "
         "candidate 'reset shadow' (phase 9 in probes/"
         "probe_p7_odds_and_ends.py runs right after that probe's timer-state-machine cleanup, "
-        "which calls common.reset() shortly before the magenta color.show()), then leaving open "
+        "which calls device.reset() shortly before the magenta color.show()), then leaving open "
         "whether the loss was genuine device-side COLOUR VOLATILITY or a 'first-connection "
         "shadow' -- a model since RETRACTED. All of that is now closed. The reset is not the "
         "variable (`--no-reset` died identically). And the "
@@ -734,7 +734,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "from a dark panel, so callers must not use a near-black colour as a 'barely lit' "
         "signal. (254,254,254) is indistinguishable from full white. (255,0,255) is "
         "saturated magenta as expected. (0,0,0) is a plain black RASTER, NOT a powered-off "
-        "panel -- the panel is still on and still in colour mode, so common.set_power(False) "
+        "panel -- the panel is still on and still in colour mode, so device.set_power(False) "
         "remains the only way to actually turn the display off.",
     ),
     Capability(
@@ -816,7 +816,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "CONFIRMED 2026-07-25 (vendor-app HCI capture, tools/parse_btsnoop.py): byte 5 IS how "
         "the app changes effect speed -- on gesture release it re-sends the WHOLE effect command "
         "[1c 00 03 02 style speed count + count*RGB] with a new byte 5, and never touches "
-        "common.set_speed. HARDWARE-VERIFIED the same day (probes/probe_p1_followups.py group A, "
+        "device.set_speed. HARDWARE-VERIFIED the same day (probes/probe_p1_followups.py group A, "
         "reference 32x32, operator-narrated): the app-exact frame at speed 100 / 5 / 100 ran "
         "SMOOTH / visibly SLOW / SMOOTH again, acked [05 00 03 02 01]. This overturns the "
         "2026-07-21 'no observable rate difference' reading (probes/probe_effect_speed{,2}.py, "
@@ -841,7 +841,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "drew no ack whatsoever', is WITHDRAWN as of run 3. It was an instrumentation bug, not "
         "a device behavior -- run 2 printed its ack report immediately after the send and "
         "cleared the list at the next phase boundary, before the device's ~4.3s reply for an "
-        "effect command had arrived (see common.ack_timing, P14, which measured no silent "
+        "effect command had arrived (see device.ack_timing, P14, which measured no silent "
         "command family at all). Every effect frame sent that night, at either declared "
         "length, in fact acked.",
     ),
@@ -1015,9 +1015,9 @@ _ENTRIES: tuple[Capability, ...] = (
         "interruption, and a probe that activates stored content as a 'decoy' has not persisted "
         "anything by doing so.",
     ),
-    # --- common (device control) ---
+    # --- device (power/brightness/time/password/reset) ---
     Capability(
-        "common",
+        "device",
         "set_brightness",
         CapabilityStatus.VERIFIED,
         _S32,
@@ -1058,7 +1058,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "needs nothing to protect it.",
     ),
     Capability(
-        "common",
+        "device",
         "set_power",
         CapabilityStatus.VERIFIED,
         _S32,
@@ -1075,7 +1075,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "reset-to-clock operation.",
     ),
     Capability(
-        "common",
+        "device",
         "set_time",
         CapabilityStatus.VERIFIED,
         _S32,
@@ -1103,10 +1103,10 @@ _ENTRIES: tuple[Capability, ...] = (
         "a bounded timeout by design -- but awaiting it burned the full _DEFAULT_ACK_TIMEOUT "
         "(2.0 s, transport/ble.py) on EVERY call, and set_time is typically a caller's first write "
         "of every connection, so every startup, reconnect and self-heal silently paid it. See "
-        "common.ack_timing for the scoping of P14's 'no family was ever silent'.",
+        "device.ack_timing for the scoping of P14's 'no family was ever silent'.",
     ),
     Capability(
-        "common",
+        "device",
         "device_id_read",
         CapabilityStatus.SOURCE_DERIVED,
         _S32,
@@ -1117,7 +1117,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "artifacts -- rediscover by UUID rather than hardcoding 0x0007.",
     ),
     Capability(
-        "common",
+        "device",
         "set_screen_flipped",
         CapabilityStatus.VERIFIED,
         _S32,
@@ -1128,7 +1128,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "always stay in canonical unflipped space.",
     ),
     Capability(
-        "common",
+        "device",
         "freeze_screen",
         CapabilityStatus.KNOWN_BROKEN,
         _S32,
@@ -1138,7 +1138,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "Whatever setScreenFreeze controls, it is not visible on our panel.",
     ),
     Capability(
-        "common",
+        "device",
         "set_speed",
         CapabilityStatus.KNOWN_BROKEN,
         _S32,
@@ -1159,7 +1159,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "the text packet's own speed byte for marquee speed -- this command has no known use.",
     ),
     Capability(
-        "common",
+        "device",
         "set_joint",
         CapabilityStatus.UNKNOWN,
         None,
@@ -1167,7 +1167,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "(FEATURE_MATRIX.md Device control; ROADMAP.md section 3 Display).",
     ),
     Capability(
-        "common",
+        "device",
         "set_password",
         CapabilityStatus.SOURCE_DERIVED,
         None,
@@ -1176,7 +1176,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "roadmap by maintainer ruling 2026-07-20 -- lockout risk (ROADMAP.md section 17, SDK-M3).",
     ),
     Capability(
-        "common",
+        "device",
         "verify_password",
         CapabilityStatus.SOURCE_DERIVED,
         None,
@@ -1185,7 +1185,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "Untested by the same maintainer ruling as set_password (ROADMAP.md section 17).",
     ),
     Capability(
-        "common",
+        "device",
         "set_screen_timeout",
         CapabilityStatus.KNOWN_BROKEN,
         _S32,
@@ -1194,7 +1194,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "(ROADMAP.md sections 3 and 9).",
     ),
     Capability(
-        "common",
+        "device",
         "read_screen_timeout",
         CapabilityStatus.KNOWN_BROKEN,
         _S32,
@@ -1202,13 +1202,13 @@ _ENTRIES: tuple[Capability, ...] = (
         "32x32 (probes/probe_screen_timeout.py, 2026-07-12).",
     ),
     Capability(
-        "common",
+        "device",
         "reset",
         CapabilityStatus.VERIFIED,
         _S32,
         "Used live 2026-07-18 to clear a stuck state (ROADMAP.md section 3 Device). BOOT/FLASH "
         "STATE IDENTIFIED 2026-07-27 (P7, probes/probe_p7_odds_and_ends.py, the chronograph/"
-        "countdown branch): after a common.reset(), the panel briefly shows a RAINBOW pattern "
+        "countdown branch): after a device.reset(), the panel briefly shows a RAINBOW pattern "
         "before the clock returns -- the device's flash/boot state, useful as a visual landmark "
         "for 'the device is mid-reset' in future probes. RESET IS EXONERATED, correction "
         "2026-07-27 (see display.persistence_matrix): this entry previously recorded a GIF "
@@ -1219,7 +1219,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "disconnecting a few seconds after one is what is not safe.",
     ),
     Capability(
-        "common",
+        "device",
         "ack_timing",
         CapabilityStatus.VERIFIED,
         _S32,
@@ -1228,7 +1228,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "SDK's own internal ack-await). NO COMMAND FAMILY TESTED WAS SILENT IN P14'S CONDITIONS "
         "-- brightness (valid and out-of-range), scoreboard, effect, clock, a full DIY frame, and "
         "chunked GIF upload all acked on every repeat. SCOPE, and a CONFIRMED EXCEPTION: P14 did "
-        "not test common.set_time at all, and set_time is a genuinely silent family. P19 G4 "
+        "not test device.set_time at all, and set_time is a genuinely silent family. P19 G4 "
         "(probes/probe_p19_g4_settime_acks.py, 2026-07-28) counted ZERO acks on seven RTC jumps "
         "spanning armed and disarmed schedule themes and the master switch both ways, at a 2.5 s "
         "settle -- so 'no command family tested was silent' holds for P14'S SEVEN FAMILIES ONLY "
@@ -1237,7 +1237,7 @@ _ENTRIES: tuple[Capability, ...] = (
         "genuinely unarmed and set_time was silent there too. P5's (probes/probe_p5_schedule.py, "
         "2026-07-27) contrary observation of TWO acks per set_time call with the subsystem idle is "
         "SUPERSEDED by those seven -- probably an ack-attribution artifact rather than a device "
-        "behaviour (see common.set_time). First-ack latency clustered by family: FLAT config/"
+        "behaviour (see device.set_time). First-ack latency clustered by family: FLAT config/"
         "native-mode commands (brightness, scoreboard, clock) replied in roughly 0.13-0.30s; "
         "FULL-FRAME commands (the DIY frame, and the effect command) replied in roughly "
         "0.6-0.9s. This directly RETRACTS the 2026-07-26 'all four 0x0d effect frames drew no "

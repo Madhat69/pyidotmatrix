@@ -366,7 +366,7 @@ async def buzz(client: IDotMatrixClient, log: AckLog, payload: bytes,
     await log.report("buzz slot upload (expect StatusAck status=3 SAVED)", sent_at)
 
     sent_at = time.perf_counter()
-    await client.common.set_time(spoof_datetime(BUZZ_SPOOF_AT))
+    await client.device.set_time(spoof_datetime(BUZZ_SPOOF_AT))
     await log.report(f"RTC -> {BUZZ_SPOOF_AT:%H:%M:%S} (fire in {BUZZ_LEAD_SECONDS}s)", sent_at)
 
     print(f"  buzzer in ~{BUZZ_LEAD_SECONDS}s, then 10s of it. LISTEN -- {meaning}", flush=True)
@@ -391,7 +391,7 @@ async def run_rung(client: IDotMatrixClient, log: AckLog, level: int, run: int) 
     await asyncio.sleep(LABEL_SECONDS)
 
     sent_at = time.perf_counter()
-    await client.common.set_brightness(level)
+    await client.device.set_brightness(level)
     await client.color.show(WHITE)
     await log.report(f"run {run} brightness {level} + white field", sent_at)
 
@@ -453,7 +453,7 @@ async def intermission(client: IDotMatrixClient, log: AckLog, payload: bytes,
 
     try:
         real_now = datetime.now()
-        await client.common.set_time(real_now)
+        await client.device.set_time(real_now)
         print(f"  RTC back to true local time {real_now:%Y-%m-%d %H:%M:%S} before run B.", flush=True)
     except Exception as ex:
         print(f"  *** RTC restore before run B FAILED: {ex!r} -- cleanup will retry ***", flush=True)
@@ -471,7 +471,7 @@ async def restore(client: IDotMatrixClient, armed: list[timer.Timer]) -> None:
     print("\n--- cleanup ---", flush=True)
     try:
         real_now = datetime.now()
-        await client.common.set_time(real_now)
+        await client.device.set_time(real_now)
         print(f"restored: RTC -> true local time {real_now:%A %Y-%m-%d %H:%M:%S}", flush=True)
     except Exception as ex:
         print(f"*** RTC RESTORE FAILED: {ex!r} -- THE PANEL IS STILL ON A SPOOFED DATE."
@@ -487,7 +487,7 @@ async def restore(client: IDotMatrixClient, armed: list[timer.Timer]) -> None:
 
     for label, action in (
         ("countdown stopped", lambda: client.countdown.stop()),
-        (f"brightness {PINNED}", lambda: client.common.set_brightness(PINNED)),
+        (f"brightness {PINNED}", lambda: client.device.set_brightness(PINNED)),
         ("clock", lambda: client.clock.show()),
     ):
         try:
@@ -542,9 +542,9 @@ async def main() -> None:
             # starts from a settled state rather than a transition.
             try:
                 print("\nresetting device to a known state ...", flush=True)
-                await client.common.reset()
+                await client.device.reset()
                 await asyncio.sleep(4)
-                await client.common.set_brightness(PINNED)
+                await client.device.set_brightness(PINNED)
                 await client.color.show(WHITE)
                 await asyncio.sleep(3)
                 print(f"baseline: full-white field at {PINNED}%.", flush=True)

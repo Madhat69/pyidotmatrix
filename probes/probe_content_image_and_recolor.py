@@ -53,7 +53,7 @@ async def main() -> None:
             duration_bucket=timer.DURATION_10S, content_type=timer.CONTENT_IMAGE,
             buzzer_enable=True,
         )
-        await client.common.set_time(datetime.now())
+        await client.device.set_time(datetime.now())
         await client.experimental.timer_set(t, stripes_png(32))
         print(f"alarm armed: CONTENT_IMAGE + PNG payload, fires {fire_at:%H:%M} "
               "(buzzer will sound)", flush=True)

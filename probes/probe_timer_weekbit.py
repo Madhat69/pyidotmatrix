@@ -89,25 +89,25 @@ async def main() -> None:
               f"tomorrow ({tomorrow:%A}) bit={tomorrow_bit:#04x}", flush=True)
 
         # A: real time, today's bit -> must fire
-        await client.common.set_time(datetime.now())  # make sure RTC matches host
+        await client.device.set_time(datetime.now())  # make sure RTC matches host
         await arm_and_wait(client, payload, enable | today_bit,
                            datetime.now(), "TEST A (today's bit, real day)", "FIRE")
 
         # B: spoof tomorrow, same today-bit mask -> must NOT fire
         fake = datetime.now() + timedelta(days=1)
-        await client.common.set_time(fake)
+        await client.device.set_time(fake)
         print(f"RTC spoofed to {fake:%A %H:%M:%S}", flush=True)
         await arm_and_wait(client, payload, enable | today_bit,
                            fake, "TEST B (today's bit, fake tomorrow)", "NO FIRE")
 
         # C: still spoofed tomorrow, tomorrow's bit -> must fire
         fake2 = datetime.now() + timedelta(days=1)
-        await client.common.set_time(fake2)  # resync fake clock before arming
+        await client.device.set_time(fake2)  # resync fake clock before arming
         await arm_and_wait(client, payload, enable | tomorrow_bit,
                            fake2, "TEST C (tomorrow's bit, fake tomorrow)", "FIRE")
 
         # restore reality
-        await client.common.set_time(datetime.now())
+        await client.device.set_time(datetime.now())
         print("RTC restored to real time; slot closed after each test. done.", flush=True)
         await client.clock.show()
 

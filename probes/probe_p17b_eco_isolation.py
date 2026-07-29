@@ -385,7 +385,7 @@ def build_phases(client: IDotMatrixClient, window: tuple[int, int, int, int]):
     """
 
     async def white_at(level: int) -> None:
-        await client.common.set_brightness(level)
+        await client.device.set_brightness(level)
         await client.color.show(WHITE)
 
     async def white_with_eco(enabled: bool, eco_brightness: int) -> None:
@@ -490,7 +490,7 @@ async def restore(client: IDotMatrixClient) -> None:
     for label, action in (
         ("eco disabled (window 22:00-06:00, eco_brightness 100 -- inert either way)",
          lambda: client.eco.set_mode(False, 22, 0, 6, 0, eco_brightness=100)),
-        (f"brightness {PINNED}", lambda: client.common.set_brightness(PINNED)),
+        (f"brightness {PINNED}", lambda: client.device.set_brightness(PINNED)),
         ("clock", lambda: client.clock.show()),
     ):
         try:
@@ -571,10 +571,10 @@ async def main(mode: str) -> None:
             # the white-field calibration and the A/B are.
             try:
                 print("\nresetting device to a known state ...", flush=True)
-                await client.common.reset()
+                await client.device.reset()
                 await asyncio.sleep(4)
                 await client.eco.set_mode(False, *window, eco_brightness=ECO_HIGH)
-                await client.common.set_brightness(PINNED)
+                await client.device.set_brightness(PINNED)
                 await client.color.show(WHITE)
                 await asyncio.sleep(3)
                 print(f"baseline: eco off, full-white field at {PINNED}%.", flush=True)
@@ -594,7 +594,7 @@ async def main(mode: str) -> None:
                     print(f"  (phase {number} recorded) re-pinning brightness to {PINNED} so the"
                           f" A/B halves share a reference", flush=True)
                     try:
-                        await client.common.set_brightness(PINNED)
+                        await client.device.set_brightness(PINNED)
                         await asyncio.sleep(3)
                     except Exception as ex:
                         print(f"  re-pin FAILED: {ex!r}", flush=True)

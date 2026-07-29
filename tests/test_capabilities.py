@@ -11,7 +11,7 @@ from pyidotmatrix.screen import ScreenSize
 # test_client.test_all_feature_namespaces_present).
 CLIENT_NAMESPACES = (
     "chronograph", "countdown", "clock", "scoreboard", "eco",
-    "color", "graffiti", "effect", "music_sync", "text", "gif", "common", "display",
+    "color", "graffiti", "effect", "music_sync", "text", "gif", "device", "display",
     "experimental",
 )
 
@@ -68,8 +68,8 @@ def test_lookup_and_unknown_name():
 
 
 def test_spot_checks_match_the_evidence_record():
-    assert capability("common.set_screen_timeout").status is CapabilityStatus.KNOWN_BROKEN
-    assert capability("common.verify_password").status is CapabilityStatus.SOURCE_DERIVED
+    assert capability("device.set_screen_timeout").status is CapabilityStatus.KNOWN_BROKEN
+    assert capability("device.verify_password").status is CapabilityStatus.SOURCE_DERIVED
     # 2026-07-21 sweep: chunked framing acked but inert on hardware.
     assert capability("effect.show_chunked").status is CapabilityStatus.KNOWN_BROKEN
     # 2026-07-21: byte 3 is not a mirror field -- only 1 draws; the transform
@@ -79,20 +79,20 @@ def test_spot_checks_match_the_evidence_record():
     assert capability("experimental.timer_set").status is CapabilityStatus.VERIFIED
     # 2026-07-20/21 sweep: native modes and eco moved to VERIFIED.
     assert capability("eco.set_mode").status is CapabilityStatus.VERIFIED
-    assert capability("common.freeze_screen").status is CapabilityStatus.KNOWN_BROKEN
+    assert capability("device.freeze_screen").status is CapabilityStatus.KNOWN_BROKEN
 
 
 def test_capture_findings_2026_07_25():
     """The vendor-app HCI capture (tools/parse_btsnoop.py) explained two
     long-standing speed mysteries. Only one of them was then settled on our own
-    panel: common.set_speed is dead code the app never sends, so no retest can
+    panel: device.set_speed is dead code the app never sends, so no retest can
     rehabilitate it.
     """
-    set_speed = capability("common.set_speed")
+    set_speed = capability("device.set_speed")
     assert set_speed.status is CapabilityStatus.KNOWN_BROKEN
     assert "NEVER sends this frame" in set_speed.evidence
 
-    assert capability("common.device_id_read").status is CapabilityStatus.SOURCE_DERIVED
+    assert capability("device.device_id_read").status is CapabilityStatus.SOURCE_DERIVED
 
 
 def test_hardware_results_2026_07_25():
@@ -124,8 +124,8 @@ def test_hardware_results_2026_07_25():
 
 def test_table_is_read_only():
     with pytest.raises(TypeError):
-        CAPABILITIES["common.reset"] = None  # type: ignore[index]
-    entry = capability("common.reset")
+        CAPABILITIES["device.reset"] = None  # type: ignore[index]
+    entry = capability("device.reset")
     with pytest.raises(AttributeError):
         entry.status = CapabilityStatus.UNKNOWN  # type: ignore[misc]
 

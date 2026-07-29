@@ -369,7 +369,7 @@ async def main(cases: tuple[str, ...]) -> None:
         # --- baseline ---------------------------------------------------------
         try:
             print("resetting device to a known state ...", flush=True)
-            await client.common.reset()
+            await client.device.reset()
             await asyncio.sleep(4)
             await client.clock.show()
             await asyncio.sleep(3)
@@ -520,7 +520,7 @@ async def main(cases: tuple[str, ...]) -> None:
                     # reset" is the finding P10 is chartered to record.
                     print(f"  recovery re-upload raised UploadError: {ex!r}", flush=True)
                     print("  escalating: common.reset() (04 00 03 80, verified-safe) then ONE more attempt", flush=True)
-                    await client.common.reset()
+                    await client.device.reset()
                     await asyncio.sleep(4)
                     started = time.perf_counter()
                     await client.gif.upload_bytes(big_bytes)

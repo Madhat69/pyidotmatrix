@@ -36,9 +36,9 @@ async def main() -> None:
             print(f"  starting in {n} ...", flush=True)
             await asyncio.sleep(1)
 
-        await guarded("flip on", lambda: client.common.set_screen_flipped(True))
+        await guarded("flip on", lambda: client.device.set_screen_flipped(True))
         await step("STEP 1a: FLIP ON -- clock upside down? (8s)", 8)
-        await guarded("flip off", lambda: client.common.set_screen_flipped(False))
+        await guarded("flip off", lambda: client.device.set_screen_flipped(False))
         await step("STEP 1b: FLIP OFF -- back to normal? (8s)", 8)
 
         await guarded("chrono start", client.chronograph.start)
@@ -51,9 +51,9 @@ async def main() -> None:
         await guarded("effect fast", lambda: client.effect.show(0, COLORS, speed=200))
         await step("STEP 3b: EFFECT style0 SPEED=200 -- visibly faster? (8s)", 8)
 
-        await guarded("freeze", client.common.freeze_screen)
+        await guarded("freeze", client.device.freeze_screen)
         await step("STEP 4a: FREEZE sent mid-animation -- did the effect STOP moving? (8s)", 8)
-        await guarded("freeze again", client.common.freeze_screen)
+        await guarded("freeze again", client.device.freeze_screen)
         await step("STEP 4b: FREEZE sent AGAIN -- did it resume (toggle)? (8s)", 8)
 
         await guarded("clock restore", lambda: client.clock.show())

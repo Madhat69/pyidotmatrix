@@ -6,7 +6,7 @@ What this shows:
       status tag in docs/features.md and docs/hardware-compatibility.md
     - CapabilityStatus -- VERIFIED / SOURCE_DERIVED / UNKNOWN / KNOWN_BROKEN
     - guarding a call on KNOWN_BROKEN before sending it, using
-      common.freeze_screen (acked by the device but with no observable
+      device.freeze_screen (acked by the device but with no observable
       effect on the reference panel -- see capabilities.py) as the example
 
 Hardware needed: none. This is pure local data -- no connection is opened.
@@ -62,11 +62,11 @@ def main() -> None:
     print_table()
 
     print("\n--- guard example ---")
-    # common.freeze_screen is KNOWN_BROKEN on the reference panel (acked, no
+    # device.freeze_screen is KNOWN_BROKEN on the reference panel (acked, no
     # observable effect) -- exactly the case this table exists to flag before
     # a caller wastes a round-trip on it.
-    if guard_before_calling("common.freeze_screen"):
-        pass  # would call client.common.freeze_screen() here
+    if guard_before_calling("device.freeze_screen"):
+        pass  # would call client.device.freeze_screen() here
     guard_before_calling("clock.show")  # VERIFIED -- the contrast case
 
 
